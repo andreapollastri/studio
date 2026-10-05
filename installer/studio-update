@@ -1,0 +1,505 @@
+#!/usr/bin/env bash
+#
+# studio-update — keeps this server on the newest build of Studio for its channel.
+#
+# Runs as root: from Administration → System (studio-update.service, and
+# studio-update-force.service for "Force update"), every night while automatic
+# updates are on (studio-update-auto.timer), or by hand.
+#
+# Channels (UPDATE_CHANNEL in /etc/studio/studio.env):
+#   stable  the newest release tag, vMAJOR.MINOR.PATCH (the default)
+#   beta    the head of the main branch, for beta testers
+# An update never goes backwards: a build is installed only when it contains the
+# installed commit. Back on stable after beta, Studio keeps its main build until a
+# release contains it.
+#
+#   studio-update check                  what the channel would install, as JSON
+#   studio-update apply [--auto] [--force] [--to vX.Y.Z]
+#                                        install it; --force builds and installs it again even
+#                                        when it is the installed one (never an older build)
+#   studio-update channel stable|beta    which builds to follow
+#   studio-update auto on|off            automatic updates every night
+#   studio-update status                 the last check and the last run, as JSON
+#   studio-update ensure                 the system step of the installed release, again
+#   studio-update rollback               back to the previous release and its database
+#
+# One update, in order:
+#   1. clone the build into /opt/studio/releases/<tag or main-sha>; when
+#      /etc/studio/update-signers exists (SSH allowed-signers format), the tag (or, on
+#      beta, the commit) must carry a valid signature; a tag's VERSION must match it
+#   2. the system step of the NEW build (installer/lib/system.sh): packages, new PHP
+#      versions, Node, Composer, Claude Code, the git provider's CLI…
+#   3. its upgrade scripts, phase "before" (installer/upgrades/<version>.sh, root)
+#   4. build it (composer, npm) on the shared .env and storage
+#   5. dump the database, maintenance mode, migrate with the new code
+#   6. the new build's root files (helper, templates, services, Caddyfile), then
+#      /opt/studio/current points at it
+#   7. upgrade scripts, phase "after"; caches; restarts; maintenance off; health check
+# A failure from step 5 on puts the previous release and the database dump back.
+# Packages installed by step 2 stay: they are only ever added.
+#
+set -euo pipefail
+umask 022
+
+# STUDIO_UPDATE_SANDBOX: for the updater's own tests only, a directory standing in for /
+ROOT=${STUDIO_UPDATE_SANDBOX:-}
+ETC=$ROOT/etc/studio
+STATE_DIR=$ROOT/var/lib/studio-update
+STATE=$STATE_DIR/state.json
+MIRROR=$STATE_DIR/repo.git
+LOG=$ROOT/var/log/studio-update.log
+BACKUPS=$ROOT/var/backups/studio
+LOCK=$ROOT/run/lock/studio-update.lock
+KEEP_RELEASES=3
+KEEP_BACKUPS=5
+SIGNERS=$ETC/update-signers
+
+[ -n "$ROOT" ] || [ "$(id -u)" = 0 ] || { echo "studio-update must run as root" >&2; exit 1; }
+[ -f "$ETC/studio.env" ] || { echo "Studio is not installed here ($ETC/studio.env is missing)" >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$ETC/studio.env"
+STUDIO_HOME=${STUDIO_HOME:-/opt/studio}
+STUDIO_REPO=${STUDIO_REPO:-https://github.com/andreapollastri/studio.git}
+CURRENT=$STUDIO_HOME/current
+SHARED=$STUDIO_HOME/shared
+export STUDIO_HOME STUDIO_ETC=$ETC
+
+# ------------------------------------------------------------------ helpers --
+
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+say() { printf '[%s] %s\n' "$(date '+%F %T')" "$*"; }
+bool() { if "$@"; then echo true; else echo false; fi; }
+
+is_tag() { [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+is_version() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+# ver_gt A B: version A is after version B (anything is after nothing)
+ver_gt() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ]; }
+
+channel() { [ "${UPDATE_CHANNEL:-stable}" = beta ] && echo beta || echo stable; }
+
+# set_conf KEY VALUE — one line of /etc/studio/studio.env
+set_conf() {
+    if grep -q "^$1=" "$ETC/studio.env"; then sed -i "s/^$1=.*/$1=$2/" "$ETC/studio.env"; else echo "$1=$2" >> "$ETC/studio.env"; fi
+}
+
+state_read() { [ -s "$STATE" ] && cat "$STATE" || echo '{}'; }
+# state_merge JQ_ARGS... FILTER — merge into the state file, atomically, readable by Studio
+state_merge() {
+    mkdir -p "$STATE_DIR"; chmod 755 "$STATE_DIR"
+    local tmp; tmp=$(mktemp "$STATE_DIR/.state.XXXXXX")
+    state_read | jq "$@" > "$tmp"
+    chmod 644 "$tmp"; mv -f "$tmp" "$STATE"
+}
+
+env_value() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -n1 | sed 's/^"\(.*\)"$/\1/'; }
+
+# ------------------------------------------------------------- the history --
+# A bare, blob-less mirror of the repository: tags, main, and which commit contains which.
+
+mirror() { git -C "$MIRROR" "$@"; }
+
+sync_mirror() {
+    if [ ! -d "$MIRROR" ]; then
+        mkdir -p "$STATE_DIR"
+        git clone -q --bare --filter=blob:none "$STUDIO_REPO" "$MIRROR" 2>/dev/null \
+            || { rm -rf "$MIRROR"; git clone -q --bare "$STUDIO_REPO" "$MIRROR" 2>/dev/null; } \
+            || { rm -rf "$MIRROR"; return 1; }
+    fi
+    mirror remote set-url origin "$STUDIO_REPO"
+    mirror fetch -q --prune --prune-tags --force origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' 2>/dev/null
+}
+
+commit_of() { mirror rev-parse -q --verify "$1^{commit}" 2>/dev/null || true; }
+latest_tag() { mirror tag -l 'v*' 2>/dev/null | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true; }
+# contains NEW OLD: the build NEW includes the commit OLD (or is it)
+contains() { mirror merge-base --is-ancestor "$2" "$1" 2>/dev/null; }
+
+# --------------------------------------------------------- what is installed --
+# Release directories are named after their build (v1.2.0, main-1a2b3c4); a build
+# installed again by --force gets @<time> after its name. Each holds .studio-commit.
+
+current_dir() { readlink -f "$CURRENT" 2>/dev/null || true; }
+label_of() { local b; b=$(basename "$1"); echo "${b%%@*}"; }
+installed() { local d; d=$(current_dir); if [ -n "$d" ]; then label_of "$d"; else echo none; fi; }
+version_of() { tr -d '[:space:]' < "$1/VERSION" 2>/dev/null || true; }
+installed_commit() {
+    local d c l
+    d=$(current_dir); c=$(cat "$d/.studio-commit" 2>/dev/null || true)
+    if [ -n "$c" ]; then echo "$c"; return; fi
+    l=$(installed)
+    if is_tag "$l"; then commit_of "refs/tags/$l"; elif [[ "$l" == main-* ]]; then commit_of "${l#main-}"; fi
+}
+
+# plan [TAG] — what the channel (or the tag given) would install:
+# TARGET_REF, TARGET_COMMIT, TARGET_LABEL; AVAILABLE (newer and containing the installed
+# commit); BEHIND (older than what is installed); WAITING (why nothing moves)
+plan() {
+    local cur cur_commit
+    cur=$(installed); cur_commit=$(installed_commit)
+    TARGET_REF=""; TARGET_COMMIT=""; TARGET_LABEL=""; AVAILABLE=false; BEHIND=false; WAITING=""; REASON=""
+    if [ -n "${1:-}" ]; then TARGET_REF=$1
+    elif [ "$(channel)" = beta ]; then TARGET_REF=main
+    else TARGET_REF=$(latest_tag)
+    fi
+    if [ -z "$TARGET_REF" ]; then WAITING="No release of Studio is published yet."; REASON=no-release; return 0; fi
+    if [ "$TARGET_REF" = main ]; then
+        TARGET_COMMIT=$(commit_of refs/heads/main); TARGET_LABEL="main-${TARGET_COMMIT:0:7}"
+    else
+        TARGET_COMMIT=$(commit_of "refs/tags/$TARGET_REF"); TARGET_LABEL=$TARGET_REF
+    fi
+    if [ -z "$TARGET_COMMIT" ]; then WAITING="$TARGET_REF is not in the repository."; REASON=missing; TARGET_LABEL=""; return 0; fi
+
+    if [ -z "$cur_commit" ]; then
+        AVAILABLE=true
+    elif [ "$cur_commit" = "$TARGET_COMMIT" ]; then
+        # the same code; a main build that became a release moves to the release's name
+        if [ "$cur" != "$TARGET_LABEL" ] && is_tag "$TARGET_LABEL"; then AVAILABLE=true; fi
+    elif contains "$TARGET_COMMIT" "$cur_commit"; then
+        AVAILABLE=true
+    elif contains "$cur_commit" "$TARGET_COMMIT"; then
+        BEHIND=true; REASON=behind
+        WAITING="Studio runs $cur, newer than $TARGET_LABEL: it stays there until a newer build of the $(channel) channel contains it."
+    else
+        REASON=diverged
+        WAITING="$TARGET_LABEL does not contain the installed $cur (the history differs): Force update installs it anyway."
+    fi
+}
+
+record_check() {
+    local main; main=$(commit_of refs/heads/main)
+    state_merge --arg ch "$(channel)" --arg c "$(installed)" --arg cc "$(installed_commit)" --arg l "$(latest_tag)" \
+        --arg m "${main:+main-${main:0:7}}" --arg tg "$TARGET_LABEL" --argjson a "$AVAILABLE" --arg w "$WAITING" --arg r "$REASON" --arg t "$(now)" \
+        '. + {channel: $ch, current: $c, current_commit: $cc, latest: $l, main: $m, target: $tg, update_available: $a, waiting: $w, waiting_reason: $r, checked_at: $t}'
+}
+
+# ------------------------------------------------------------------- doing --
+
+as_studio() {
+    sudo -u studio env -i HOME=/var/lib/studio COMPOSER_HOME=/var/lib/studio/.composer \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin COMPOSER_NO_INTERACTION=1 "$@"
+}
+# artisan RELEASE_DIR PHP args… — always with the release's own code and the shared .env
+artisan() { local rel=$1 php=$2; shift 2; as_studio "php$php" "$rel/artisan" "$@"; }
+
+php_of() { # the PHP a release runs Studio on: its choice when installed, otherwise the newest PHP here
+    (
+        STUDIO_PHP=8.4
+        # shellcheck disable=SC1091
+        [ -f "$1/installer/requirements.env" ] && . "$1/installer/requirements.env"
+        if [ ! -x "/usr/bin/php$STUDIO_PHP" ]; then
+            best=$(find /usr/bin -maxdepth 1 -name 'php[0-9]*.[0-9]*' 2>/dev/null | sed 's#.*/php##' | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+            [ -n "$best" ] && STUDIO_PHP=$best
+        fi
+        echo "$STUDIO_PHP"
+    )
+}
+
+db_name() { env_value "$SHARED/.env" DB_DATABASE; }
+db_dump() { # db_dump FILE
+    mariadb-dump --single-transaction --quick --routines --triggers --databases "$(db_name)" | gzip -c > "$1"
+}
+db_restore() { # db_restore FILE — the database exactly as dumped, without the tables a migration added
+    local db; db=$(db_name)
+    mariadb -e "DROP DATABASE IF EXISTS \`$db\`; CREATE DATABASE \`$db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    gunzip -c "$1" | mariadb
+}
+
+healthy() { # Studio answers /up on the loopback host Caddy keeps for it
+    local code
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8081/up || true)
+        [ "$code" = 200 ] && return 0
+        sleep 3
+    done
+    say "health check: /up answered ${code:-nothing}"
+    return 1
+}
+
+# lib RELEASE_DIR FUNCTION ARGS… — a step of the release's installer/lib/system.sh in a
+# bash of its own: `set -e` holds inside it, which it would not in a subshell after ||
+lib() {
+    local rel=$1; shift
+    bash -c 'set -euo pipefail; . "$0/installer/lib/system.sh"; "$@"' "$rel" "$@"
+}
+
+# run_upgrades PHASE RELEASE_DIR FROM_VERSION TO_VERSION FROM TO — the upgrade scripts of
+# the versions after FROM_VERSION up to TO_VERSION, in order; a script of TO_VERSION that
+# changed since it last ran (main builds share their version) runs again
+run_upgrades() {
+    local phase=$1 rel=$2 from_v=$3 to_v=$4 from=$5 to=$6 f v h ran
+    [ -d "$rel/installer/upgrades" ] || return 0
+    while IFS= read -r f; do
+        v=$(basename "$f" .sh)
+        is_version "$v" || continue
+        ver_gt "$v" "$to_v" && continue
+        h=$(git hash-object "$f")
+        ran=$(state_read | jq -r --arg v "$v" '.upgrades[$v] // empty')
+        if ver_gt "$v" "$from_v"; then :
+        elif [ "$v" = "$to_v" ] && [ "$ran" != "$h" ]; then :
+        else continue
+        fi
+        say "upgrade $v ($phase)"
+        STUDIO_HOME=$STUDIO_HOME STUDIO_ETC=$ETC RELEASE=$rel FROM=$from TO=$to FROM_VERSION=$from_v TO_VERSION=$to_v \
+            bash "$f" "$phase" || { say "upgrade script $(basename "$f") failed in phase $phase"; return 1; }
+        if [ "$phase" = after ]; then state_merge --arg v "$v" --arg h "$h" '.upgrades[$v] = $h'; fi
+    done < <(cd "$rel/installer/upgrades" && ls -1 -- *.sh 2>/dev/null | sort -V | sed "s#^#$rel/installer/upgrades/#")
+}
+
+prune() { # keep the live and the previous release, and the newest others up to KEEP_RELEASES
+    local cur prev d kept=0
+    cur=$(basename "$(current_dir)"); prev=$(state_read | jq -r '.previous_dir // empty')
+    # shellcheck disable=SC2012
+    while IFS= read -r d; do
+        [ -n "$d" ] || continue
+        if [ "$d" = "$cur" ] || [ "$d" = "$prev" ]; then continue; fi
+        kept=$((kept + 1))
+        [ "$kept" -le $((KEEP_RELEASES - 2)) ] && continue
+        say "removing old release $d"
+        rm -rf "${STUDIO_HOME:?}/releases/${d:?}"
+    done < <(ls -1t "$STUDIO_HOME/releases")
+    # shellcheck disable=SC2012
+    ls -1t "$BACKUPS"/studio-*.sql.gz 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | while IFS= read -r d; do rm -f "$d"; done
+}
+
+switch_to() { # point /opt/studio/current at a release directory, atomically
+    ln -sfn "releases/$1" "$STUDIO_HOME/current.next"
+    mv -Tf "$STUDIO_HOME/current.next" "$CURRENT"
+}
+
+lock() {
+    mkdir -p "$(dirname "$LOCK")"
+    exec 9>"$LOCK"
+    flock -n 9 || { echo "another update is running" >&2; exit 1; }
+}
+
+# The log of this run goes to the shared log and, trimmed, into the state for the System page.
+start_run_log() {
+    RUNLOG=$(mktemp)
+    touch "$LOG"; chmod 600 "$LOG"
+    exec > >(tee -a "$LOG" "$RUNLOG") 2>&1
+}
+finish_state() { # finish_state STATUS MESSAGE
+    sleep 0.2
+    state_merge --arg s "$1" --arg m "$2" --arg t "$(now)" --rawfile log "$RUNLOG" \
+        '. + {status: $s, message: $m, finished_at: $t, log: ($log | split("\n") | map(select(length > 0)) | .[-80:])}'
+}
+
+# ------------------------------------------------------------------ commands --
+
+cmd_check() {
+    sync_mirror || { echo '{"ok":false,"error":"the Studio repository is not reachable"}'; exit 1; }
+    plan; record_check
+    jq -n --arg ch "$(channel)" --arg c "$(installed)" --arg l "$(latest_tag)" --arg tg "$TARGET_LABEL" \
+        --argjson a "$AVAILABLE" --arg w "$WAITING" --arg r "$REASON" \
+        '{ok: true, channel: $ch, current: $c, latest: $l, target: $tg, update_available: $a, waiting: $w, waiting_reason: $r}'
+}
+
+cmd_status() { state_read; }
+
+cmd_auto() {
+    local val
+    case "${1:-}" in on) val=1 ;; off) val=0 ;; *) echo "usage: studio-update auto on|off" >&2; exit 2 ;; esac
+    set_conf AUTO_UPDATE "$val"
+    if [ "$val" = 1 ]; then systemctl enable --now studio-update-auto.timer >/dev/null 2>&1 || true; else systemctl disable --now studio-update-auto.timer >/dev/null 2>&1 || true; fi
+    state_merge --argjson a "$([ "$val" = 1 ] && echo true || echo false)" '. + {auto: $a}'
+    jq -n --argjson a "$([ "$val" = 1 ] && echo true || echo false)" '{ok: true, auto: $a}'
+}
+
+cmd_channel() {
+    case "${1:-}" in stable|beta) ;; *) echo "usage: studio-update channel stable|beta" >&2; exit 2 ;; esac
+    set_conf UPDATE_CHANNEL "$1"
+    UPDATE_CHANNEL=$1
+    state_merge --arg ch "$1" '. + {channel: $ch}'
+    if sync_mirror; then plan; record_check; fi
+    jq -n --arg ch "$1" '{ok: true, channel: $ch}'
+}
+
+cmd_ensure() {
+    local rel; rel=$(current_dir)
+    lib "$rel" ensure_system "$rel"
+    as_studio "php$(php_of "$rel")" "$rel/artisan" config:cache --quiet || true
+}
+
+cmd_apply() {
+    local want="" auto=0 force=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --to) want=${2:-}; shift 2 ;;
+            --auto) auto=1; shift ;;
+            --force) force=1; shift ;;
+            *) echo "unknown option: $1" >&2; exit 2 ;;
+        esac
+    done
+    [ -z "$want" ] || is_tag "$want" || { echo "not a release tag: $want" >&2; exit 2; }
+
+    lock
+    if ! sync_mirror; then
+        echo "the Studio repository is not reachable: $STUDIO_REPO" >&2
+        state_merge --arg t "$(now)" '. + {checked_at: $t, waiting: "The Studio repository is not reachable.", waiting_reason: "unreachable"}'
+        exit 1
+    fi
+    plan "$want"
+    record_check
+
+    if [ "$auto" = 1 ] && [ "${AUTO_UPDATE:-1}" != 1 ]; then
+        echo "automatic updates are off (AUTO_UPDATE=0)"
+        exit 0
+    fi
+    if [ -z "$TARGET_COMMIT" ]; then echo "$WAITING"; exit 0; fi
+    if [ "$BEHIND" = true ] && { [ "$force" = 1 ] || [ -n "$want" ]; }; then
+        echo "$TARGET_LABEL is older than the installed $(installed): an update never goes back; use studio-update rollback" >&2
+        exit 2
+    fi
+    if [ "$force" = 0 ] && [ "$AVAILABLE" != true ]; then
+        if [ -n "$WAITING" ]; then echo "$WAITING"; else echo "Studio $(installed) is already the newest build of the $(channel) channel"; fi
+        state_merge --arg t "$(now)" --arg m "${WAITING:-Already on the newest build.}" '. + {status: "up-to-date", message: $m, finished_at: $t}'
+        exit 0
+    fi
+
+    local from from_rel from_v php_old php_new rel to_v commit dump="" incoming="$STUDIO_HOME/releases/.incoming"
+    local migrated=0 switched=0 down=0
+    from=$(installed); from_rel=$(current_dir); from_v=$(version_of "$from_rel")
+    php_old=$(env_value "$ETC/studio.env" STUDIO_PHP); php_old=${php_old:-8.4}
+
+    start_run_log
+    state_merge --arg f "$from" --arg to "$TARGET_LABEL" --arg t "$(now)" --argjson a "$(bool [ "$auto" = 1 ])" --argjson fo "$(bool [ "$force" = 1 ])" \
+        '. + {status: "running", message: ("Updating " + $f + " → " + $to), target: $to, started_at: $t, finished_at: null, triggered_automatically: $a, forced: $fo}'
+    say "Studio $from → $TARGET_LABEL ($(channel) channel$([ "$force" = 1 ] && echo ', forced'))"
+
+    fail() {
+        say "FAILED: $1"
+        if [ "$switched" = 1 ] && [ -n "$from_rel" ]; then
+            say "putting $(basename "$from_rel") back"
+            switch_to "$(basename "$from_rel")"
+            lib "$from_rel" install_release_files "$from_rel" || say "could not reinstall the files of $(basename "$from_rel")"
+        fi
+        if [ "$migrated" = 1 ] && [ -n "$dump" ]; then
+            say "restoring the database from $(basename "$dump")"
+            db_restore "$dump" || say "THE DATABASE COULD NOT BE RESTORED: restore $dump by hand"
+        fi
+        if [ -n "$from_rel" ]; then
+            artisan "$from_rel" "$php_old" optimize --quiet || true
+            lib "$from_rel" restart_studio || true
+            [ "$down" = 1 ] && artisan "$from_rel" "$php_old" up --quiet || true
+        fi
+        finish_state failed "$1"
+        exit 1
+    }
+    drop() { rm -rf "${incoming:?}"; [ -n "${rel:-}" ] && [ "$rel" != "$from_rel" ] && rm -rf "${rel:?}"; fail "$1"; }
+
+    # 1. the build
+    rm -rf "${incoming:?}"
+    say "cloning $TARGET_REF"
+    local err
+    err=$(git clone -q -c advice.detachedHead=false --depth 1 --branch "$TARGET_REF" "$STUDIO_REPO" "$incoming" 2>&1 >/dev/null) \
+        || drop "git clone of $TARGET_REF failed: $err"
+    commit=$(git -C "$incoming" rev-parse HEAD)
+    if [ "$TARGET_REF" = main ]; then TARGET_COMMIT=$commit; TARGET_LABEL="main-${commit:0:7}"; fi
+    if [ -s "$SIGNERS" ]; then
+        if [ "$TARGET_REF" = main ]; then
+            git -C "$incoming" -c gpg.format=ssh -c "gpg.ssh.allowedSignersFile=$SIGNERS" verify-commit HEAD >/dev/null 2>&1 \
+                || drop "the head of main ($TARGET_LABEL) is not signed by an allowed signer ($SIGNERS)"
+        else
+            git -C "$incoming" -c gpg.format=ssh -c "gpg.ssh.allowedSignersFile=$SIGNERS" verify-tag "$TARGET_REF" >/dev/null 2>&1 \
+                || drop "the signature of $TARGET_REF is missing or not from an allowed signer ($SIGNERS)"
+        fi
+        say "signature of $TARGET_LABEL verified"
+    fi
+    if is_tag "$TARGET_REF" && [ "v$(version_of "$incoming")" != "$TARGET_REF" ]; then
+        drop "the VERSION file of $TARGET_REF does not say ${TARGET_REF#v}"
+    fi
+    echo "$commit" > "$incoming/.studio-commit"
+    rm -rf "$incoming/.git"
+    rel="$STUDIO_HOME/releases/$TARGET_LABEL"
+    if [ "$(readlink -f "$rel" 2>/dev/null || true)" = "$from_rel" ]; then rel="$rel@$(date +%Y%m%d%H%M%S)"; fi
+    rm -rf "${rel:?}"; mv "$incoming" "$rel"
+    to_v=$(version_of "$rel")
+
+    # 2. the system it needs
+    lib "$rel" ensure_system "$rel" || drop "the system step of $TARGET_LABEL failed"
+    php_new=$(php_of "$rel")
+
+    # 3. upgrade scripts, before
+    run_upgrades before "$rel" "$from_v" "$to_v" "$from" "$TARGET_LABEL" || drop "an upgrade script of $TARGET_LABEL failed before the switch"
+
+    # 4. build
+    say "building $TARGET_LABEL"
+    ln -sfn "$SHARED/.env" "$rel/.env"
+    rm -rf "$rel/storage"; ln -sfn "$SHARED/storage" "$rel/storage"
+    chown -R studio:studio "$rel"; chmod 751 "$rel"
+    ( cd "$rel" && as_studio "php$php_new" /usr/local/bin/composer install --no-dev --no-interaction --prefer-dist --no-progress --optimize-autoloader --quiet ) || drop "composer install of $TARGET_LABEL failed"
+    ( cd "$rel" && as_studio npm ci --no-audit --no-fund --silent && as_studio npm run build --silent ) || drop "the asset build of $TARGET_LABEL failed"
+    rm -rf "$rel/node_modules"
+
+    # 5. database
+    mkdir -p "$BACKUPS"; chmod 750 "$BACKUPS"
+    dump="$BACKUPS/studio-${from}-to-${TARGET_LABEL}-$(date +%Y%m%d%H%M%S).sql.gz"
+    say "dumping the database to $(basename "$dump")"
+    db_dump "$dump" || fail "the database dump failed; nothing was changed"
+    chmod 600 "$dump"
+    if [ -n "$from_rel" ]; then
+        artisan "$from_rel" "$php_old" down --retry=15 --quiet && down=1 || true
+    fi
+    say "migrating"
+    migrated=1
+    artisan "$rel" "$php_new" migrate --force --no-interaction || fail "the migrations of $TARGET_LABEL failed"
+
+    # 6. root files, switch
+    lib "$rel" install_release_files "$rel" || fail "installing the root files of $TARGET_LABEL failed"
+    switched=1
+    switch_to "$(basename "$rel")"
+    say "current → $(basename "$rel")"
+
+    # 7. after
+    run_upgrades after "$rel" "$from_v" "$to_v" "$from" "$TARGET_LABEL" || fail "an upgrade script of $TARGET_LABEL failed after the switch"
+    artisan "$rel" "$php_new" storage:link --force --quiet >/dev/null 2>&1 || true
+    artisan "$rel" "$php_new" optimize --quiet || fail "artisan optimize failed on $TARGET_LABEL"
+    lib "$rel" restart_studio || fail "Studio's services did not restart on $TARGET_LABEL"
+    [ "$down" = 1 ] && { artisan "$rel" "$php_new" up --quiet || true; }
+    down=0
+    healthy || { down=1; fail "Studio $TARGET_LABEL did not answer its health check"; }
+
+    state_merge --arg c "$TARGET_LABEL" --arg cc "$commit" --arg cd "$(basename "$rel")" --arg p "$from" --arg pd "$(basename "${from_rel:-none}")" --arg d "$dump" \
+        '. + {current: $c, current_commit: $cc, current_dir: $cd, previous: $p, previous_dir: $pd, backup: $d, update_available: false, waiting: "", waiting_reason: ""}'
+    prune
+    say "Studio $TARGET_LABEL is live"
+    if [ "$from" = "$TARGET_LABEL" ]; then finish_state ok "Reinstalled $TARGET_LABEL."; else finish_state ok "Updated $from → $TARGET_LABEL."; fi
+}
+
+cmd_rollback() {
+    lock
+    local prev prev_dir dump cur cur_dir rel php
+    prev=$(state_read | jq -r '.previous // empty'); prev_dir=$(state_read | jq -r '.previous_dir // empty')
+    prev_dir=${prev_dir:-$prev}; dump=$(state_read | jq -r '.backup // empty')
+    cur=$(installed); cur_dir=$(basename "$(current_dir)")
+    [ -n "$prev_dir" ] && [ -d "$STUDIO_HOME/releases/$prev_dir" ] || { echo "no previous release to go back to" >&2; exit 1; }
+    start_run_log
+    state_merge --arg t "$(now)" --arg m "Rolling back $cur → $prev" '. + {status: "running", message: $m, started_at: $t, finished_at: null}'
+    rel="$STUDIO_HOME/releases/$prev_dir"; php=$(php_of "$rel")
+    say "rollback $cur → $prev"
+    artisan "$(current_dir)" "$(env_value "$ETC/studio.env" STUDIO_PHP)" down --retry=15 --quiet || true
+    if [ -n "$dump" ] && [ -f "$dump" ]; then
+        say "restoring the database from $(basename "$dump")"
+        db_restore "$dump" || { finish_state failed "The database could not be restored from $dump."; exit 1; }
+    fi
+    lib "$rel" install_release_files "$rel"
+    switch_to "$prev_dir"
+    artisan "$rel" "$php" optimize --quiet || true
+    lib "$rel" restart_studio
+    artisan "$rel" "$php" up --quiet || true
+    state_merge --arg c "$(label_of "$rel")" --arg cc "$(cat "$rel/.studio-commit" 2>/dev/null || true)" --arg cd "$prev_dir" --arg p "$cur" --arg pd "$cur_dir" \
+        '. + {current: $c, current_commit: $cc, current_dir: $cd, previous: $p, previous_dir: $pd, backup: null}'
+    finish_state ok "Rolled back $cur → $prev."
+}
+
+cmd=${1:-}; shift || true
+case "$cmd" in
+    check) cmd_check ;;
+    status) cmd_status ;;
+    apply) cmd_apply "$@" ;;
+    channel) cmd_channel "$@" ;;
+    auto) cmd_auto "$@" ;;
+    ensure) cmd_ensure ;;
+    rollback) cmd_rollback ;;
+    *) sed -n '3,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

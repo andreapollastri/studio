@@ -1,0 +1,15 @@
+[Unit]
+Description=Studio scheduler
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=studio
+Group=studio
+WorkingDirectory=__STUDIO_DIR__
+ExecStart=/usr/bin/__PHP__ artisan schedule:work
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+#
+# studio-recover — the way back into Studio for whoever holds root on the server.
+#
+# Studio is invite-only and has no "forgot my password" for the last administrator;
+# a lost 2FA device, a demoted account or a forgotten password can lock everyone
+# out of the dashboard while the server itself is fine. Root is the one key that
+# is never in Studio: from an SSH session it resets the main administrator.
+#
+#   studio-recover admin                reset the main administrator: the oldest account
+#                                       with the admin role (the one the installer made)
+#   studio-recover admin EMAIL [NAME]   reset that account instead; an unknown email
+#                                       becomes a new administrator
+#   studio-recover env                  edit Studio's .env (/opt/studio/shared/.env) in
+#                                       $EDITOR, then reload — for the MAIL_* lines and
+#                                       the like
+#   studio-recover reload               after a change to .env by hand: rebuild Studio's
+#                                       caches from it and restart its services
+#
+# A reset gives the account a new password (printed once, here), removes its 2FA,
+# closes every session it had, gives it the admin role and a verified email. Git
+# and Claude credentials stay. Nothing on the server (sites, workspaces, projects)
+# is touched. Every run is written to syslog and to Studio's own log.
+#
+# Installed by the updater as /usr/local/sbin/studio-recover, mode 0700: root only,
+# no sudo rule, nothing in Studio calls it.
+#
+set -euo pipefail
+umask 077
+
+ETC=/etc/studio
+usage() { sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+
+[ "$(id -u)" = 0 ] || { echo "studio-recover must run as root" >&2; exit 1; }
+[ -f "$ETC/studio.env" ] || { echo "Studio is not installed here ($ETC/studio.env is missing)" >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$ETC/studio.env"
+STUDIO_HOME=${STUDIO_HOME:-/opt/studio}
+CURRENT=$STUDIO_HOME/current
+[ -f "$CURRENT/artisan" ] || { echo "no Studio release at $CURRENT" >&2; exit 1; }
+
+# the PHP the installed release runs on, as studio-update picks it
+php_version() {
+    (
+        STUDIO_PHP=8.4
+        # shellcheck disable=SC1091
+        [ -f "$CURRENT/installer/requirements.env" ] && . "$CURRENT/installer/requirements.env"
+        if [ ! -x "/usr/bin/php$STUDIO_PHP" ]; then
+            best=$(find /usr/bin -maxdepth 1 -name 'php[0-9]*.[0-9]*' 2>/dev/null | sed 's#.*/php##' | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+            [ -n "$best" ] && STUDIO_PHP=$best
+        fi
+        echo "$STUDIO_PHP"
+    )
+}
+
+artisan() {
+    sudo -u studio env -i HOME=/var/lib/studio PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        "php$(php_version)" "$CURRENT/artisan" "$@" --no-interaction --no-ansi
+}
+
+cmd_admin() {
+    local email=${1:-} name=${2:-} who args=()
+    [ $# -le 2 ] || usage
+    if [ -n "$email" ]; then
+        [[ "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[a-z]{2,}$ ]] || { echo "\"$email\" is not an email address" >&2; exit 64; }
+        args+=("--email=$email")
+        [ -n "$name" ] && args+=("--name=$name")
+    fi
+
+    local from=${SSH_CLIENT:-local}
+    who="${SUDO_USER:-root}@${from%% *}"
+    logger -t studio-recover -p auth.warning "administrator reset requested by $who${email:+ for $email}" 2>/dev/null || true
+
+    echo "Resetting the Studio administrator${email:+ $email}: new password, 2FA off, sessions closed."
+    echo
+    artisan studio:reset-admin ${args[@]+"${args[@]}"}
+    echo
+    echo "Log in at https://studio.${DOMAIN:-<domain>} with this password, then change it in Settings and set 2FA up again."
+}
+
+# Studio reads its configuration from a cache built by `artisan optimize`, not from
+# .env on every request: a change to .env is live only after this.
+cmd_reload() {
+    [ $# -eq 0 ] || usage
+    echo "Rebuilding Studio's caches from $STUDIO_HOME/shared/.env…"
+    artisan optimize --quiet
+    systemctl restart studio-queue studio-scheduler studio-reverb
+    for v in /etc/php/*/fpm; do systemctl reload "php$(basename "$(dirname "$v")")-fpm" 2>/dev/null || true; done
+    logger -t studio-recover -p auth.notice "Studio reloaded after a change to .env" 2>/dev/null || true
+    echo "Done. Studio, its queue and its scheduler run on the new settings."
+}
+
+cmd_env() {
+    [ $# -eq 0 ] || usage
+    local env=$STUDIO_HOME/shared/.env before after
+    [ -f "$env" ] || { echo "no $env" >&2; exit 1; }
+    before=$(sha256sum "$env" | cut -d' ' -f1)
+    "${EDITOR:-${VISUAL:-nano}}" "$env"
+    after=$(sha256sum "$env" | cut -d' ' -f1)
+    # the editor may have replaced the file: the owner and mode Studio needs
+    chown studio:studio "$env"; chmod 640 "$env"
+    if [ "$before" = "$after" ]; then echo "No change."; else cmd_reload; fi
+}
+
+case ${1:-} in
+    admin) shift; cmd_admin "$@" ;;
+    env) shift; cmd_env "$@" ;;
+    reload) shift; cmd_reload "$@" ;;
+    *) usage ;;
+esac

@@ -1,0 +1,11 @@
+{"status":null,"count":9,"total":9,"page":1,"per_page":200,"total_pages":1,"items":[
+{"code":"US-001","title":"Sign in with email and password","status":"DONE","priority":"high","points":2,"epic":"Access"},
+{"code":"US-003","title":"Orders list with search by number","status":"DONE","priority":"high","points":3,"epic":"Back office"},
+{"code":"US-007","title":"Export orders to CSV","status":"DONE","priority":"medium","points":2,"epic":"Back office"},
+{"code":"US-010","title":"Email notification when an order ships","status":"REVIEW","priority":"medium","points":3,"epic":"Shipping"},
+{"code":"US-012","title":"Custom order statuses","status":"IN PROGRESS","priority":"high","points":5,"epic":"Back office"},
+{"code":"US-014","title":"Date range filter on the orders list","status":"IN PROGRESS","priority":"high","points":3,"epic":"Back office"},
+{"code":"US-015","title":"Returns: request from the customer","status":"PLANNED","priority":"medium","points":5,"epic":"Returns"},
+{"code":"US-016","title":"Returns: approval from the back office","status":"TODO","priority":"medium","points":3,"epic":"Returns"},
+{"code":"US-017","title":"Weekly sales dashboard","status":"TODO","priority":"low","points":5,"epic":"Reports"}
+],"summary":{"by_status":{"DONE":3,"REVIEW":1,"IN PROGRESS":2,"PLANNED":1,"TODO":2}}}

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true" {{ $attributes }}>
+    <rect width="32" height="32" rx="7" fill="#111a08"/>
+    <g fill="#a3e635">
+        <circle cx="10.5" cy="17.5" r="5.5"/>
+        <circle cx="17" cy="13" r="7"/>
+        <circle cx="23.5" cy="17.5" r="5"/>
+        <rect x="5" y="18.5" width="23.5" height="6.5" rx="3.25"/>
+    </g>
+    <g fill="#111a08">
+        <circle cx="17" cy="9.2" r="1.1"/>
+        <rect x="16.4" y="10" width="1.2" height="2.2" rx=".6"/>
+        <rect x="9.9" y="15.2" width="1.8" height="3.2" rx=".8"/>
+        <rect x="22.3" y="15.2" width="1.8" height="3.2" rx=".8"/>
+        <rect x="11.8" y="12" width="10.4" height="9.2" rx="2.4"/>
+    </g>
+    <g fill="#a3e635">
+        <circle cx="14.9" cy="15.6" r="1.25"/>
+        <circle cx="19.1" cy="15.6" r="1.25"/>
+        <rect x="14.6" y="18.4" width="4.8" height="1.15" rx=".575"/>
+    </g>
+</svg>

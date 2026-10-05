@@ -1,0 +1,3361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Studio — Talk to your Laravel project, approve what ships</title>
+  <meta name="description" content="One Ubuntu server, one script. Studio gives a product team a human interface over Laravel workspaces: a chat with each person's own Claude Code and the Larapilot skills, the preview of the branch, the changes, the backlog, approvals." />
+  <meta name="theme-color" content="#4d7c0f" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="Studio" />
+  <meta property="og:description" content="Talk to your Laravel project. Approve what ships." />
+  <meta property="og:image" content="https://studio.web.ap.it/img/chat-permission.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #111a08;
+      --ink-soft: #26331a;
+      --muted: #5b6650;
+      --line: #cfd8c0;
+      --paper: #f1f5e9;
+      --surface: #f7faf2;
+      --white: #ffffff;
+      --signal: #4d7c0f;
+      --signal-deep: #3f6212;
+      --phosphor: #bef264;
+      --terminal: #111a08;
+      --pass: #1a7f4b;
+      --warn: #b45309;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+      --sans: "Source Sans 3", Georgia, sans-serif;
+      --display: "Space Grotesk", var(--sans);
+      --max: 1120px;
+      --docs-sidebar: 210px;
+      /* Sticky top nav clearance for in-page anchors (hash links / TOC) */
+      --docs-anchor-offset: 6rem;
+    }
+
+    /* Smooth only for in-page clicks: the class is added after load, so a hash in the URL jumps instantly. */
+    html.smooth { scroll-behavior: smooth; }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+    }
+
+    body {
+      font-family: var(--sans);
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.55;
+      font-size: 1.0625rem;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; }
+    code, pre { font-family: var(--mono); }
+
+    .atmosphere {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 45% at 8% -8%, rgba(77, 124, 15, 0.12), transparent 55%),
+        radial-gradient(ellipse 55% 40% at 95% 15%, rgba(17, 26, 8, 0.06), transparent 50%),
+        linear-gradient(180deg, var(--surface) 0%, var(--paper) 42%, var(--paper) 100%);
+    }
+
+    .atmosphere::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(17, 26, 8, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(17, 26, 8, 0.035) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: linear-gradient(180deg, #000 0%, transparent 65%);
+    }
+
+    /* Nav */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem 1.5rem;
+      background: rgba(248, 243, 240, 0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .nav-brand {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 1.35rem;
+      letter-spacing: -0.04em;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      color: var(--ink);
+    }
+
+    .nav-brand svg { width: 1.55rem; height: 1.55rem; flex-shrink: 0; }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.35rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: var(--ink-soft);
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--signal); }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.45rem 0.85rem;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--white) !important;
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .nav-cta:hover {
+      background: var(--signal);
+      border-color: var(--signal);
+    }
+
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      background: none;
+      border: 0;
+      cursor: pointer;
+      padding: 0.35rem;
+    }
+
+    .hamburger span {
+      display: block;
+      width: 22px;
+      height: 2px;
+      background: var(--ink);
+      transition: transform 0.2s, opacity 0.2s;
+    }
+
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    /* Hero */
+    .hero {
+      position: relative;
+      min-height: calc(100vh - 3.6rem);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      overflow: hidden;
+    }
+
+    .hero-plane {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 90% 70% at 70% 40%, rgba(190, 242, 100, 0.14), transparent 55%),
+        linear-gradient(165deg, #120e0d 0%, #111a08 45%, #3a1a16 100%);
+    }
+
+    .hero-plane::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(190, 242, 100, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(190, 242, 100, 0.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: linear-gradient(180deg, #000 20%, transparent 90%);
+      animation: grid-drift 28s linear infinite;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      max-width: var(--max);
+      width: 100%;
+      margin: 0 auto;
+      padding: 4rem 1.5rem 2.25rem;
+    }
+
+    .hero-brand {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: clamp(3.4rem, 12vw, 7.5rem);
+      line-height: 0.9;
+      letter-spacing: -0.07em;
+      color: var(--white);
+      animation: rise 0.75s ease both;
+    }
+
+    .hero-brand span { color: var(--phosphor); }
+
+    .hero-version {
+      display: inline-block;
+      margin-left: 0.55rem;
+      vertical-align: middle;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: rgba(190, 242, 100, 0.85);
+      border: 1px solid rgba(190, 242, 100, 0.35);
+      padding: 0.2rem 0.45rem;
+      transform: translateY(-0.55em);
+    }
+
+    .hero-content h1 {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: clamp(1.35rem, 3vw, 1.85rem);
+      letter-spacing: -0.03em;
+      line-height: 1.25;
+      color: rgba(255, 255, 255, 0.92);
+      margin: 1.15rem 0 0.65rem;
+      max-width: 32rem;
+      animation: rise 0.75s 0.08s ease both;
+    }
+
+    .hero-content > p {
+      color: rgba(241, 245, 233, 0.72);
+      max-width: 36rem;
+      font-size: 1.05rem;
+      animation: rise 0.75s 0.14s ease both;
+    }
+
+    .hero-content > p a {
+      color: var(--phosphor);
+      font-weight: 600;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(190, 242, 100, 0.35);
+    }
+
+    .hero-content > p a:hover { border-bottom-color: var(--phosphor); }
+
+    .hero-content > p code {
+      font-size: 0.88em;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.12em 0.35em;
+      border-radius: 3px;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+      animation: rise 0.75s 0.2s ease both;
+    }
+
+    .hero-tagline {
+      margin-top: 1.25rem;
+      color: rgba(241, 245, 233, 0.55);
+      font-size: 0.98rem;
+      animation: rise 0.75s 0.24s ease both;
+    }
+
+    .hero-tagline strong { color: rgba(255, 255, 255, 0.88); font-weight: 600; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.7rem 1.1rem;
+      font-family: var(--sans);
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn-primary {
+      background: var(--phosphor);
+      color: var(--ink);
+      border-color: var(--phosphor);
+    }
+
+    .btn-primary:hover {
+      background: #d9f99d;
+      border-color: #d9f99d;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: rgba(255, 255, 255, 0.9);
+      border-color: rgba(255, 255, 255, 0.28);
+    }
+
+    .btn-ghost:hover {
+      border-color: rgba(255, 255, 255, 0.55);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .btn-ink {
+      background: var(--ink);
+      color: var(--white);
+      border-color: var(--ink);
+    }
+
+    .btn-ink:hover {
+      background: var(--signal);
+      border-color: var(--signal);
+    }
+
+    .hero-terminal {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      margin-top: auto;
+      background: rgba(12, 9, 8, 0.92);
+      border-top: 1px solid rgba(190, 242, 100, 0.22);
+      animation: rise 0.85s 0.22s ease both;
+      min-height: 11.5rem;
+    }
+
+    .hero-terminal-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 1.25rem 1.5rem 1.5rem;
+      font-family: var(--mono);
+      font-size: clamp(0.78rem, 1.6vw, 0.92rem);
+      line-height: 1.65;
+      color: rgba(241, 245, 233, 0.88);
+      overflow-x: auto;
+      min-height: 9rem;
+      white-space: pre-wrap;
+    }
+
+    .hero-terminal .prompt { color: var(--phosphor); }
+    .hero-terminal .dim { color: rgba(241, 245, 233, 0.45); }
+    .hero-terminal .ok { color: #5ddea0; }
+    .hero-terminal .info { color: var(--phosphor); }
+    .hero-terminal .warn { color: #f0b429; }
+
+    .caret {
+      display: inline-block;
+      width: 0.55ch;
+      height: 1.05em;
+      background: var(--phosphor);
+      vertical-align: text-bottom;
+      margin-left: 2px;
+      animation: blink 1.05s step-end infinite;
+    }
+
+    @keyframes blink { 50% { opacity: 0; } }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes grid-drift {
+      from { background-position: 0 0; }
+      to { background-position: 40px 40px; }
+    }
+
+    /* Docs shell */
+    .docs {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 3.5rem 1.5rem 5rem;
+      display: grid;
+      grid-template-columns: var(--docs-sidebar) minmax(0, 1fr);
+      gap: 3rem;
+    }
+
+    .docs-nav {
+      position: sticky;
+      top: var(--docs-anchor-offset);
+      align-self: start;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      max-height: calc(100vh - var(--docs-anchor-offset) - 1rem);
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+
+    .docs-nav-label {
+      font-family: var(--display);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0.85rem 0 0.4rem;
+    }
+
+    .docs-nav-label:first-child { margin-top: 0; margin-bottom: 0.55rem; }
+
+    .chip {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--signal-deep);
+      background: rgba(77, 124, 15, 0.1);
+      padding: 0.12rem 0.4rem;
+      vertical-align: 0.12em;
+      margin-left: 0.25rem;
+    }
+
+    .docs-nav a {
+      text-decoration: none;
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 0.32rem 0.5rem;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+
+    .docs-nav a.sub {
+      font-size: 0.82rem;
+      font-weight: 450;
+      color: var(--muted);
+      padding-left: 1rem;
+    }
+
+    .docs-nav a:hover,
+    .docs-nav a.active {
+      color: var(--signal-deep);
+      border-left-color: var(--signal);
+      background: rgba(77, 124, 15, 0.08);
+    }
+
+    .docs-main { min-width: 0; }
+
+    .docs-main > .doc-section,
+    .docs-main > section {
+      padding-bottom: 2.75rem;
+      margin-bottom: 2.75rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .docs-main > section:last-of-type {
+      border-bottom: 0;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .section-header { margin-bottom: 1.35rem; }
+
+    .section-label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--signal);
+      margin-bottom: 0.45rem;
+    }
+
+    .docs-main h2 {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: clamp(1.55rem, 2.8vw, 1.9rem);
+      letter-spacing: -0.035em;
+      margin-bottom: 0.55rem;
+    }
+
+    .docs-main h3 {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      margin: 1.75rem 0 0.55rem;
+    }
+
+    .docs-main h4 {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.02rem;
+      margin: 1.35rem 0 0.45rem;
+    }
+
+    .docs-main p,
+    .docs-main li { color: var(--ink-soft); }
+
+    .docs-main p + p { margin-top: 0.85rem; }
+
+    .docs-main .lead,
+    .section-header > p {
+      font-size: 1.08rem;
+      color: var(--muted);
+      max-width: 42rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .docs-main ul,
+    .docs-main ol {
+      margin: 0.85rem 0 0 1.2rem;
+    }
+
+    .docs-main li + li { margin-top: 0.35rem; }
+
+    .docs-main a {
+      color: var(--signal-deep);
+      font-weight: 600;
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+    }
+
+    .docs-main a:hover { border-bottom-color: var(--signal); }
+
+    .docs-main code {
+      font-size: 0.88em;
+      background: rgba(17, 26, 8, 0.06);
+      padding: 0.12em 0.35em;
+      border-radius: 3px;
+    }
+
+    .docs-main pre {
+      margin: 1.15rem 0;
+      padding: 0.9rem 1.1rem;
+      background: var(--terminal);
+      border: 1px solid #1a2610;
+      color: #d7e4c4;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.55;
+      overflow-x: auto;
+    }
+
+    .docs-main pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+    }
+
+    /* Install commands */
+    .install-commands {
+      margin: 1.15rem 0;
+      background: var(--terminal);
+      border: 1px solid #1a2610;
+      overflow: hidden;
+    }
+
+    .install-commands-header {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(190, 242, 100, 0.7);
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid rgba(190, 242, 100, 0.18);
+    }
+
+    .install-commands-list {
+      list-style: none;
+      margin: 0 !important;
+      padding: 0.35rem 0;
+    }
+
+    .install-command {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.55rem 1rem;
+      margin: 0 !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .install-command:last-child { border-bottom: 0; }
+
+    .install-command-num {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--phosphor);
+      width: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    .install-command-text {
+      flex: 1;
+      background: none !important;
+      padding: 0 !important;
+      color: #f1f5e9 !important;
+      font-size: 0.86rem;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    .install-copy-btn,
+    .code-block .copy,
+    .copy-btn {
+      border: 1px solid rgba(190, 242, 100, 0.35);
+      background: rgba(17, 26, 8, 0.85);
+      color: var(--phosphor);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      padding: 0.28rem 0.5rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .install-copy-btn:hover,
+    .install-copy-btn.copied,
+    .code-block .copy:hover,
+    .code-block .copy.copied,
+    .copy-btn:hover,
+    .copy-btn.copied {
+      background: var(--phosphor);
+      color: var(--ink);
+      border-color: var(--phosphor);
+    }
+
+    .install-requirements {
+      margin-top: 0.85rem;
+      font-size: 0.95rem;
+    }
+
+    /* Code blocks */
+    .code-block {
+      position: relative;
+      margin: 1rem 0;
+      background: var(--terminal);
+      color: #f1f5e9;
+      border: 1px solid #1a2610;
+      overflow: hidden;
+    }
+
+    .code-block-header {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(190, 242, 100, 0.7);
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid rgba(190, 242, 100, 0.18);
+    }
+
+    .code-block pre {
+      margin: 0;
+      padding: 1rem 1.1rem;
+      overflow-x: auto;
+      font-size: 0.86rem;
+      line-height: 1.6;
+      white-space: pre;
+    }
+
+    .code-block .copy {
+      position: absolute;
+      top: 0.55rem;
+      right: 0.55rem;
+    }
+
+    /* Tables */
+    .table-card,
+    .table-wrap {
+      overflow-x: auto;
+      margin: 1rem 0;
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 0.82rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(17, 26, 8, 0.03);
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    td code { white-space: nowrap; }
+
+    .note {
+      margin: 1.1rem 0;
+      padding: 0.9rem 1rem;
+      border-left: 3px solid var(--signal);
+      background: rgba(77, 124, 15, 0.08);
+      color: var(--ink-soft);
+      font-size: 0.97rem;
+    }
+
+    .note strong { color: var(--ink); }
+
+    .cli-note {
+      margin: 0.85rem 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    /* Command flow */
+    .command-flow {
+      margin: 1.25rem 0;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      padding: 1rem 1.1rem;
+    }
+
+    .command-flow-label {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.65rem;
+    }
+
+    .command-flow-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: var(--mono);
+      font-size: 0.84rem;
+    }
+
+    .command-flow-arrow { color: var(--signal); font-weight: 600; }
+
+    .cmd-primary {
+      background: rgba(77, 124, 15, 0.1) !important;
+      color: var(--signal-deep) !important;
+      font-weight: 600;
+    }
+
+    .command-flow-note {
+      margin-top: 0.65rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    /* Examples */
+    .examples-nav {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin: 1.25rem 0 1.75rem;
+    }
+
+    .example-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding: 1rem 1.05rem;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      text-decoration: none !important;
+      border-bottom: 1px solid var(--line) !important;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .example-card:hover {
+      border-color: var(--signal) !important;
+      background: rgba(77, 124, 15, 0.05);
+    }
+
+    .example-card-num {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--signal);
+    }
+
+    .example-card-title {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.05rem;
+      color: var(--ink) !important;
+      letter-spacing: -0.02em;
+    }
+
+    .example-card-desc {
+      font-size: 0.9rem;
+      color: var(--muted) !important;
+      font-weight: 400 !important;
+      border: 0 !important;
+    }
+
+    .example-card-cmd {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--signal-deep) !important;
+      font-weight: 500 !important;
+      margin-top: 0.25rem;
+      border: 0 !important;
+    }
+
+    .example-block {
+      margin: 2rem 0;
+      padding-top: 1.75rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .example-block > h3 {
+      margin-top: 0;
+    }
+
+    .example-tag {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--signal);
+      margin-bottom: 0.35rem;
+    }
+
+    .example-context {
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    .example-appendix {
+      margin-top: 2rem;
+      padding: 1.15rem 1.2rem;
+      border-left: 3px solid var(--signal);
+      background: rgba(77, 124, 15, 0.06);
+    }
+
+    /* Chat / wizard */
+    .chat-example {
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--line);
+      background: var(--white);
+    }
+
+    .chat-example p { margin: 0.45rem 0; }
+    .chat-example .speaker { font-weight: 700; color: var(--ink); }
+
+    .wizard {
+      margin: 0.75rem 0;
+      padding: 0.85rem 1rem;
+      border-left: 3px solid var(--signal);
+      background: var(--surface);
+      font-size: 0.95rem;
+    }
+
+    .wizard strong { color: var(--ink); }
+    .wizard ol { margin: 0.5rem 0 0 1.1rem; }
+
+    /* Walkthrough */
+    .walkthrough-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+      margin: 1.15rem 0;
+    }
+
+    .walkthrough-grid > * {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      padding: 0.95rem 1rem;
+    }
+
+    .walkthrough-grid dt {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin-bottom: 0.25rem;
+    }
+
+    .walkthrough-grid dd {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--ink-soft);
+    }
+
+    /* Skills */
+    .skills-grid {
+      display: grid;
+      gap: 0.65rem;
+      margin: 1.15rem 0;
+    }
+
+    .skills-group {
+      font-family: var(--display);
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--signal-deep);
+      margin: 1.6rem 0 0.1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 2px solid var(--signal);
+    }
+
+    .skills-group:first-of-type { margin-top: 0.25rem; }
+
+    .skills-group-note {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin: 0.35rem 0 0.2rem;
+    }
+
+    .skill-item {
+      display: grid;
+      grid-template-columns: 11rem 1fr;
+      gap: 1rem;
+      padding: 0.9rem 0;
+      border-bottom: 1px solid var(--line);
+      align-items: start;
+    }
+
+    .skill-details {
+      margin-top: 0.85rem;
+      padding-top: 0.65rem;
+      border-top: 1px dashed var(--line);
+    }
+
+    .skill-details summary {
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--ink-soft);
+      list-style: none;
+    }
+
+    .skill-details summary::-webkit-details-marker { display: none; }
+
+    .skill-details summary::before {
+      content: "▸ ";
+      color: var(--signal);
+    }
+
+    .skill-details[open] summary::before { content: "▾ "; }
+
+    .skill-details > :not(summary) { margin-top: 0.65rem; }
+
+    .skill-badge {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--signal-deep);
+      background: rgba(77, 124, 15, 0.08);
+      padding: 0.25rem 0.45rem;
+      display: inline-block;
+      overflow-wrap: anywhere;
+    }
+
+    .skill-body { color: var(--ink-soft); font-size: 0.95rem; }
+    .skill-cli {
+      display: block;
+      margin-top: 0.35rem;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* Layers / deep dive */
+    .layer-stack { margin: 1.15rem 0; }
+
+    .layer-card {
+      padding: 1rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .layer-card:last-child { border-bottom: 0; }
+
+    .layer-card strong {
+      font-family: var(--display);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+
+    .layer-card p {
+      margin-top: 0.35rem;
+      margin-bottom: 0;
+    }
+
+    .file-tree .comment,
+    .comment {
+      color: rgba(241, 245, 233, 0.45);
+    }
+
+    .deep-dive-sub {
+      margin-top: 2.5rem;
+      padding-top: 1.75rem;
+      border-top: 1px solid var(--line);
+      scroll-margin-top: var(--docs-anchor-offset);
+    }
+
+    .deep-dive-sub > h3 { margin-top: 0; }
+
+    /* Personas / team */
+    .persona-phases {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 0.85rem 0 1.15rem;
+    }
+
+    .persona-phase {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.3rem 0.55rem;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--muted);
+    }
+
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+      gap: 0.65rem;
+      margin: 1rem 0;
+    }
+
+    .team-card {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      padding: 0.85rem 0.75rem;
+      text-align: center;
+    }
+
+    .team-avatar {
+      width: 2.4rem;
+      height: 2.4rem;
+      margin: 0 auto 0.45rem;
+      display: grid;
+      place-items: center;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 0.95rem;
+      background: var(--ink);
+      color: var(--phosphor);
+    }
+
+    .team-name {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: -0.02em;
+    }
+
+    .team-role {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.15rem;
+    }
+
+    /* File tree */
+    .file-tree {
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      background: var(--terminal);
+      color: #f1f5e9;
+      border: 1px solid #1a2610;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.65;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* CTA */
+
+    .docs-main a.btn,
+    .docs-main a.example-card,
+    .docs-main a.btn:hover,
+    .docs-main a.example-card:hover {
+      border-bottom: none;
+      font-weight: 600;
+    }
+
+    .example-block > h2,
+    .example-block > h3 {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: clamp(1.25rem, 2.2vw, 1.5rem);
+      letter-spacing: -0.03em;
+      margin: 0 0 0.45rem;
+    }
+
+    .doc-section,
+    .doc-section h3[id],
+    .example-block,
+    .deep-dive-sub,
+    .deep-dive-sub h4[id],
+    .example-appendix {
+      scroll-margin-top: var(--docs-anchor-offset);
+    }
+
+    .walkthrough-grid h3,
+    .walkthrough-grid h4 {
+      margin: 0 0 0.35rem;
+      font-size: 1rem;
+    }
+
+    .walkthrough-grid p {
+      margin: 0;
+      font-size: 0.92rem;
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 2rem 1.5rem 2.75rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    footer a {
+      color: var(--signal-deep);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    footer a:hover { text-decoration: underline; }
+    footer p + p { margin-top: 0.35rem; }
+
+    @media (max-width: 880px) {
+      .docs {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+        padding-top: 2.5rem;
+      }
+
+      .docs-nav {
+        position: static;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        max-height: none;
+        overflow: visible;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .docs-nav-label { width: 100%; }
+
+      .docs-nav a {
+        border-left: 0;
+        border-bottom: 2px solid transparent;
+        padding: 0.3rem 0.55rem;
+      }
+
+      .docs-nav a.sub { padding-left: 0.55rem; }
+
+      .docs-nav a:hover,
+      .docs-nav a.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--signal);
+      }
+
+      .examples-nav,
+      .walkthrough-grid { grid-template-columns: 1fr; }
+
+      .skill-item { grid-template-columns: 1fr; gap: 0.35rem; }
+    }
+
+    @media (max-width: 720px) {
+      .hamburger { display: flex; }
+
+      .nav-links {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        padding: 0.5rem 1rem 1rem;
+        background: rgba(248, 243, 240, 0.97);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .nav-links.open { display: flex; }
+
+      .nav-links a {
+        padding: 0.75rem 0.25rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .nav-cta { justify-content: center; margin-top: 0.5rem; border: 0; }
+
+      .hero { min-height: auto; }
+      .hero-content { padding-top: 3rem; }
+
+      .hero-brand { font-size: clamp(2.8rem, 14vw, 4.5rem); }
+      .hero-version { display: none; }
+    }
+
+    .command-flow-note + .command-flow-label { margin-top: 1.1rem; }
+
+    /* Search */
+    .nav-search {
+      flex: 1 1 14rem;
+      max-width: 22rem;
+      min-width: 0;
+    }
+
+    .nav-search-field { position: relative; }
+
+    .nav-search-field svg {
+      position: absolute;
+      left: 0.65rem;
+      top: 50%;
+      width: 1rem;
+      height: 1rem;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .nav-search-field input {
+      width: 100%;
+      min-width: 0;
+      font: inherit;
+      font-size: 0.9rem;
+      color: var(--ink);
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 0.45rem 2.4rem 0.45rem 2.1rem;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .nav-search-field input::placeholder { color: var(--muted); }
+    .nav-search-field input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+    .nav-search-field input:focus {
+      border-color: var(--signal);
+      box-shadow: 0 0 0 3px rgba(77, 124, 15, 0.14);
+    }
+
+    .nav-search-field kbd {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .nav-search-field input:focus ~ kbd { display: none; }
+
+    kbd {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-bottom-width: 2px;
+      padding: 0.05rem 0.35rem;
+    }
+
+    .search-panel {
+      position: absolute;
+      top: calc(100% + 1px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(46rem, calc(100vw - 2rem));
+      max-height: min(70vh, 38rem);
+      display: flex;
+      flex-direction: column;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-top: 2px solid var(--signal);
+      box-shadow: 0 18px 50px rgba(17, 26, 8, 0.18);
+      z-index: 60;
+    }
+
+    .search-panel[hidden] { display: none; }
+
+    .search-status {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.5rem 0.9rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .search-status kbd { margin: 0 0.1rem; }
+
+    .search-results {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .search-results li + li { border-top: 1px solid var(--line); }
+
+    .search-results a {
+      display: block;
+      padding: 0.6rem 0.9rem;
+      text-decoration: none;
+      border-left: 3px solid transparent;
+    }
+
+    .search-results li[aria-selected="true"] a,
+    .search-results a:hover {
+      background: rgba(77, 124, 15, 0.07);
+      border-left-color: var(--signal);
+    }
+
+    .search-crumb {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--signal-deep);
+    }
+
+    .search-title {
+      display: block;
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 0.98rem;
+      color: var(--ink);
+    }
+
+    .search-snippet {
+      display: block;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      color: var(--muted);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .search-results mark,
+    .search-empty mark {
+      background: rgba(77, 124, 15, 0.18);
+      color: inherit;
+      padding: 0 0.1em;
+    }
+
+    .search-empty {
+      padding: 1rem 0.9rem 1.1rem;
+      font-size: 0.9rem;
+      color: var(--ink-soft);
+    }
+
+    .search-empty ul {
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.6rem;
+    }
+
+    .search-empty button {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--ink-soft);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 0.2rem 0.5rem;
+      cursor: pointer;
+    }
+
+    .search-empty button:hover { border-color: var(--signal); color: var(--signal-deep); }
+
+    .search-hit { animation: search-hit 2.2s ease-out 1; }
+
+    @keyframes search-hit {
+      0%, 35% { background: rgba(77, 124, 15, 0.2); box-shadow: 0 0 0 6px rgba(77, 124, 15, 0.2); }
+      100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
+    }
+
+    /* Definitions, callouts, collapsible notes */
+    .docs-main details.more {
+      margin: 0.85rem 0;
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .docs-main details.more > summary {
+      cursor: pointer;
+      padding: 0.6rem 0.85rem;
+      font-weight: 600;
+      color: var(--ink);
+      list-style: none;
+    }
+
+    .docs-main details.more > summary::-webkit-details-marker { display: none; }
+    .docs-main details.more > summary::before { content: "▸ "; color: var(--signal); }
+    .docs-main details.more[open] > summary::before { content: "▾ "; }
+    .docs-main details.more > :not(summary) { margin: 0 0.85rem 0.75rem; }
+
+    .docs-main td.group-row {
+      font-family: var(--display);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: var(--surface);
+    }
+
+    @media (max-width: 880px) {
+      .nav-search { max-width: none; }
+    }
+
+    @media (max-width: 720px) {
+      .nav { gap: 0.6rem; padding-left: 1rem; padding-right: 1rem; }
+      .nav-search-field kbd { display: none; }
+      .nav-search-field input { padding-right: 0.6rem; }
+      .search-panel {
+        left: 0.5rem;
+        right: 0.5rem;
+        width: auto;
+        transform: none;
+        max-height: 72vh;
+      }
+      .search-status span:last-child { display: none; }
+    }
+
+    /* Version comparison (v4 vs v5) */
+    .vcmp {
+      margin: 1.25rem 0 1.5rem;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      padding: 1.15rem 1.2rem 1.25rem;
+    }
+
+    .vcmp-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.1rem;
+    }
+
+    .docs-main .vcmp-title {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin: 0;
+    }
+
+    .docs-main .vcmp-sub {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin: 0.1rem 0 0;
+    }
+
+    .docs-main .vcmp-legend {
+      display: flex;
+      gap: 1rem;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--ink-soft);
+    }
+
+    .docs-main .vcmp-legend li {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin: 0;
+      color: var(--ink-soft);
+    }
+
+    .vcmp-key {
+      width: 0.85rem;
+      height: 0.6rem;
+      border-radius: 0 2px 2px 0;
+    }
+
+    .vcmp-key--v4, .vcmp-fill--v4 { background: #dd8a7b; }
+    .vcmp-key--v5, .vcmp-fill--v5 { background: #3f6212; }
+
+    .vcmp-row {
+      display: grid;
+      grid-template-columns: minmax(11rem, 15rem) 1fr 3.4rem;
+      gap: 0.35rem 1rem;
+      align-items: center;
+      padding: 0.7rem 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .vcmp-row:first-of-type { border-top: 0; padding-top: 0; }
+    .vcmp-row:last-of-type { padding-bottom: 0; }
+
+    .vcmp-label {
+      font-size: 0.93rem;
+      line-height: 1.35;
+      color: var(--ink);
+    }
+
+    .vcmp-label span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .vcmp-bars {
+      display: grid;
+      gap: 2px;
+      border-left: 1px solid var(--line);
+    }
+
+    .vcmp-line {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-height: 1.35rem;
+      cursor: default;
+      outline: none;
+    }
+
+    .vcmp-fill {
+      flex: 0 0 auto;
+      width: max(3px, calc((100% - 3.4rem) * var(--n)));
+      height: 0.85rem;
+      border-radius: 0 4px 4px 0;
+      transition: filter 0.15s ease;
+    }
+
+    .vcmp-line:hover .vcmp-fill,
+    .vcmp-line:focus-visible .vcmp-fill { filter: brightness(1.12); }
+
+    .vcmp-line:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink); }
+
+    .vcmp-val {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink-soft);
+      white-space: nowrap;
+    }
+
+    .vcmp-line--v5 .vcmp-val { color: var(--ink); font-weight: 600; }
+
+    .vcmp-delta {
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .docs-main .vcmp-foot {
+      margin: 1rem 0 0;
+      font-size: 0.86rem;
+      color: var(--muted);
+    }
+
+    .vcmp-tip {
+      position: fixed;
+      z-index: 80;
+      pointer-events: none;
+      padding: 0.4rem 0.55rem;
+      background: var(--ink);
+      color: var(--paper);
+      font-size: 0.8rem;
+      line-height: 1.3;
+      max-width: 16rem;
+    }
+
+    .vcmp-tip[hidden] { display: none; }
+    .vcmp-tip strong { display: block; font-family: var(--mono); font-size: 0.86rem; color: var(--white); }
+    .vcmp-tip span { color: rgba(241, 245, 233, 0.78); }
+
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* Frontend companion: one repository, scanned by v4 and by v5. */
+    .fcmp-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+      margin: 1.15rem 0 0.6rem;
+      align-items: start;
+    }
+
+    .fcmp-grid .code-block { margin: 0; }
+    .fcmp-grid .code-block pre { font-size: 0.78rem; line-height: 1.55; }
+
+    .docs-main .fcmp-caption {
+      margin: 0 0 1.5rem;
+      font-size: 0.86rem;
+      color: var(--muted);
+    }
+
+    a.hero-version { text-decoration: none; }
+    a.hero-version:hover { border-color: rgba(190, 242, 100, 0.8); color: var(--phosphor); }
+
+    @media (max-width: 720px) {
+      .vcmp-row { grid-template-columns: 1fr 3.4rem; }
+      .vcmp-label { grid-column: 1 / -1; }
+      .fcmp-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .search-hit { animation: none; outline: 2px solid var(--signal); }
+    }
+
+  
+    /* ---- Studio additions ---- */
+    .hero { min-height: auto; }
+    .hero-shot {
+      position: relative;
+      z-index: 1;
+      max-width: var(--max);
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 1.5rem 3rem;
+      animation: rise 0.85s 0.22s ease both;
+    }
+    .hero-shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid rgba(17, 26, 8, 0.18);
+      box-shadow: 0 30px 60px -30px rgba(17, 26, 8, 0.55);
+      background: var(--white);
+    }
+    .lead { font-size: 1.1rem; color: var(--ink-soft); max-width: 68ch; margin: 0 0 1.25rem; }
+    .shot { margin: 1.5rem 0 2rem; }
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--line);
+      box-shadow: 0 18px 40px -26px rgba(17, 26, 8, 0.5);
+      background: var(--white);
+    }
+    .shot figcaption { margin-top: 0.65rem; font-size: 0.92rem; color: var(--muted); }
+    .shot figcaption strong { color: var(--ink); }
+    details.more { margin: 1.1rem 0; padding: 0.7rem 1rem; border: 1px solid var(--line); background: var(--surface); }
+    details.more summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+    details.more p { margin: 0.6rem 0 0; }
+    .steps { counter-reset: step; list-style: none; margin: 1.1rem 0; padding: 0; display: grid; gap: 0.7rem; }
+    .steps li { position: relative; padding: 0.85rem 1rem 0.85rem 3.1rem; border: 1px solid var(--line); background: var(--surface); }
+    .steps li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0.95rem;
+      top: 0.85rem;
+      width: 1.55rem;
+      height: 1.55rem;
+      display: grid;
+      place-items: center;
+      background: var(--ink);
+      color: var(--white);
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      font-weight: 600;
+    }
+    .steps strong { color: var(--ink); font-family: var(--display); letter-spacing: -0.01em; }
+    .doc-section ul { margin: 0.75rem 0 1rem 1.2rem; }
+    .doc-section ul li { margin: 0.35rem 0; }
+    .file-tree .comment { color: rgba(241, 245, 233, 0.5); }
+
+    /* Phone width: nothing may push the page sideways. */
+    .docs-main { min-width: 0; }
+    .doc-section p code, .doc-section li code, .doc-section td code, .doc-section dd code, .layer-card code, .command-flow-row code { overflow-wrap: anywhere; }
+    .install-command-text { min-width: 0; overflow-x: auto; }
+    .table-card { max-width: 100%; }
+    @media (max-width: 720px) {
+      .walkthrough-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .hero-shot { padding: 0 1rem 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <nav class="nav">
+    <a class="nav-brand" href="/">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="#111a08"/>
+        <g fill="#a3e635">
+        <circle cx="10.5" cy="17.5" r="5.5"/>
+        <circle cx="17" cy="13" r="7"/>
+        <circle cx="23.5" cy="17.5" r="5"/>
+        <rect x="5" y="18.5" width="23.5" height="6.5" rx="3.25"/>
+        </g>
+        <g fill="#111a08">
+        <circle cx="17" cy="9.2" r="1.1"/>
+        <rect x="16.4" y="10" width="1.2" height="2.2" rx=".6"/>
+        <rect x="9.9" y="15.2" width="1.8" height="3.2" rx=".8"/>
+        <rect x="22.3" y="15.2" width="1.8" height="3.2" rx=".8"/>
+        <rect x="11.8" y="12" width="10.4" height="9.2" rx="2.4"/>
+        </g>
+        <g fill="#a3e635">
+        <circle cx="14.9" cy="15.6" r="1.25"/>
+        <circle cx="19.1" cy="15.6" r="1.25"/>
+        <rect x="14.6" y="18.4" width="4.8" height="1.15" rx=".575"/>
+        </g>
+      </svg>
+      studio
+    </a>
+    <div class="nav-links" id="nav-links">
+      <a href="#quickstart">Quickstart</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#deep-dive">Deep Dive</a>
+      <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a>
+      <a class="nav-cta" href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" id="nav-hamburger" type="button" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <header class="hero">
+    <div class="hero-plane" aria-hidden="true"></div>
+    <div class="hero-content">
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#deep-dive" title="How it is built">v1.0</a></div>
+      <h1>Talk to your Laravel project. Approve what ships.</h1>
+      <p>
+        One Ubuntu server, one script, one wildcard DNS record. Studio gives a product team a human interface
+        over Laravel workspaces that live on that server. Every conversation is <strong>the person's own Claude Code</strong>,
+        running in their workspace with the <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a>
+        skills of the project: it writes the story, plans it, implements it, opens the pull request. The product manager reads,
+        decides and approves next to the live preview of that branch. Nothing to install on a laptop but a browser.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#quickstart">Install Studio</a>
+        <a class="btn btn-ghost" href="#how-it-works">See a conversation</a>
+        <a class="btn btn-ghost" href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+      <p class="hero-tagline">The agent proposes. <strong>You approve what ships.</strong> Human-in-the-loop, always.</p>
+    </div>
+    <div class="hero-shot" aria-hidden="true">
+      <img src="img/chat-permission.png" alt="" width="2880" height="1920" />
+    </div>
+  </header>
+
+  <div class="docs" id="docs">
+    <aside class="docs-nav" aria-label="Documentation">
+      <div class="docs-nav-label">Start</div>
+      <a href="#quickstart">Quickstart</a>
+      <a class="sub" href="#quickstart-installs">What it installs</a>
+      <a class="sub" href="#quickstart-layout">Where things land</a>
+      <a href="#concepts">Concepts</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#roles">Roles</a>
+
+      <div class="docs-nav-label">Set up</div>
+      <a href="#setup-git">The git provider</a>
+      <a href="#setup-project">A project</a>
+      <a href="#setup-people">People</a>
+      <a href="#setup-connections">Git &amp; Claude</a>
+      <a href="#setup-site">The project site</a>
+      <a href="#setup-settings">Project settings</a>
+      <a href="#setup-mcp">MCP servers</a>
+      <a href="#setup-email">Email</a>
+      <a href="#setup-updates">Updates</a>
+
+      <div class="docs-nav-label">Work</div>
+      <a href="#work-chat">The chat</a>
+      <a href="#work-permissions">Permissions</a>
+      <a href="#work-settings">Model, effort, autopilot</a>
+      <a href="#work-skills">Skills &amp; Claude's questions</a>
+      <a href="#work-panes">The right pane</a>
+      <a href="#work-files">Files</a>
+      <a href="#work-history">History &amp; branches</a>
+      <a href="#work-terminal">Terminal</a>
+      <a href="#work-agent">Subagents, plan mode, skills</a>
+      <a href="#work-workspaces">Workspaces</a>
+      <a href="#work-clients">Clients</a>
+
+      <div class="docs-nav-label">Deep dive</div>
+      <a href="#deep-dive">Architecture</a>
+      <a class="sub" href="#deep-dive-bridge">The bridge</a>
+      <a class="sub" href="#deep-dive-server">On the server</a>
+      <a class="sub" href="#deep-dive-security">Security</a>
+      <a class="sub" href="#deep-dive-config">Configuration</a>
+      <a class="sub" href="#deep-dive-local">Local development</a>
+    </aside>
+
+    <main class="docs-main">
+<!-- Quickstart -->
+      <section class="doc-section" id="quickstart">
+        <div class="section-header">
+          <span class="section-label">Quickstart</span>
+          <h2>One server, one script</h2>
+          <p>A fresh Ubuntu 24.04 or 26.04 VPS, a domain, an account on GitHub, GitLab, Bitbucket or Azure DevOps. The
+            installer asks five questions and does the rest.</p>
+        </div>
+
+        <div class="install-commands">
+          <div class="install-commands-header">On the VPS, as root</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">1</span>
+              <code class="install-command-text">wget -qO- https://raw.githubusercontent.com/andreapollastri/studio/refs/heads/main/installer/install.sh | sudo bash</code>
+              <button type="button" class="install-copy-btn" data-copy="wget -qO- https://raw.githubusercontent.com/andreapollastri/studio/refs/heads/main/installer/install.sh | sudo bash" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+
+        <ol class="steps">
+          <li><strong>The domain.</strong> You type it, for example <code>dev.example.com</code>. The script shows the one DNS
+            record to create: <code>*.dev.example.com → A → your server's IP</code>.</li>
+          <li><strong>The check.</strong> It resolves a random name under the wildcard and <code>studio.&lt;domain&gt;</code>
+            through a public resolver and waits until both point at the server. You can skip and fix DNS later; certificates
+            are issued on demand when hosts resolve.</li>
+          <li><strong>The first administrator.</strong> Name and email. The password is generated: the summary shows it, with
+            the dashboard's address and the email, in a yellow box before anything is installed, and again at the end. Save
+            it then; nothing shows it later. Studio has no public sign-up and no social login: accounts are created here and
+            in the dashboard, and people sign in with a password.</li>
+          <li><strong>The git provider.</strong> GitHub, GitLab (gitlab.com or your own), Bitbucket Cloud or Azure DevOps (with
+            its organization): one for the whole Studio, the same forges Larapilot integrates with. See
+            <a href="#setup-git">The git provider</a>.</li>
+          <li><strong>Your token there.</strong> With the instructions on screen you create it; the script verifies it with the
+            provider and stores it for your account. It clones and deploys project sites and creates new repositories. Every
+            other person adds their own later.</li>
+        </ol>
+
+        <p>Then it installs the newest release of Studio, the latest published <code>vX.Y.Z</code> tag (the head of the main
+          branch only while no release is published; the first release then replaces it), with what it needs:
+          Caddy, PHP 8.3, 8.4 and 8.5 (8.5 alone on Ubuntu 26.04, see below), Composer, Node, Claude Code, the provider's CLI
+          (<code>gh</code>, <code>glab</code> or the Azure CLI), MariaDB, PostgreSQL and redis. Ten minutes later:</p>
+
+        <div class="install-commands">
+          <div class="install-commands-header">Open the dashboard</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">→</span>
+              <code class="install-command-text">https://studio.&lt;domain&gt;</code>
+              <button type="button" class="install-copy-btn" data-copy="https://studio." title="Copy URL">Copy</button>
+            </li>
+          </ol>
+        </div>
+        <p>Sign in, turn on two-factor authentication, add your Claude credential in <em>Settings → Connections</em>, create
+          the first project in <em>Administration → Projects</em>, invite the team. From then on Studio updates itself every
+          night to the newest release; see <a href="#setup-updates">Updates</a>.</p>
+
+        <p class="install-requirements"><strong>Requires:</strong> Ubuntu 24.04 or 26.04 LTS (with <code>sudo</code> or Ubuntu
+          26.04's <code>sudo-rs</code>), amd64 or arm64, 4 GB of
+          memory or more · a domain with a wildcard record · an account per person on the git provider · a Claude subscription or an
+          Anthropic API key per person who chats · Laravel projects with Larapilot (Studio installs it, with Laravel Boost, in
+          the repositories it creates).</p>
+
+        <h3 id="quickstart-installs">What it installs</h3>
+        <p><code>installer/install.sh</code> turns a bare Ubuntu into the whole thing, and the same steps (in
+          <code>installer/lib/system.sh</code>) run again at every update, so a release can bring what it needs. What apt prints
+          goes to <code>/var/log/studio-install.log</code>; when a package fails, the installer shows the end of it. Run on a
+          server where Studio is installed, the script starts the updater instead of asking questions; after an installation that
+          stopped halfway it starts again from the questions. Beta testers install the head of the main branch instead of the
+          newest release, and keep following it (see <a href="#setup-updates">Updates</a>):</p>
+        <div class="install-commands">
+          <div class="install-commands-header">Beta testers only</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">β</span>
+              <code class="install-command-text">wget -qO- https://raw.githubusercontent.com/andreapollastri/studio/refs/heads/main/installer/install.sh | sudo STUDIO_CHANNEL=beta bash</code>
+              <button type="button" class="install-copy-btn" data-copy="wget -qO- https://raw.githubusercontent.com/andreapollastri/studio/refs/heads/main/installer/install.sh | sudo STUDIO_CHANNEL=beta bash" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Piece</th><th>Role</th></tr></thead>
+            <tbody>
+              <tr><td>Caddy</td><td>HTTPS for every host under the domain, with certificates issued <em>on demand</em>: before issuing one, Caddy asks Studio whether the host is known. No DNS API token, no per-host certbot runs.</td></tr>
+              <tr><td>PHP 8.3, 8.4, 8.5</td><td>From <code>ppa:ondrej/php</code>, with the usual extensions and PHP-FPM. Each project picks its version; a pool per site and per workspace runs as its own user. The list comes from the release's <code>installer/requirements.env</code>, so a later release can add a version. Where the PPA does not serve the Ubuntu release yet (26.04 at first), PHP comes from Ubuntu's own archive, which carries PHP 8.5 alone: Studio runs on it and projects can pick it; the next update adds 8.3 and 8.4 once the PPA serves 26.04.</td></tr>
+              <tr><td>Composer, Node 22, Claude Code</td><td>What a Laravel project and the agent need. Claude Code is installed once, system-wide; each workspace runs it with its own login, and every update of Studio brings the newest one.</td></tr>
+              <tr><td>The provider's CLI</td><td><code>gh</code> for GitHub, <code>glab</code> for GitLab, the Azure CLI with the <code>azure-devops</code> extension for Azure DevOps; nothing for Bitbucket, whose REST API Larapilot calls directly. The agents open pull requests with it.</td></tr>
+              <tr><td>MariaDB, PostgreSQL, redis</td><td>Each project picks an engine; every site and every workspace gets a database and a user of its own. Redis is shared with a prefix per site.</td></tr>
+              <tr><td>Studio</td><td>The newest release tag (or, for beta testers, the head of main) in <code>/opt/studio/releases/&lt;build&gt;</code>, with <code>/opt/studio/current</code> pointing at it and the <code>.env</code> and <code>storage</code> shared in <code>/opt/studio/shared</code>; built, migrated, served at <code>studio.&lt;domain&gt;</code>; a queue worker, a scheduler and Reverb as systemd services.</td></tr>
+              <tr><td><code>studio-admin</code></td><td>The privileged helper in <code>/usr/local/sbin</code>: the only thing the <code>studio</code> user may run as root, through sudo, for a fixed list of commands. Everything on the server is done through it.</td></tr>
+              <tr><td><code>studio-update</code></td><td>The updater in <code>/usr/local/sbin</code>, run by root: nightly by a systemd timer, on demand from <em>Administration → System</em>. See <a href="#setup-updates">Updates</a>.</td></tr>
+              <tr><td><code>studio-recover</code></td><td>Root's tool in <code>/usr/local/sbin</code>, mode 0700: resets the main administrator from an SSH session when every account is locked out, and edits and reloads Studio's <code>.env</code> (outgoing <a href="#setup-email">email</a>). Nothing in Studio calls it. See <a href="#setup-recovery">Locked out</a>.</td></tr>
+              <tr><td>ufw, fail2ban</td><td>Ports 22, 80 and 443 open; brute force on SSH banned.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="quickstart-layout">Where things land</h3>
+        <div class="file-tree">/opt/studio/
+  current → releases/&lt;build&gt;           <span class="comment">the live build of Studio</span>
+  releases/&lt;build&gt;/                    <span class="comment">the last three: v1.2.0, or main-1a2b3c4 on the beta channel; owned by the studio user</span>
+  shared/.env, shared/storage/         <span class="comment">what every release shares</span>
+/etc/studio/
+  studio.env                           <span class="comment">the domain, paths, Studio's PHP, the repository, AUTO_UPDATE, UPDATE_CHANNEL; root only</span>
+  update-signers                       <span class="comment">optional: SSH keys allowed to sign release tags</span>
+  projects/&lt;slug&gt;.env                  <span class="comment">the deploy token and database password of a site</span>
+  workspaces/&lt;user&gt;--&lt;slug&gt;.env        <span class="comment">one person's tokens for one workspace, readable by their Linux user only</span>
+  templates/                           <span class="comment">Caddy, PHP-FPM and systemd templates the helper renders</span>
+/srv/studio/projects/&lt;slug&gt;/app        <span class="comment">a project site: user prj-&lt;slug&gt;</span>
+/srv/studio/workspaces/&lt;user&gt;/&lt;slug&gt;   <span class="comment">a workspace: user ws-&lt;user&gt;, home /home/ws-&lt;user&gt;</span>
+/etc/caddy/sites/*.caddy               <span class="comment">one host matcher per site and per workspace</span>
+/etc/php/&lt;ver&gt;/fpm/pool.d/studio-*.conf
+/etc/systemd/system/studio-*.service   <span class="comment">Studio's queue, Reverb and scheduler; a bridge per workspace; queue workers per site and preview (Horizon, Reverb, Pulse when on)</span>
+/etc/cron.d/studio-*                   <span class="comment">schedule:run every minute, per site and per preview</span>
+/var/lib/studio-update/state.json      <span class="comment">the updater's state and last log, read by the System page</span>
+/var/lib/studio-update/repo.git        <span class="comment">a blob-less mirror of the repository: tags, main and which commit contains which</span>
+/var/backups/studio/                   <span class="comment">the database dump taken before each update (the last five)</span>
+/var/log/studio-install.log            <span class="comment">what apt printed during the installation and the updates</span>
+/var/log/studio-update.log             <span class="comment">every update, in full</span></div>
+
+        <h3 id="quickstart-dns">DNS and certificates</h3>
+        <p>One wildcard record is enough: <code>*.&lt;domain&gt;</code> → the server. When a browser asks for
+          <code>maria-shop.&lt;domain&gt;</code> for the first time, Caddy calls
+          <code>http://127.0.0.1:8081/api/tls/ask?domain=…</code>; Studio answers 200 for its own host, a project slug or a
+          workspace preview it knows, 404 for anything else, and Caddy issues the certificate. A host nobody created is never
+          issued a certificate, which also keeps the rate limits quiet.</p>
+
+
+        <details class="more">
+          <summary>Trying it on your Mac first?</summary>
+          <p>Studio runs without the server pieces: the <code>local</code> driver points every workspace at one bridge on
+            your machine, driving the <code>claude</code> you already use. <code>composer setup</code>, an admin,
+            <code>composer run dev</code>, then the bridge inside any Laravel project with Larapilot. The demo seeder gives
+            you an agency with three projects and a live conversation. See <a href="#deep-dive-local">Local development</a>.</p>
+        </details>
+      </section>
+
+<!-- Concepts -->
+      <section class="doc-section" id="concepts">
+        <div class="section-header">
+          <span class="section-label">Concepts</span>
+          <h2>Five words</h2>
+          <p>Everything in Studio is one of these.</p>
+        </div>
+
+        <div class="layer-stack">
+          <div class="layer-card">
+            <strong>Project</strong>
+            <p>A Laravel repository with Larapilot installed, its deploy branch, the PHP version and database it needs, the
+              staging site where the deploy branch runs, and the people who may open it. An administrator creates it; the
+              repository is never touched by Studio itself.</p>
+          </div>
+          <div class="layer-card">
+            <strong>Workspace</strong>
+            <p>One clone per person × project on the server, under a Linux user of that person: the repository on the deploy
+              branch, dependencies installed, a database of its own copied from the project site, Claude Code running with
+              that person's credential, the bridge. Served at <code>&lt;user&gt;-&lt;project&gt;.&lt;domain&gt;</code>. A PM
+              has one just like a developer: the skills that write the PRD or approve a story need a checkout to commit to.</p>
+          </div>
+          <div class="layer-card">
+            <strong>Conversation</strong>
+            <p>A Claude Code session inside the workspace, kept by Studio with its transcript and its session id, so it resumes
+              days later with its memory. Several conversations can live in one workspace; each is a separate session.</p>
+          </div>
+          <div class="layer-card">
+            <strong>Bridge</strong>
+            <p>A small Node service inside the workspace. Studio sends it the person's message; it drives <code>claude</code>
+              in <code>stream-json</code> mode, posts every event back to Studio, and holds a permission question until the
+              person answers it. Zero dependencies, one process per conversation, released after an idle period.</p>
+          </div>
+          <div class="layer-card">
+            <strong>Project site</strong>
+            <p>The deploy branch, served by the same server at <code>&lt;project&gt;.&lt;domain&gt;</code>. Studio creates it
+              when the project is created, registers a push webhook on the git provider, and redeploys it on every push to the
+              deploy branch.
+              Its Larapilot dashboard is what the PM watches; its API feeds the Board; its database seeds new workspaces.</p>
+          </div>
+        </div>
+
+        <h3>Where things live</h3>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Place</th><th>What runs there</th><th>What is stored there</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Browser</strong></td><td>Studio's interface: projects, the chat, and next to it the preview, the changes and the history, a terminal and an editor; the administration</td><td>Nothing but the session cookie</td></tr>
+              <tr><td><strong>The server</strong></td><td>Caddy, Studio (Laravel 13 + Reverb), PHP-FPM pools, MariaDB and PostgreSQL, redis; one Linux user per person for their workspaces, one per project for its site; a bridge service per workspace</td><td>Accounts, projects, transcripts, permission decisions, encrypted tokens; the clones, the databases, each person's Claude login in their home</td></tr>
+              <tr><td><strong>Outside</strong></td><td>The git provider: GitHub, GitLab, Bitbucket or Azure DevOps (repositories, pull requests, the push webhook); Anthropic (Claude Code with each person's subscription or key)</td><td>Code, the tokens each person created</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+<!-- How it works -->
+      <section class="doc-section" id="how-it-works">
+        <div class="section-header">
+          <span class="section-label">How it works</span>
+          <h2>A request, from words to a pull request</h2>
+          <p>Maria is the PM of <em>Shop Acme</em>. Here is one afternoon, screen by screen.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/projects.png" alt="The Projects page: two project cards, one with a running workspace" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Projects.</strong> Maria sees the projects she is a member of and the state of her workspace on
+            each. Opening one creates the workspace the first time, a clone and a build in about two minutes; after that it is
+            a click.</figcaption>
+        </figure>
+
+        <figure class="shot">
+          <img src="img/chat-top.png" alt="The chat with Maria's request and Claude's answer: a story written and planned" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Ask in plain words.</strong> "The client wants to filter orders by date range. Can we have it by
+            Friday?" Claude reads the PRD and the backlog through the Larapilot skills, writes story US-014, plans it, and
+            answers with an estimate. The commands it ran are folded into one row each; <em>Details</em> opens them.</figcaption>
+        </figure>
+
+        <figure class="shot">
+          <img src="img/chat-permission.png" alt="A permission card asking to run npm run build, with Allow and Deny buttons, the preview of the branch on the right" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Approve what matters.</strong> Implementation starts on a branch. Before rebuilding the front-end
+            assets, Claude asks: the PM's preset, <em>Ask before actions</em>, lets nothing outside its automatic scope run
+            without her. One click, and the preview on the right shows the new filter on her own branch.</figcaption>
+        </figure>
+
+        <figure class="shot">
+          <img src="img/chat-changes.png" alt="The Changes tab showing the branch, modified files and the diff" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>See the change.</strong> The <em>Changes</em> tab reads the working tree of the workspace: branch,
+            files, diff. Its <em>History</em> and <em>Branches</em> views show the commit graph; the <em>Files</em> tab opens the
+            same files in an editor.</figcaption>
+        </figure>
+
+        <p>When the story is reviewed and merged on the deploy branch, the git provider calls Studio's webhook and the project site at
+          <code>shop-acme.&lt;domain&gt;</code> pulls, builds and migrates. Its Larapilot dashboard at <code>/larapilot</code>
+          shows the backlog as it is now, to the people of the project once they are logged in to Studio.</p>
+
+        <h3>What happened underneath</h3>
+        <div class="command-flow">
+          <div class="command-flow-label">One message</div>
+          <div class="command-flow-row">
+            <code>browser</code><span class="command-flow-arrow">→</span>
+            <code>Studio</code><span class="command-flow-arrow">→</span>
+            <code class="cmd-primary">bridge</code><span class="command-flow-arrow">→</span>
+            <code>claude -p --output-format stream-json</code>
+          </div>
+          <p class="command-flow-note">Studio records the message, marks the conversation as working, and hands the text to the
+            bridge of that workspace together with the address and token to call back. The bridge writes one line on the
+            agent's stdin.</p>
+          <div class="command-flow-label">Every event</div>
+          <div class="command-flow-row">
+            <code>claude</code><span class="command-flow-arrow">→</span>
+            <code class="cmd-primary">bridge</code><span class="command-flow-arrow">→</span>
+            <code>POST /api/bridge/events</code><span class="command-flow-arrow">→</span>
+            <code>Reverb</code><span class="command-flow-arrow">→</span>
+            <code>browser</code>
+          </div>
+          <p class="command-flow-note">Text, tool calls, results and permission questions come back as small batches. Studio
+            stores them, broadcasts them to the open chat, and polls as a fallback when no websocket is available.</p>
+        </div>
+
+        <div class="chat-example">
+          <p><span class="speaker">Maria</span> — The client wants to filter orders by date range in the back office. Can we have it by Friday?</p>
+          <p><span class="speaker">Claude</span> — Yes. There is no story for this yet, so I'm adding it as a product request and planning it. <em>US-014 · Date range filter on the orders list.</em> Two tasks, half a day.</p>
+          <p><span class="speaker">Maria</span> — Perfect, go ahead.</p>
+          <p><span class="speaker">Claude</span> — Working on <code>feature/US-014-date-filter</code>. Before rebuilding the assets for the preview I'm asking you: <strong>Allow</strong> / <strong>Deny</strong>.</p>
+        </div>
+      </section>
+
+<!-- Roles -->
+      <section class="doc-section" id="roles">
+        <div class="section-header">
+          <span class="section-label">Roles</span>
+          <h2>Four roles, one interface</h2>
+          <p>A role decides whether a person can chat and how much Claude may do before asking.</p>
+        </div>
+
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Role</th><th>Can</th><th>Permission preset</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Administrator</strong></td><td>Everything: projects and their settings, MCP servers, people; a workspace on every project</td><td><code>acceptEdits</code></td></tr>
+              <tr><td><strong>PM</strong></td><td>Chat on their projects, approve; preview, changes and history, terminal and files of their own workspace</td><td><code>default</code>: Claude asks before commands and edits outside the automatic scope</td></tr>
+              <tr><td><strong>Developer</strong></td><td>The same as a PM, with the developer's preset: implement, test, open pull requests</td><td><code>acceptEdits</code>: edits run, commands still ask</td></tr>
+              <tr><td><strong>Client</strong></td><td>Look: the project site as preview, and its Larapilot dashboard; no chat, no workspace</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Presets map to Claude Code's <code>--permission-mode</code> and are set per role in <code>config/studio.php</code>.
+          A conversation starts with its role's preset; <a href="#work-settings">Model &amp; mode</a> switches it among the
+          modes the role may use (all four for administrators, PMs and developers). Larapilot's skills and the repository's
+          own are typed as slash commands; see <a href="#work-skills">Skills &amp; Claude's questions</a>.</p>
+
+        <div class="note"><strong>One Claude per person.</strong> Every conversation drives the Claude Code signed in with that
+          person's own plan, inside that person's workspace. Studio never holds a shared Anthropic account behind the
+          interface; that is what the terms require and what keeps usage and cost attributable.</div>
+      </section>
+
+<!-- Setup: git provider -->
+      <section class="doc-section" id="setup-git">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>The git provider</h2>
+          <p>One Studio works with one git provider, chosen in the installer: GitHub, GitLab, Bitbucket Cloud or Azure DevOps,
+            the same remote forges <a href="https://larapilot.web.ap.it/#deep-dive-integrations--remote-forges" target="_blank" rel="noopener">Larapilot
+            integrates with</a>. Every project is a repository there and every person connects a token for it. Studio never
+            mixes providers and keeps no history of a previous one.</p>
+        </div>
+
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Provider</th><th>Repositories</th><th>A new one goes to</th><th>The agent's tools</th><th>Push webhook</th></tr></thead>
+            <tbody>
+              <tr><td><strong>GitHub</strong></td><td><code>https://github.com/owner/repo</code></td><td>Your account or an organization</td><td><code>gh</code>, with <code>GH_TOKEN</code></td><td>Repository webhook, HMAC signature</td></tr>
+              <tr><td><strong>GitLab</strong></td><td><code>https://gitlab.com/group/sub/repo</code>, or your own GitLab</td><td>Your namespace or a group / subgroup</td><td><code>glab</code>, with <code>GITLAB_TOKEN</code> (and <code>GITLAB_HOST</code> when self-managed)</td><td>Project hook on the deploy branch, secret token</td></tr>
+              <tr><td><strong>Bitbucket Cloud</strong></td><td><code>https://bitbucket.org/workspace/repo</code></td><td>A workspace, or one of its projects</td><td>Larapilot's REST client, with <code>BITBUCKET_ACCESS_TOKEN</code>; no CLI</td><td>Repository webhook on <code>repo:push</code>, HMAC signature</td></tr>
+              <tr><td><strong>Azure DevOps</strong></td><td><code>https://dev.azure.com/org/project/_git/repo</code></td><td>A project of the organization</td><td><code>az repos</code> (Azure CLI + azure-devops), with <code>AZURE_DEVOPS_EXT_PAT</code></td><td>Service hook on <code>git.push</code>, secret header</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>The installer asks for the provider, the address of a self-managed GitLab or the Azure DevOps organization, checks
+          the administrator's token there and installs the provider's CLI. In every workspace the person's token is in the
+          environment three ways: for git, through the askpass helper and with the user name the provider expects
+          (<code>x-access-token</code>, <code>oauth2</code>, <code>x-bitbucket-api-token-auth</code>); for the CLI; and for
+          Larapilot's integration. A repository Studio creates gets that integration turned on in its first commit
+          (<code>larapilot:settings-set --gitlab=YES</code> and so on); in an existing repository the team turns it on once and
+          commits <code>.larapilot/config.yaml</code>.</p>
+
+        <div class="note"><strong>Changing provider.</strong> While Studio has no projects,
+          <code>php artisan studio:git-provider gitlab --url=https://git.example.com</code> on the server switches it and forgets
+          every token of the previous provider; <code>sudo studio-update ensure</code> then installs the new CLI. With projects
+          the provider stays: another provider means another Studio.</div>
+
+        <h3 id="setup-git-github">GitHub</h3>
+        <p><strong>Organizations.</strong> A new repository goes to your account or to an organization you belong to; the form
+          lists the organizations your token can see, and creating a repository there needs the right to do so in that
+          organization. Organizations that restrict fine-grained tokens approve them in <em>Organization settings → Personal
+          access tokens</em>. With SAML single sign-on, a classic token must be authorized for the organization
+          (<em>Configure SSO</em> next to the token).</p>
+        <ol class="steps">
+          <li><strong>Where.</strong> GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+            Generate new token.</li>
+          <li><strong>Resource owner.</strong> The organization that owns the projects, or your account. A fine-grained token
+            reaches one owner: when projects live in several organizations, use a classic token with <code>repo</code>,
+            <code>read:org</code> and <code>admin:repo_hook</code>.</li>
+          <li><strong>Repository access.</strong> The repositories of the projects, or all of them; administrators who create
+            repositories need all of them.</li>
+          <li><strong>Permissions, everyone.</strong> Contents read and write, Pull requests read and write, Metadata read.</li>
+          <li><strong>Permissions, administrators.</strong> Also Administration read and write (new repositories) and Webhooks
+            read and write (the deploy webhook).</li>
+        </ol>
+
+        <h3 id="setup-git-gitlab">GitLab</h3>
+        <p><strong>Groups.</strong> A new repository goes to your personal namespace or to a group or subgroup where you are at
+          least Developer and the group lets that role create projects; the form lists those groups by their full path. A
+          self-managed GitLab is set once, in the installer (<code>STUDIO_GIT_URL=https://git.example.com</code>), and the
+          agent's <code>glab</code> gets it as <code>GITLAB_HOST</code>. Registering the deploy webhook needs the Maintainer role
+          on the repository.</p>
+        <ol class="steps">
+          <li><strong>Where.</strong> On your GitLab: avatar → Edit profile → Access tokens → Add new token.</li>
+          <li><strong>Scope.</strong> <code>api</code>: clone and push, merge requests through <code>glab</code> and Larapilot,
+            and for administrators the new repositories and the webhook. <code>read_repository</code> and
+            <code>write_repository</code> alone let git work, not merge requests.</li>
+          <li><strong>Expiration.</strong> GitLab asks for a date. Replace the token in Studio before it expires.</li>
+          <li><strong>Copy it</strong> into <em>Settings → Connections</em>. It starts with <code>glpat-</code>.</li>
+        </ol>
+
+        <h3 id="setup-git-bitbucket">Bitbucket Cloud</h3>
+        <p><strong>Workspaces and projects.</strong> A Bitbucket repository belongs to a workspace and to one of its projects.
+          The form lists the workspaces you belong to and their projects: a workspace alone puts the repository in its oldest
+          project, a project puts it there. Creating repositories needs a workspace role that allows it; registering the
+          webhook needs admin rights on the repository.</p>
+        <ol class="steps">
+          <li><strong>Where.</strong> id.atlassian.com → Account settings → Security → Create and manage API tokens →
+            <em>Create API token with scopes</em> → Bitbucket. API tokens replace app passwords: git signs in with the token as
+            <code>x-bitbucket-api-token-auth</code>, the REST API with the token as a bearer.</li>
+          <li><strong>Scopes, everyone.</strong> <code>read:user</code>, <code>read:workspace</code>, <code>read:repository</code>,
+            <code>write:repository</code>, <code>read:pullrequest</code>, <code>write:pullrequest</code> (each ends in
+            <code>:bitbucket</code>).</li>
+          <li><strong>Scopes, administrators.</strong> Also <code>read:project</code>, <code>admin:repository</code> (new
+            repositories), <code>read:webhook</code>, <code>write:webhook</code> and <code>delete:webhook</code> (the deploy
+            webhook).</li>
+          <li><strong>Expiration.</strong> Up to a year. Replace the token in Studio before it expires.</li>
+        </ol>
+
+        <h3 id="setup-git-azure">Azure DevOps</h3>
+        <p><strong>Organization and projects.</strong> One Studio works with one Azure DevOps organization, set in the installer
+          (<code>STUDIO_GIT_URL=https://dev.azure.com/acme</code>; <code>acme.visualstudio.com</code> addresses work too).
+          Repositories live in the organization's projects: the form lists them, and a new repository follows the visibility
+          of its project. Addresses of another organization are refused. Creating repositories needs the <em>Create
+          repository</em> permission on the project; registering the push service hook needs Project Administrator.</p>
+        <ol class="steps">
+          <li><strong>Where.</strong> <code>https://dev.azure.com/&lt;organization&gt;</code> → User settings → Personal access
+            tokens → New Token.</li>
+          <li><strong>Organization.</strong> This Studio's, or all accessible organizations.</li>
+          <li><strong>Scopes, everyone.</strong> Custom defined → Code → Read &amp; write.</li>
+          <li><strong>Scopes, administrators.</strong> Code → Read, write &amp; manage, and Project and Team → Read.</li>
+          <li><strong>Expiration.</strong> At most a year, or less when the organization's policy says so.</li>
+        </ol>
+        <p>The login on Azure DevOps is the account's e-mail address; the handle is its first part
+          (<code>maria.rossi@acme.com</code> → <code>maria-rossi</code>).</p>
+      </section>
+
+<!-- Setup: project -->
+      <section class="doc-section" id="setup-project">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>A project</h2>
+          <p>Adding a project is a form. Saving it clones the repository, creates its database, serves it at
+            <code>&lt;slug&gt;.&lt;domain&gt;</code> and registers the push webhook on the git provider that redeploys it on every
+            push.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/admin-projects.png" alt="Administration → Projects: a table with repository, stack, site status and members" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Administration → Projects.</strong> Every project with its repository, stack, the site's state
+            and the last deployed commit. <em>Deploy</em> redeploys by hand; the webhook does it on push.</figcaption>
+        </figure>
+
+        <figure class="shot">
+          <img src="img/admin-project-form.png" alt="The project form: name, slug, repository, deploy branch, PHP, database, members" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>The form.</strong> Six fields and the members. The slug is the hostname label of the site and of
+            every preview.</figcaption>
+        </figure>
+
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Field</th><th>Used for</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Name</strong>, <strong>Slug</strong></td><td>The slug names the site (<code>shop.&lt;domain&gt;</code>), the previews (<code>maria-shop.&lt;domain&gt;</code>), the Linux user, the directories and the databases. Lower-case letters, digits and dashes; derived from the name when empty.</td></tr>
+              <tr><td><strong>Repository</strong></td><td>The HTTPS address of a repository on the installation's provider: <code>https://github.com/owner/repo</code>, <code>https://gitlab.com/group/repo</code> (or your GitLab), <code>https://bitbucket.org/workspace/repo</code>, <code>https://dev.azure.com/org/project/_git/repo</code>. Addresses of another provider are refused. Cloned with your token for the site, with each member's token for their workspace.</td></tr>
+              <tr><td><strong>Deploy branch</strong></td><td>What the site runs and what workspaces start from. A push to it deploys the site.</td></tr>
+              <tr><td><strong>PHP</strong>, <strong>Database</strong></td><td>A PHP version installed on the server (8.3, 8.4 or 8.5 today) and MariaDB or PostgreSQL, for the site and for every workspace of the project.</td></tr>
+              <tr><td><strong>Members</strong></td><td>Who may open the project. Administrators see every project without being members.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Or let Studio create the repository</h3>
+        <figure class="shot">
+          <img src="img/admin-project-new.png" alt="The project form with Create it now selected: owner, repository name, private" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Create it now.</strong> Pick where it goes, a name and whether it is private. Studio creates the
+            empty repository on the git provider; the server installs the latest Laravel, Laravel Boost and Larapilot, commits,
+            pushes the deploy branch, then provisions the site as for any other project.</figcaption>
+        </figure>
+        <p>Where a new repository can go depends on the provider: your account or one of your organizations on GitHub, your
+          namespace or a group on GitLab, a workspace or one of its projects on Bitbucket, a project of the organization on
+          Azure DevOps. Your token needs the right to create repositories there; the scopes are in
+          <a href="#setup-git">The git provider</a>. What lands in the new repository: <code>composer create-project
+          laravel/laravel</code> at its current release; <code>laravel/boost</code> and <code>andreapollastri/larapilot</code>
+          as dev dependencies, with <code>larapilot:install</code> and <code>boost:install</code> run (Boost is always there:
+          if its install fails, the project stops with the reason instead of going on without it); Larapilot's integration for
+          the provider turned on in <code>.larapilot/config.yaml</code>; and one commit on the deploy branch (plus
+          <code>main</code> when the deploy branch is another name).</p>
+
+        <h3>What an existing repository must have</h3>
+        <ul>
+          <li><a href="https://larapilot.web.ap.it/#quickstart" target="_blank" rel="noopener">Larapilot</a> installed and
+            <code>larapilot:install</code> run, so the skills, the <code>.larapilot/</code> workspace, the dashboard and the API
+            exist; Larapilot brings Laravel Boost with it, and <code>boost:install</code> gives the agent Boost's guidelines and
+            MCP server. Without Larapilot the site still deploys, but there is no dashboard and the chat has no skills to call.</li>
+          <li>A <code>.env.example</code>. The server copies it and sets the application URL, the database, redis and the
+            Larapilot API token; everything else you put there is kept.</li>
+          <li>Optionally a <code>.mcp.json</code> at the root for MCP servers every workspace should have, with secrets as
+            <code>${ENV}</code> references, and custom skills under <code>.larapilot/skills/</code>.</li>
+        </ul>
+      </section>
+
+<!-- Setup: people -->
+      <section class="doc-section" id="setup-people">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>People</h2>
+          <p>Accounts are created by an administrator and used with a password. No public sign-up, no single sign-on.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/admin-users.png" alt="Administration → Users: name, email, role selector, git provider and Claude badges, project count" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Administration → Users.</strong> Role is a dropdown; the badges say who has connected the git
+            provider and Claude and who turned on two-factor authentication.</figcaption>
+        </figure>
+
+        <figure class="shot">
+          <img src="img/admin-user-form.png" alt="The New user dialog: name, email, role and an optional handle" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>New user.</strong> Name, email and role; the handle is optional and comes from the login on the
+            git provider when the person connects.</figcaption>
+        </figure>
+
+        <ol class="steps">
+          <li><strong>Create the account.</strong> Name, email, role. Studio shows a one-time initial password; share it once,
+            it is never shown again.</li>
+          <li><strong>They sign in</strong> with email and password, change it, and turn on two-factor in <em>Settings →
+            Security</em>: an authenticator app or a passkey.</li>
+          <li><strong>They connect the git provider and Claude</strong> in <em>Settings → Connections</em>. Until both are there, a
+            project opens on a page that says so instead of a chat.</li>
+          <li><strong>They open a project.</strong> Studio shows the projects they are members of. The first open builds the
+            workspace.</li>
+        </ol>
+
+        <figure class="shot">
+          <img src="img/login.png" alt="The login page: email, password, the invite-only notice" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Sign in.</strong> Email and password, nothing else.</figcaption>
+        </figure>
+      </section>
+
+<!-- Setup: connections -->
+      <section class="doc-section" id="setup-connections">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>Git &amp; Claude</h2>
+          <p>Two credentials per person, stored encrypted, handed only to that person's workspaces.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/connections.png" alt="Settings → Connections: the git provider token field with instructions, the Claude credential with its kind" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Settings → Connections.</strong> The instructions are on the page, for the provider of this Studio
+            (here GitHub): how to create the token, and <code>claude setup-token</code> or an API key for Claude.</figcaption>
+        </figure>
+
+        <h3>The git provider</h3>
+        <p>A personal token on the provider of this Studio, with the scopes in <a href="#setup-git">The git provider</a>.
+          Studio verifies it there, reads the login, and uses it as the person's handle: their previews are
+          <code>&lt;login&gt;-&lt;project&gt;.&lt;domain&gt;</code>, their Linux user on the server is <code>ws-&lt;login&gt;</code>
+          (on Azure DevOps the login is the e-mail address, and the handle its first part). Inside the workspace git pushes
+          and the provider's CLI opens pull requests as that person. The token never sits in a file git can read: an askpass
+          helper hands it to git from the environment, with the user name the provider expects.</p>
+
+        <h3>Claude</h3>
+        <p>Either a subscription or an API key. With Claude Pro or Max: on your own computer, signed in to Claude Code, run
+          <code>claude setup-token</code> and paste the long-lived token. With an Anthropic Console account: paste the API
+          key. The workspace exports <code>CLAUDE_CODE_OAUTH_TOKEN</code> or <code>ANTHROPIC_API_KEY</code> accordingly,
+          and Claude Code's login files live in that person's home on the server, denied to the agent itself.</p>
+
+        <div class="note"><strong>Changing a token</strong> updates every workspace the person already has and restarts its
+          bridge. Removing one stops what depends on it: no git token, no new workspaces; no Claude, no chat.</div>
+      </section>
+
+<!-- Setup: site -->
+      <section class="doc-section" id="setup-site">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>The project site</h2>
+          <p><code>&lt;slug&gt;.&lt;domain&gt;</code> is the deploy branch, running on the same server. It is the project's
+            staging, its dashboard and the source of every workspace's data.</p>
+        </div>
+
+        <ol class="steps">
+          <li><strong>Creation.</strong> When the project is saved, the helper creates a Linux user, clones the deploy branch
+            with the administrator's token, creates the database, writes the <code>.env</code> with <code>APP_ENV=staging</code>
+            and a fresh <code>LARAPILOT_API_TOKEN</code>, runs Composer (dev dependencies included: the site is a staging
+            environment, and Larapilot and Boost are dev dependencies whose dashboard and API it serves), npm, migrations, a
+            PHP-FPM pool, a Caddy host and a queue worker. Studio registers a push webhook on the repository.</li>
+          <li><strong>Every push to the deploy branch</strong> reaches <code>/api/git/webhook/&lt;slug&gt;</code> with the
+            project's secret: an HMAC signature from GitHub and Bitbucket, the secret token in a header from GitLab and Azure
+            DevOps. Studio queues a deploy: fetch, reset to the branch, build, migrate, restart the worker.
+            <em>Deploy</em> in the admin page does the same by hand.</li>
+          <li><strong>The Larapilot dashboard</strong> is <code>/larapilot</code> on that host, behind the Studio login like
+            every other address of the project. The PM's bookmark.</li>
+          <li><strong>New workspaces</strong> copy the site's database (a dump and a restore, MariaDB or PostgreSQL), so a
+            person starts from realistic data. Without a site database, migrations run instead.</li>
+        </ol>
+
+        <figure class="shot">
+          <img src="img/client-view.png" alt="A client's view of the project: no chat, the project site as preview" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>A client's view.</strong> No workspace, no chat: the project site in the preview pane.</figcaption>
+        </figure>
+
+        <p class="cli-note">Deploys are a reset to the branch and a rebuild in place, not atomic releases: a failed migration
+          leaves the site on the previous code, a failed build may leave it mid-way for a moment. It is a staging site, kept
+          simple on purpose. For production use the pipeline your project already has.</p>
+      </section>
+
+<!-- Set up: project settings -->
+      <section class="doc-section" id="setup-settings">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>Project settings</h2>
+          <p>What the server runs for a project, who may open its hosts, and which MCP servers its chats get.
+            <em>Settings</em> on a project in Administration &rarr; Projects has three sections: <em>Server</em>,
+            <em>Access</em> and <em>MCP</em>. Saving applies the first two to the site and to every workspace preview;
+            MCP servers are saved one by one (see <a href="#setup-mcp">MCP servers</a>).</p>
+        </div>
+        <figure class="shot">
+          <img src="img/admin-project-settings.png" alt="The Server section of the project settings: scheduler, queues, Horizon, Reverb and Pulse" loading="lazy" width="2880" height="2500" />
+          <figcaption><strong>Project settings.</strong> The <em>Server</em> section; <em>Access</em> holds the rules for the hosts.</figcaption>
+        </figure>
+        <h3>Server features</h3>
+        <div class="walkthrough-grid">
+          <dl><dt>Scheduler</dt><dd>A cron line runs <code>php artisan schedule:run</code> every minute as the host's own
+            Linux user. On by default, for the site and for every preview.</dd></dl>
+          <dl><dt>Queues</dt><dd>One <code>queue:work</code> worker per queue name, as a systemd unit that restarts on
+            failure and on every deploy. <code>default</code> is on from the start; add <code>mail, exports</code> and
+            two more workers appear.</dd></dl>
+          <dl><dt>Horizon</dt><dd><code>php artisan horizon</code> in place of the plain workers: Horizon reads the
+            queues from <code>config/horizon.php</code> and supervises them itself. The app must have
+            <code>laravel/horizon</code>.</dd></dl>
+          <dl><dt>Reverb</dt><dd>Runs <code>php artisan reverb:start</code> on a loopback port of its own and proxies
+            <code>/app</code> and <code>/apps</code> of the host to it. The helper writes the <code>REVERB_*</code>
+            keys into the app's <code>.env</code> once; the app itself must have <code>laravel/reverb</code>
+            installed.</dd></dl>
+          <dl><dt>Pulse</dt><dd><code>php artisan pulse:check</code>, so the Pulse dashboard of the app shows the
+            server's CPU, memory and disk. The app must have <code>laravel/pulse</code>.</dd></dl>
+          <dl><dt>HTTPS</dt><dd>Nothing to switch on: Caddy issues a certificate for every host the first time it is
+            opened, the deploy site and each workspace preview alike (see <a href="#deep-dive-server">The server</a>).</dd></dl>
+        </div>
+        <h3>Who can open the hosts</h3>
+        <p>Every address of a project is behind the Studio login: the site, its <code>/larapilot</code> dashboard and API,
+          each workspace preview, any path. The visitor must be logged in to Studio and assigned to the project, in any
+          role (developer, PM, client), or be an administrator; anyone else is sent to the Studio login page and comes back
+          after it, and a logged-in person who is not on the project gets a 403. There is no public mode: a preview runs
+          with <code>APP_DEBUG</code> on, a site with work not yet released, and neither is for the open internet.</p>
+        <div class="walkthrough-grid">
+          <dl><dt>Only from</dt><dd>An address list for the site, one for the previews: one IP or CIDR per line. It narrows the
+            login, it never replaces it: from a listed address the visitor still logs in, from any other nobody gets in.
+            Empty means from anywhere, after the login.</dd></dl>
+          <dl><dt>Branch overrides</dt><dd>A list for <code>feature/secret</code> replaces the site's list while that is the
+            deploy branch, and the previews' list for every workspace that is on that branch. Studio remembers each
+            workspace's branch from its Changes tab.</dd></dl>
+        </div>
+        <p>How it works: the Caddyfile puts a <code>forward_auth</code> to Studio's <code>/api/site-auth</code> in front of
+          every host that is not Studio's own, so no project host is ever served without it, whatever its own file says.
+          Studio answers 204 (go on), a redirect to its login, or 403. Machines are no exception: a webhook or an
+          end-to-end test aimed at a project host gets the login page too.</p>
+        <p>Studio's own session cookie never reaches a project host: the apps there run code the team writes, and
+          must not see a cookie that opens Studio. A visitor without a pass is sent to <code>studio.&lt;domain&gt;</code>,
+          logs in there if needed, and comes back with a one-time token valid for two minutes. The gatekeeper swaps it
+          for a pass cookie bound to that host alone, good for twelve hours; it is useless on any other host and in
+          Studio.</p>
+      </section>
+
+<!-- Set up: MCP servers -->
+      <section class="doc-section" id="setup-mcp">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>MCP servers</h2>
+          <p>Give the chats of a project more tools: the project's documentation, error tracking, a CRM, an internal API.
+            Any remote MCP server works; Studio does not care whose it is.</p>
+        </div>
+        <figure class="shot">
+          <img src="img/admin-project-settings-mcp.png" alt="The MCP section of the project settings: two servers with their URL, roles and last test, and the form to edit one" loading="lazy" width="2880" height="2500" />
+          <figcaption><strong>MCP servers.</strong> Each with its URL, who gets it, its header and the answer of the last test.</figcaption>
+        </figure>
+        <div class="walkthrough-grid">
+          <dl><dt>Add one</dt><dd><em>Settings &rarr; MCP</em> on the project: a name (it becomes part of the tool names,
+            <code>mcp__docs__search</code>), the URL of the server, and usually one header such as
+            <code>Authorization: Bearer …</code>. The value is stored encrypted and never shown again; editing without
+            typing a new value keeps it.</dd></dl>
+          <dl><dt>Who gets it</dt><dd>Tick the roles. A PM can have the documentation server while only administrators and
+            developers get the one that reads production errors. Clients get nothing unless you tick them.</dd></dl>
+          <dl><dt>Test</dt><dd>Studio makes the <code>initialize</code> call Claude Code would make, with the header, and keeps
+            the answer: <code>ok</code> with the server's name and version, a refused header, a wrong URL.</dd></dl>
+          <dl><dt>In the chat</dt><dd>Each person's chat gets the enabled servers their role may use, from the next message
+            on; <em>Model &amp; mode</em> lists them. Their tools ask for permission like any other tool, unless the mode
+            lets them through. <em>Turn off</em> takes a server out of every chat without forgetting it.</dd></dl>
+        </div>
+        <h3>Remote here, commands in the repository</h3>
+        <p>Studio only adds remote servers (the streamable HTTP transport). A server that runs as a command belongs in
+          the repository's <code>.mcp.json</code>: Claude Code loads it in every workspace, as the person's own Linux
+          user, with secrets as <code>${ENV}</code> references. Both kinds end up in the same chat.</p>
+        <p>The bridge hands Studio's servers to Claude Code through a file only the workspace user can read, never on the
+          command line, so a token does not show in the server's process list. It accepts nothing but
+          <code>{"type": "http", "url"}</code> entries from Studio.</p>
+      </section>
+
+<!-- Set up: email -->
+      <section class="doc-section" id="setup-email">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>Email</h2>
+          <p>Studio sends little email: the <em>Forgot your password?</em> link, and that is about it. The installer does not
+            ask for a mail account, so a fresh server writes its messages to a log file instead of sending them, and the
+            pages say so. Ten minutes with any provider's SMTP credentials turn it on.</p>
+        </div>
+
+        <h3>What works without it</h3>
+        <p>Accounts are created by an administrator, who hands over the first password in person; a person who forgets
+          theirs asks an administrator, who gives them a new one from <em>Administration → Users</em> (the key icon: the
+          old sessions close, 2FA is removed, the new password shows once). Until email is set up, the <em>Forgot your
+          password?</em> page explains exactly that instead of promising a link. Whoever holds root has
+          <a href="#setup-recovery"><code>studio-recover admin</code></a> for the administrators themselves.</p>
+
+        <h3>Turning it on</h3>
+        <p>Studio's settings live in one file, <code>/opt/studio/shared/.env</code>, shared by every release so an update
+          never touches it. It is owned by the <code>studio</code> user and readable by nobody else; root edits it over
+          SSH. Studio does not read the file on each request but a cache built from it, so a change is live only after a
+          reload, and <code>studio-recover</code> does both in one go:</p>
+        <div class="install-commands">
+          <div class="install-commands-header">On the server, as root</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">✎</span>
+              <code class="install-command-text">studio-recover env             # opens the .env in $EDITOR (nano), reloads on save</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-recover env" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">↻</span>
+              <code class="install-command-text">studio-recover reload          # after editing the file with anything else</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-recover reload" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+        <p>The file already carries the block to fill in. Set <code>MAIL_MAILER</code> to <code>smtp</code>, uncomment the
+          host, port, scheme and credentials, and keep a sender address at your domain (most providers want the domain
+          verified on their side first):</p>
+<pre><code>MAIL_MAILER=smtp
+MAIL_FROM_ADDRESS=studio@agency.test
+MAIL_FROM_NAME="Studio"
+MAIL_HOST=smtp.resend.com
+MAIL_PORT=587
+MAIL_SCHEME=smtp
+MAIL_USERNAME=resend
+MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
+        <p><code>MAIL_SCHEME</code> is <code>smtp</code> for a STARTTLS port (587, 2525) and <code>smtps</code> for an
+          implicit-TLS port (465). Where to find the values with the usual providers:</p>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Provider</th><th>Host · port</th><th>Username</th><th>Password</th></tr></thead>
+            <tbody>
+              <tr><td>Resend</td><td><code>smtp.resend.com</code> · 587 or 465</td><td><code>resend</code></td><td>an API key</td></tr>
+              <tr><td>Postmark</td><td><code>smtp.postmarkapp.com</code> · 587</td><td>the server token</td><td>the same server token</td></tr>
+              <tr><td>SendGrid</td><td><code>smtp.sendgrid.net</code> · 587</td><td><code>apikey</code></td><td>an API key</td></tr>
+              <tr><td>Mailgun</td><td><code>smtp.mailgun.org</code> · 587 (<code>smtp.eu.mailgun.org</code> in the EU)</td><td><code>postmaster@&lt;your domain&gt;</code></td><td>the SMTP password of that domain</td></tr>
+              <tr><td>Amazon SES</td><td><code>email-smtp.&lt;region&gt;.amazonaws.com</code> · 587</td><td colspan="2">SMTP credentials made in the SES console (not the IAM access key itself)</td></tr>
+              <tr><td>Brevo</td><td><code>smtp-relay.brevo.com</code> · 587</td><td>the account login</td><td>an SMTP key</td></tr>
+              <tr><td>Google Workspace</td><td><code>smtp.gmail.com</code> · 587</td><td>the mailbox</td><td>an app password (2-step verification on)</td></tr>
+              <tr><td>Your own server</td><td>its host · 587 or 465</td><td colspan="2">a mailbox allowed to relay</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Studio ships with the SMTP transport alone: a provider's HTTP API (Resend's, Postmark's, SES's) needs a package
+          the release does not carry, and every one of them offers SMTP, so there is nothing to install. Any other line of
+          the file is Studio's own business; the ones you may want are the <code>MAIL_*</code> block and, for a different
+          interface language, <code>APP_LOCALE</code> (<code>en</code> or <code>it</code>).</p>
+
+        <h3>Checking it</h3>
+        <p>Log out, open <em>Forgot your password?</em>: once email is configured the form is there. Send yourself a link;
+          it should arrive within a minute. If it does not, the reason is in <code>/opt/studio/shared/storage/logs/</code>
+          (the newest <code>laravel-*.log</code>): a refused login, a blocked port, a sender the provider does not know.
+          Fix the line, <code>studio-recover reload</code>, try again. To go back to not sending, <code>MAIL_MAILER=log</code>
+          and a reload.</p>
+      </section>
+
+<!-- Set up: updates -->
+      <section class="doc-section" id="setup-updates">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>Updates</h2>
+          <p>Studio keeps itself up to date. <code>studio-update</code>, run by root, installs every new build of its channel
+            together with what it needs on the server: a new PHP, a newer Node, a package, the provider's CLI, a changed
+            service. The stable channel follows the release tags; beta testers follow the main branch.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/admin-system.png" alt="Administration → System: installed and newest release, Check now, Force update and Update buttons, the nightly switch, the channel, the last update with its log, the git provider" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Administration → System.</strong> The installed build and the newest one, <em>Check now</em>,
+            <em>Force update</em> and <em>Update to</em>, the nightly switch, the channel, the last run with its log, and the
+            git provider of the installation.</figcaption>
+        </figure>
+
+        <h3>Channels</h3>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Channel</th><th>Installs</th><th>For</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Stable</strong> (default)</td><td>The newest release tag, <code>vMAJOR.MINOR.PATCH</code>; pre-releases and everything between two releases are skipped</td><td>Every team</td></tr>
+              <tr><td><strong>Beta</strong> (beta tester mode)</td><td>The head of the <code>main</code> branch, every new commit, before it becomes a release</td><td>A server you test Studio on, not the team's daily work</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The channel is a switch in <em>Administration → System</em>; the installer can start on beta
+          (<code>STUDIO_CHANNEL=beta</code>, see <a href="#quickstart-installs">What it installs</a>). Neither channel goes
+          backwards: a build is installed only when it contains the installed commit, which the updater checks on a blob-less
+          mirror of the repository. Back on stable after beta, Studio keeps its main build, newer than the last release, until a
+          release contains it; when a release is tagged on that very commit, it moves to the release's name.</p>
+
+        <figure class="shot">
+          <img src="img/admin-system-beta.png" alt="Administration → System in beta tester mode: the newest commit on main, the beta channel selected and its warning" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Beta tester mode.</strong> The newest commit on <code>main</code> instead of the newest release,
+            each one installed as <code>main-&lt;commit&gt;</code> with the same backups and rollback as a release.</figcaption>
+        </figure>
+
+        <h3>When</h3>
+        <ul>
+          <li><strong>Every night</strong>, between 04:00 and 05:00, from a systemd timer, while automatic updates are on (the
+            default).</li>
+          <li><strong>From Administration → System</strong>: <em>Check now</em>, then <em>Update to …</em>.</li>
+          <li><strong>Force update</strong>, in the same place: builds the newest build of the channel and installs it now,
+            even when it is the one already installed (a broken build, a failed system step, a server changed by hand). The new
+            build goes next to the live one as <code>&lt;build&gt;@&lt;time&gt;</code>, with the same dump and rollback. It never
+            goes back to an older build: that is what <code>studio-update rollback</code> is for.</li>
+          <li><strong>On the server</strong>: <code>sudo studio-update apply</code> (<code>--force</code> for the same as the
+            button). Running the installer again does the same as <code>apply</code>.</li>
+        </ul>
+
+        <h3>What an update does</h3>
+        <ol class="steps">
+          <li><strong>Clone</strong> the build into <code>/opt/studio/releases/&lt;build&gt;</code>. A tag's <code>VERSION</code>
+            file must say the same as the tag. With <code>/etc/studio/update-signers</code> in place, the tag (or, on beta, the
+            commit) must carry a valid SSH signature by one of those keys.</li>
+          <li><strong>System step, as root</strong>, from the new build: its <code>installer/requirements.env</code> names the
+            PHP versions, the PHP that runs Studio and the Node major; <code>installer/lib/system.sh</code> installs what is
+            missing, refreshes Composer and Claude Code, and the provider's CLI. Nothing is removed.</li>
+          <li><strong>Upgrade scripts</strong>, phase <em>before</em>: <code>installer/upgrades/&lt;version&gt;.sh</code> of every
+            version after the installed one up to the new one, in order, as root, for what a release needs beyond packages. On
+            beta, where several builds share a version, a script that changed since it ran runs again.</li>
+          <li><strong>Build</strong> next to the running release, on the shared <code>.env</code> and <code>storage</code>:
+            Composer without dev dependencies, the assets.</li>
+          <li><strong>Database</strong>: a dump to <code>/var/backups/studio/</code>, maintenance mode, migrations with the new
+            code. Caddy's certificate question, the access check of protected hosts and the bridges' callbacks keep answering
+            meanwhile.</li>
+          <li><strong>Switch</strong>: the new build's helper, templates, services, PHP-FPM pool and Caddyfile, then
+            <code>/opt/studio/current</code> points at it; upgrade scripts, phase <em>after</em>; caches, restarts, maintenance
+            off.</li>
+          <li><strong>Health check</strong>: Studio must answer <code>/up</code>. If it does not, or any step from the dump on
+            fails, the previous release, its root files and the database dump come back, and the System page shows the
+            log.</li>
+        </ol>
+        <p>Project sites and workspaces are not touched: they are your projects. Bridges move to the new code when they restart
+          (a workspace stopped and started, a changed token); a release that changes the bridge protocol restarts them in its
+          upgrade script. Three releases and five database dumps stay on disk.</p>
+
+        <div class="install-commands">
+          <div class="install-commands-header">On the server, as root</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">?</span>
+              <code class="install-command-text">studio-update check            # what the channel would install, and why not</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-update check" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">↑</span>
+              <code class="install-command-text">studio-update apply            # --force · --to v1.1.0</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-update apply" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">β</span>
+              <code class="install-command-text">studio-update channel beta     # or stable · auto on|off</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-update channel beta" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">↓</span>
+              <code class="install-command-text">studio-update rollback         # the previous release and its database</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-update rollback" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">⚙</span>
+              <code class="install-command-text">studio-update ensure           # the system step again · status</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-update ensure" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+
+        <h3 id="setup-recovery">Locked out</h3>
+        <p>A forgotten password or a lost 2FA device is an administrator's job: the key icon in <em>Administration →
+          Users</em> gives the person a new password, shown once, and removes their 2FA (with <a href="#setup-email">email
+          set up</a>, people also get the usual <em>Forgot your password?</em> link). Administrators do the same for each
+          other. What is left is the last administrator: nobody above them in Studio, and the server itself fine. The one
+          key that is never in Studio is root on the server. From an SSH session:</p>
+        <div class="install-commands">
+          <div class="install-commands-header">On the server, as root</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">⚿</span>
+              <code class="install-command-text">studio-recover admin           # the main administrator: the oldest admin account</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-recover admin" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">@</span>
+              <code class="install-command-text">studio-recover admin you@agency.test   # that account instead; unknown = created</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-recover admin you@agency.test" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+        <p>The account gets a new password, printed once in the terminal; its 2FA is removed, every session it had is closed,
+          it is an administrator again with a verified email. Its git and Claude credentials stay, and nothing else on the
+          server is touched. Log in with that password, change it in <em>Settings</em>, set 2FA up again. Each run is written
+          to syslog (<code>auth</code>) and to Studio's log.</p>
+        <p><code>studio-recover</code> lives in <code>/usr/local/sbin</code>, mode 0700: only root can read or run it, there is
+          no sudo rule for it and nothing in Studio calls it. It runs <code>php artisan studio:reset-admin</code> as the
+          <code>studio</code> user, which is the same thing if you prefer artisan. Whoever can reset the administrator can
+          already read <code>/opt/studio/shared/.env</code>: the script adds no power root does not have, it only makes the
+          way back short and recorded.</p>
+
+        <h3>Releasing</h3>
+        <p>For whoever maintains Studio: set <code>VERSION</code> (1.0.0 today), commit, and push a <code>vX.Y.Z</code> tag on a
+          commit that passed the tests. Every stable server installs it at its next run; beta servers already run that commit.
+          The release workflow refuses a tag whose <code>VERSION</code> says otherwise, and so does the updater. To sign
+          releases, tag with <code>git tag -s</code> and an SSH key (<code>gpg.format=ssh</code>), sign the commits of main
+          too if beta servers check signatures, and put the allowed signers, in <code>ssh-keygen</code>'s allowed-signers
+          format, in <code>/etc/studio/update-signers</code> on each server. What a release needs on the server goes in
+          <code>installer/requirements.env</code>, or in an upgrade script (<code>installer/upgrades/README.md</code>).</p>
+      </section>
+
+<!-- Work: chat -->
+      <section class="doc-section" id="work-chat">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>The chat</h2>
+          <p>Three panes: your conversations, the chat, and the right pane with the preview, the changes, the terminal and the
+            files. The chat is Claude Code with a face.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/chat-tools-open.png" alt="The chat with Details on: every command and its result expanded" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Details.</strong> Each tool call is a row with the command or the file; <em>Details</em> expands
+            them all with their results, and shows the agent's reasoning when the model emits it.</figcaption>
+        </figure>
+
+        <div class="walkthrough-grid">
+          <dl><dt>Messages</dt><dd>Yours on the right. Claude's as prose, with Markdown rendered and code inline. System
+            notices, in red when something failed, say what to do.</dd></dl>
+          <dl><dt>Streaming</dt><dd>Text arrives as it is typed over Reverb. Without a websocket the chat polls every few
+            seconds while the agent works; nothing is lost either way.</dd></dl>
+          <dl><dt>Sessions</dt><dd>A conversation keeps its Claude session id. Close the laptop, come back tomorrow: the next
+            message resumes with the same memory. The title is the first message, trimmed.</dd></dl>
+          <dl><dt>Interrupt</dt><dd>Stops the current turn. The process is released; the next message resumes the session.</dd></dl>
+          <dl><dt>Cost</dt><dd>The header shows the model and the cost of the last turn as Claude Code reports it.</dd></dl>
+          <dl><dt>Several at once</dt><dd>Open a new conversation for a separate topic. They share the workspace and the branch,
+            so keep one piece of work per conversation.</dd></dl>
+        </div>
+        <figure class="shot">
+          <img src="img/chat-dark.png" alt="The same conversation in dark mode" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Light or dark.</strong> Studio follows the system appearance, or the choice in <em>Settings →
+            Appearance</em>; the editor in the Files tab follows it too.</figcaption>
+        </figure>
+      </section>
+
+<!-- Work: permissions -->
+      <section class="doc-section" id="work-permissions">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Permissions</h2>
+          <p>Claude Code asks before running a tool its mode does not allow outright. In Studio the question is a card.</p>
+        </div>
+
+        <p>The card names the tool, shows the command or the file, and the reason when Claude gives one. <strong>Allow</strong>
+          runs it with the input shown; <strong>Deny</strong> tells Claude the person declined, and the turn continues from
+          there. While a question is open the conversation is marked <em>waiting for permission</em> in the sidebar, so a
+          teammate glancing at the list sees who is blocked on whom.</p>
+
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Preset</th><th>Claude Code mode</th><th>What runs without asking</th></tr></thead>
+            <tbody>
+              <tr><td>PM</td><td><code>default</code></td><td>Reads and the tools Claude Code auto-approves; edits and commands ask</td></tr>
+              <tr><td>Developer, Administrator</td><td><code>acceptEdits</code></td><td>File edits in the workspace; commands ask</td></tr>
+              <tr><td>Client</td><td><code>plan</code></td><td>Nothing: a client cannot chat, the preset only applies if the role changes</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Bypass mode is disabled in every workspace by the managed settings. A question left unanswered when a turn ends is
+          closed as denied. The decision, who took it and when, is stored with the conversation.</p>
+      </section>
+
+<!-- Work: settings -->
+      <section class="doc-section" id="work-settings">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Model, effort, autopilot</h2>
+          <p>Each conversation chooses how Claude Code runs. <em>Model &amp; mode</em> in the chat header opens the dialog;
+            the choice applies from the next message and the session keeps its memory.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/chat-settings.png" alt="The Model & mode dialog: model select, effort select, four modes" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Model &amp; mode.</strong> Model, effort and the permission mode of this conversation; below, the
+            MCP servers this chat gets from the project settings.</figcaption>
+        </figure>
+
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Setting</th><th>Choices</th><th>Becomes</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Model</strong></td><td>Default, Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 (the list is in <code>config/studio.php</code>)</td><td><code>--model</code></td></tr>
+              <tr><td><strong>Effort</strong></td><td>Default, low, medium, high, max: how much the model thinks before it answers</td><td><code>--effort</code></td></tr>
+              <tr><td><strong>Ask before actions</strong></td><td>Claude asks before commands and edits outside the automatic scope</td><td><code>--permission-mode default</code></td></tr>
+              <tr><td><strong>Ask, edits allowed</strong></td><td>File edits in the workspace run; commands still ask</td><td><code>acceptEdits</code></td></tr>
+              <tr><td><strong>Autopilot</strong></td><td>No questions: Claude Code's classifier reviews each action before it runs; the turn goes to the end on its own</td><td><code>auto</code></td></tr>
+              <tr><td><strong>Plan only</strong></td><td>Reads, reasons and proposes; changes nothing</td><td><code>plan</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Which modes a role may pick is <code>modes_by_role</code> in <code>config/studio.php</code>; the role's starting
+          mode is <code>permission_mode</code>. Bypass mode, the one with no review at all, is not offered and is disabled in
+          every workspace by the managed settings: autopilot is as far as it goes.</p>
+      </section>
+
+<!-- Work: skills and questions -->
+      <section class="doc-section" id="work-skills">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Skills &amp; Claude's questions</h2>
+          <p>The chat is Claude Code: a skill is a slash command typed in the input, and Claude's questions come back as a
+            card to answer.</p>
+        </div>
+
+        <h3>Skills</h3>
+        <p>Type <code>/larapilot-inception</code>, <code>/larapilot-triage</code>, <code>/larapilot-plan</code>,
+          <code>/larapilot-implement</code>, <code>/larapilot-review</code> or any other skill, with the request after it, as
+          you would in the terminal. Larapilot projects keep their own skills in
+          <code>.larapilot/skills/&lt;name&gt;/SKILL.md</code>, committed with the code, and skills in Claude Code's own
+          <code>.claude/skills/</code> count too: <code>/acme-predeploy-gate</code> works the same way. Add one from the chat
+          with <code>/larapilot-custom-skill</code>; commit, and every workspace has it at the next start.</p>
+
+        <h3>Claude's questions</h3>
+        <p>When a skill needs a decision (the effort of a Larapilot setup, how fine the backlog is, the Git mode), Claude asks
+          with its question tool and the chat shows a card: each question with its options and what they mean, one choice or
+          several where the question allows it, and a field for an answer of your own. <em>Answer</em> sends the choices back to
+          the same turn and Claude goes on; <em>Skip</em> lets it go on with its own judgement and say what it chose. The
+          conversation waits for the card like it waits for a permission.</p>
+      </section>
+
+<!-- Work: panes -->
+      <section class="doc-section" id="work-panes">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>The right pane</h2>
+          <p>Where the conversation's effect shows up: <em>Preview</em>, <em>Changes</em>,
+            <em>Terminal</em> and <em>Files</em>. Clients see the Preview only. The arrows after the tabs open the
+            pane full screen, and bring the conversations and the chat back as they were. The preview shows apps that
+            refuse to be framed (<code>X-Frame-Options: DENY</code>): on project and preview hosts Caddy lets Studio, and
+            only Studio, frame them.</p>
+        </div>
+        <div class="walkthrough-grid">
+          <dl><dt>Preview</dt><dd>The Laravel app of your workspace on your branch, served by the server at
+            <code>&lt;you&gt;-&lt;project&gt;.&lt;domain&gt;</code>. <em>Open</em> puts it in a tab, which always works; inside
+            the pane the app must not forbid framing (<code>X-Frame-Options</code>). While the workspace is stopped, and for
+            clients, the pane shows the project site.</dd></dl>
+          <dl><dt>Changes</dt><dd>Branch, <code>git status</code>, the stat and the diff of the working tree, read through
+            the bridge, plus the <em>History</em> and <em>Branches</em> views. It refreshes after every stored chat event
+            while the tab is open.</dd></dl>
+          <dl><dt>Terminal</dt><dd>Allowlisted commands in your workspace, without the agent in between; see
+            <a href="#work-terminal">Terminal</a>.</dd></dl>
+          <dl><dt>Files</dt><dd>The workspace's files in the browser, with the editor of VS Code; see <a href="#work-files">Files</a>.</dd></dl>
+          <dl><dt>Over SSH</dt><dd>The workspace is a directory on the server. A developer with SSH access can open it in
+            an editor over SSH; the same Claude session resumes there with <code>claude --resume</code>.</dd></dl>
+        </div>
+      </section>
+
+<!-- Work: files -->
+      <section class="doc-section" id="work-files">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Files</h2>
+          <p>A file manager and an editor for the workspace, in the right pane.</p>
+        </div>
+        <figure class="shot">
+          <img src="img/files.png" alt="The Files tab: the workspace tree on the left, Order.php open in the editor with PHP highlighting" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Files.</strong> The tree reads one folder at a time; the editor is Monaco, the component VS Code is built on.</figcaption>
+        </figure>
+        <div class="walkthrough-grid">
+          <dl><dt>Browse</dt><dd>Folders open on click and load through the bridge; <code>.git</code> is never shown; the
+            button next to the open tabs hides the tree when the editor needs the room.
+            New file, new folder, rename and delete sit in the row menu; a folder is deleted with everything in it,
+            after a confirmation.</dd></dl>
+          <dl><dt>Edit</dt><dd>Files open in tabs. Syntax highlighting follows the extension (PHP and Blade, JavaScript,
+            TypeScript, CSS, JSON, Markdown, YAML, shell, SQL…), with VS Code's find, replace, multi-cursor and
+            keyboard shortcuts. The theme follows Studio's light or dark mode.</dd></dl>
+          <dl><dt>Save</dt><dd><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> or the Save button. Every file carries the hash of
+            its bytes from when it was opened; if Claude or a terminal command changed it meanwhile, the save is
+            refused and the tab says so instead of overwriting.</dd></dl>
+          <dl><dt>Limits</dt><dd>Binary files and files above <code>BRIDGE_FILE_MAX</code> (512 KB) are described,
+            not opened. The editor is loaded on first use, so the rest of Studio stays light. Everything runs as the
+            workspace's own Linux user, so what a person can edit here is exactly what they could edit over SSH.</dd></dl>
+        </div>
+        <figure class="shot">
+          <img src="img/files-menu.png" alt="The row menu of a folder in the Files tree: new file, new folder, rename, delete" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>The row menu.</strong> New file and new folder inside a folder, rename and delete for any row.
+            A new name is typed in place.</figcaption>
+        </figure>
+      </section>
+
+<!-- Work: history -->
+      <section class="doc-section" id="work-history">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>History &amp; branches</h2>
+          <p>The Changes tab has three views: the working tree, the history, the branches.</p>
+        </div>
+        <figure class="shot">
+          <img src="img/history.png" alt="The History view: a commit graph with lanes and merge lines, each commit with its refs, author and age" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>History.</strong> Every branch in one graph, with lanes and merges, refs as badges.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/history-commit.png" alt="A commit opened from the History: message, author, date, the files it touched and the patch" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>A commit.</strong> Click one for its message, author and date, the files it touched and the patch.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/branches.png" alt="The Branches view: local branches with the current one marked, a Switch button, and the remote branches with Fetch" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Branches.</strong> Switch a branch and the preview and its access rule follow.</figcaption>
+        </figure>
+        <div class="walkthrough-grid">
+          <dl><dt>Working tree</dt><dd>Branch, <code>git status</code>, stat and diff of what is not committed yet; refreshed
+            after every stored chat event while the tab is open.</dd></dl>
+          <dl><dt>History</dt><dd>The newest 80 commits of all branches in date order, drawn as lanes the way editors do:
+            a branch opens a lane, a merge closes it. Refs show as badges (branches, <code>origin/…</code>, tags).
+            Click a commit for its message, author, date, the files it touched and the patch.</dd></dl>
+          <dl><dt>Branches</dt><dd>Local branches with their upstream and ahead/behind, remote branches, <em>Fetch</em>.
+            <em>Switch</em> checks a branch out in the workspace; the preview follows, and so does the access rule of
+            that branch. Switch and Fetch act on your own workspace.</dd></dl>
+        </div>
+      </section>
+
+<!-- Work: terminal -->
+      <section class="doc-section" id="work-terminal">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Terminal</h2>
+          <p>A tab in the right pane runs commands in your workspace, as you, without the agent in between.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/terminal.png" alt="The Terminal tab: shortcut buttons, a command field, the output of git status" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Terminal.</strong> Shortcuts for the useful commands, a field for the rest, the output as it
+            arrives. The pane polls while a command runs; <em>Stop</em> kills it.</figcaption>
+        </figure>
+
+        <p>It is not a shell. The bridge takes the line, splits it into words, checks the binary and its first argument
+          against a list, refuses anything that looks like shell syntax, and runs the binary directly in the workspace
+          directory. Allowed today:</p>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Binary</th><th>Allowed</th><th>Refused</th></tr></thead>
+            <tbody>
+              <tr><td><code>php artisan …</code></td><td>Any artisan command with plain options</td><td><code>tinker</code>, <code>serve</code>, <code>db:wipe</code>, <code>down</code>, <code>migrate:fresh --force</code></td></tr>
+              <tr><td><code>composer</code></td><td><code>install</code>, <code>update</code>, <code>require</code>, <code>remove</code>, <code>dump-autoload</code>, <code>show</code>, <code>outdated</code>, <code>audit</code>, <code>run</code>, <code>test</code>, <code>lint</code></td><td>everything else</td></tr>
+              <tr><td><code>npm</code></td><td><code>ci</code>, <code>install</code>, <code>run …</code>, <code>test</code>, <code>outdated</code>, <code>audit</code>, <code>ls</code></td><td>everything else</td></tr>
+              <tr><td><code>git</code></td><td><code>status</code>, <code>log</code>, <code>diff</code>, <code>branch</code>, <code>fetch</code>, <code>pull</code>, <code>checkout</code>, <code>switch</code>, <code>stash</code>, <code>show</code>, <code>add</code>, <code>commit</code>, <code>push</code>, <code>restore</code>, <code>remote</code>, <code>tag</code></td><td><code>--force</code>, <code>-f</code>, <code>branch -D</code>, force pushes</td></tr>
+              <tr><td><code>vendor/bin/…</code></td><td><code>pest</code>, <code>pint</code>, <code>phpstan</code>, <code>phpunit</code>, <code>rector</code></td><td>other binaries</td></tr>
+              <tr><td>any</td><td>plain words, paths and options</td><td>quotes, <code>;</code>, <code>&amp;&amp;</code>, <code>|</code>, <code>&gt;</code>, <code>$()</code>, backticks</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Output is kept to 200 KB and a command is killed after ten minutes. The shortcuts come from
+          <code>config/studio.php</code>; the allowlist lives in the bridge (<code>bridge/src/commands.js</code>), so what the
+          dashboard sends is checked where it runs. Clients have no terminal.</p>
+        <figure class="shot">
+          <img src="img/terminal-refused.png" alt="The Terminal refusing a command that is not on the allowlist, with the reason under the field" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Refused.</strong> A command that is not on the list, or looks like shell syntax, never runs; the
+            reason shows under the field.</figcaption>
+        </figure>
+      </section>
+
+<!-- Work: agent -->
+      <section class="doc-section" id="work-agent">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Subagents, plan mode, skills</h2>
+          <p>The chat is the full Claude Code CLI running in the workspace. What works in the terminal works here.</p>
+        </div>
+        <figure class="shot">
+          <img src="img/chat-plan.png" alt="A Plan only conversation: Claude hands two questions to subagents, shown indented, then answers with a table" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Plan only, with subagents.</strong> "What is still missing for release 1.4?" Claude sends two
+            subagents, one on the backlog and one on the open pull requests; their steps are indented under the call that
+            started them. The answer is a plan; nothing was changed.</figcaption>
+        </figure>
+        <div class="walkthrough-grid">
+          <dl><dt>Subagents</dt><dd>When Claude delegates to a subagent, its messages carry the parent call and the chat shows
+            them indented under a <em>subagent</em> label. Larapilot's personas and the autopilot worker use this.</dd></dl>
+          <dl><dt>Plan mode</dt><dd><em>Plan only</em> in <a href="#work-settings">Model &amp; mode</a>: Claude reads and
+            proposes, touches nothing. Switch to another mode when the plan looks right.</dd></dl>
+          <dl><dt>Skills and slash commands</dt><dd>Every <code>/larapilot-*</code> skill, the project's custom skills and
+            any other skill in the repository: type the command.</dd></dl>
+          <dl><dt>MCP servers</dt><dd>Those in the repository's <code>.mcp.json</code> are loaded, with secrets from the
+            workspace environment, Laravel Boost and Larapilot's own server included; plus the remote servers added in the
+            project's settings (see <a href="#setup-mcp">MCP servers</a>).</dd></dl>
+          <dl><dt>Hooks</dt><dd>Larapilot's workflow hooks and Claude Code hooks run as they would in an editor; their output
+            is kept out of the chat.</dd></dl>
+          <dl><dt>Not available</dt><dd>What needs a screen: images pasted into the prompt, the interactive command palette,
+            voice. Interrupt replaces Escape.</dd></dl>
+        </div>
+      </section>
+
+<!-- Work: workspaces -->
+      <section class="doc-section" id="work-workspaces">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Workspaces</h2>
+          <p>A workspace is created the first time you open a project, started and stopped from the header, checked
+            against the server every minute.</p>
+        </div>
+        <figure class="shot">
+          <img src="img/studio-empty.png" alt="A project opened for the first time: no conversation yet, the workspace pill in the header" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>First open.</strong> The header pill follows the workspace: to create, creating, running,
+            stopping, stopped, failed. A failed one shows the server's reason on hover.</figcaption>
+        </figure>
+        <ul>
+          <li><strong>Start / Stop</strong> start or stop the bridge and release the preview. Conversations and their sessions
+            stay; a stopped workspace cannot receive a message, and the input says so.</li>
+          <li><strong>What persists</strong>: everything, it is a directory and a database on the server: the clone, the
+            dependencies, the Claude login in the person's home.</li>
+          <li><strong>What does not</strong>: work that is not pushed, if the workspace is deleted. Keep branches short and pull
+            requests small; the Larapilot loop wants that anyway.</li>
+          <li><strong>Memory</strong>: PHP-FPM pools are on demand and a stopped workspace costs nothing; the Claude Code
+            process is released after ten idle minutes and resumed on the next message.</li>
+        </ul>
+      </section>
+
+<!-- Work: clients -->
+      <section class="doc-section" id="work-clients">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Clients</h2>
+          <p>A client account sees the projects it belongs to and their staging site as preview, with its Larapilot
+            dashboard behind the same login. No chat, no workspace, no terminal or files, no cost.</p>
+        </div>
+        <p>It is the role for the person who pays: they follow what is in review and what shipped without opening another
+          tool, and without an email thread. If a client should also talk to the project, give them the PM role; from then on
+          they have a workspace and a Claude plan of their own.</p>
+      </section>
+
+<!-- Deep dive -->
+      <section class="doc-section" id="deep-dive">
+        <div class="section-header">
+          <span class="section-label">Deep Dive</span>
+          <h2>Architecture</h2>
+          <p>Laravel 13, Livewire 4 with Flux, Fortify, Reverb. A Node bridge per workspace. One bash helper with root.</p>
+        </div>
+
+        <div class="file-tree">browser ──WebSocket / HTTP──▶ Studio (Laravel) ──HTTP──▶ bridge (in the workspace) ──stdin/stdout──▶ claude -p
+   ▲                              ▲                              │
+   └──── Reverb broadcasts ───────┴──── POST /api/bridge/events ──┘      <span class="comment">per-workspace callback token</span>
+
+Studio ──sudo──▶ studio-admin     <span class="comment">create sites and workspaces, deploy, start, stop (JSON in, JSON out)</span>
+Studio ──HTTPS──▶ &lt;slug&gt;.&lt;domain&gt;  <span class="comment">GET /larapilot/api/specs, /metrics</span>
+Git provider ──webhook──▶ Studio  <span class="comment">push on the deploy branch → deploy the site</span>
+studio-update (root) ──▶ /opt/studio <span class="comment">the channel's newest build: system step, build, migrate, switch, or roll back</span>
+Caddy  ──ask──▶ Studio            <span class="comment">may I issue a certificate for this host?</span>
+Caddy  ──forward_auth──▶ Studio   <span class="comment">may this visitor open this site or preview? (projects with access rules)</span>
+Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test button; the chats reach them from the workspace</span></div>
+
+        <div class="layer-stack">
+          <div class="layer-card"><strong>App\Bridge\BridgeClient</strong><p>Sends turns, permission answers and interrupts to
+            the bridge, and tells it with every turn where to call back and with which token.</p></div>
+          <div class="layer-card"><strong>App\Bridge\IngestBridgeEvents</strong><p>Turns the bridge's events into messages,
+            permission requests, status changes and <code>ConversationUpdated</code> broadcasts. <code>text_delta</code> is
+            broadcast only, never stored.</p></div>
+          <div class="layer-card"><strong>App\Workspaces\WorkspaceManager</strong><p>Picks the driver: <code>LocalDriver</code>
+            for development, <code>NativeDriver</code> for workspaces on this server through the helper.</p></div>
+          <div class="layer-card"><strong>App\Server\StudioAdmin</strong>, <strong>ProjectSites</strong><p>The client of the
+            helper, and the lifecycle of a project site: create, deploy, destroy, the push webhook.</p></div>
+          <div class="layer-card"><strong>App\Git\Providers</strong><p><code>GitHub</code>, <code>GitLab</code>,
+            <code>Bitbucket</code>, <code>AzureDevOps</code> behind one <code>GitProvider</code>: who a token belongs to, where it
+            may create repositories, the repository itself, the push webhook and how its deliveries are verified, the git user
+            name and the variables the agent's CLI and Larapilot read.</p></div>
+          <div class="layer-card"><strong>App\Server\Updates</strong><p>Reads the updater's state for
+            <em>Administration → System</em> and asks the helper to check, to start an update (forced or not), to switch the
+            channel or the nightly timer.</p></div>
+          <div class="layer-card"><strong>App\Server\SiteAccess</strong>, <strong>SitePass</strong><p>The access rules of a
+            host (always the Studio login, narrowed by address lists and branch overrides) and the one-time token and per-host pass that let a Studio member in.</p></div>
+          <div class="layer-card"><strong>App\Models\ProjectMcpServer</strong>, <strong>App\Mcp\McpProbe</strong><p>The MCP
+            servers of a project, with their encrypted header and roles, and the <code>initialize</code> call behind
+            <em>Test</em>.</p></div>
+          <div class="layer-card"><strong>Jobs</strong><p><code>ProvisionWorkspace</code>, <code>StartWorkspace</code>,
+            <code>StopWorkspace</code>, <code>SendTurn</code>, <code>AnswerPermission</code>, <code>RefreshWorkspaces</code>,
+            <code>ProvisionProjectSite</code>, <code>DeployProjectSite</code>, <code>ConfigureProjectSite</code>,
+            <code>DestroyProjectSite</code>, <code>SyncWorkspaceCredentials</code> on the database queue, so a clone or a build
+            never blocks a page.</p></div>
+        </div>
+
+        <h3>Events the bridge sends</h3>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Event</th><th>Studio does</th></tr></thead>
+            <tbody>
+              <tr><td><code>init</code></td><td>Keeps the session id and the model; the conversation is working</td></tr>
+              <tr><td><code>text_delta</code></td><td>Broadcasts the slice to the open chat; nothing stored</td></tr>
+              <tr><td><code>text</code>, <code>thinking</code></td><td>Stores an assistant message (reasoning hidden unless Details is on)</td></tr>
+              <tr><td><code>tool_use</code>, <code>tool_result</code></td><td>Stores the call and folds the result under it</td></tr>
+              <tr><td><code>permission_request</code></td><td>Creates the pending request; the conversation waits</td></tr>
+              <tr><td><code>permission_resolved</code></td><td>Marks the request if it was still open; working again</td></tr>
+              <tr><td><code>result</code></td><td>Idle (or failed), keeps cost and usage, closes dangling questions as denied</td></tr>
+              <tr><td><code>error</code></td><td>A red notice; the conversation is failed until the next message</td></tr>
+              <tr><td><code>status</code></td><td>Broadcast only (rate limits, background task notes)</td></tr>
+              <tr><td>anything else</td><td>Stored raw and hidden, so a renderer added later can show it</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="deep-dive-sub" id="deep-dive-bridge">
+        <h3>The bridge</h3>
+        <p>A zero-dependency Node service in <code>bridge/</code>. It starts, per conversation,
+          <code>claude -p --output-format stream-json --input-format stream-json --include-partial-messages --verbose
+          --permission-mode &lt;mode&gt; --permission-prompt-tool stdio</code>, keeps stdin open so the next turn is one more
+          line, and resumes with <code>--resume &lt;session&gt;</code> after the idle release. A <code>control_request</code>
+          of kind <code>can_use_tool</code> is held until Studio answers; the answer is written back as a
+          <code>control_response</code>.</p>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td>GET</td><td><code>/health</code></td><td>open: version and uptime only</td></tr>
+              <tr><td>GET</td><td><code>/info</code></td><td>version, workspace directory, sessions</td></tr>
+              <tr><td>POST</td><td><code>/conversations/{key}/turns</code></td><td><code>{text, session_id?, permission_mode?, model?, effort?, mcp_servers?, callback: {url, token}}</code> → 202, or 409 while a turn is still running; <code>mcp_servers</code> is <code>{name: {type: "http", url, headers}}</code>, and a change starts a new process</td></tr>
+              <tr><td>POST</td><td><code>/conversations/{key}/permissions/{request_id}</code></td><td><code>{behavior: allow|deny, message?}</code></td></tr>
+              <tr><td>POST</td><td><code>/conversations/{key}/interrupt</code></td><td>—</td></tr>
+              <tr><td>GET</td><td><code>/skills</code></td><td>custom skills from <code>.larapilot/skills</code> and <code>.claude/skills</code></td></tr>
+              <tr><td>POST</td><td><code>/run</code></td><td><code>{command}</code> → 202 with the run; refused with 422 when not on the allowlist</td></tr>
+              <tr><td>GET</td><td><code>/run</code>, <code>/run/{id}</code></td><td>recent runs, one run with its output so far</td></tr>
+              <tr><td>POST</td><td><code>/run/{id}/kill</code></td><td>stop a run</td></tr>
+              <tr><td>GET</td><td><code>/git</code></td><td>branch, status, stat, diff of the working tree</td></tr>
+              <tr><td>GET</td><td><code>/git/log?limit=</code>, <code>/git/branches</code>, <code>/git/commit/{sha}</code></td><td>history with parents and refs; local and remote branches; one commit with stat and patch</td></tr>
+              <tr><td>POST</td><td><code>/git/checkout</code>, <code>/git/fetch</code></td><td><code>{branch}</code> switches the working tree; fetch with prune</td></tr>
+              <tr><td>GET</td><td><code>/files?path=</code>, <code>/files/read?path=</code></td><td>one folder (folders first, <code>.git</code> hidden); a file's text with the hash of its bytes, or <code>binary</code> / <code>too_large</code></td></tr>
+              <tr><td>PUT</td><td><code>/files</code></td><td><code>{path, content, hash}</code> writes atomically; 409 when the file no longer matches <code>hash</code></td></tr>
+              <tr><td>POST</td><td><code>/files</code>, <code>/files/rename</code></td><td><code>{path, type}</code> creates a file or folder; <code>{from, to}</code> renames</td></tr>
+              <tr><td>DELETE</td><td><code>/files?path=</code></td><td>a file, or a folder with its contents; never the workspace itself</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Every route but <code>/health</code> wants <code>Authorization: Bearer $BRIDGE_TOKEN</code>. Environment:
+          <code>BRIDGE_TOKEN</code>, <code>BRIDGE_PORT</code> (4455), <code>BRIDGE_HOST</code> (127.0.0.1), <code>WORKSPACE_DIR</code>,
+          <code>CLAUDE_BIN</code>, <code>BRIDGE_IDLE_TTL</code> (600 s), <code>BRIDGE_FLUSH_MS</code> (200), and the
+          terminal and file limits in <a href="#deep-dive-config">Configuration</a>.</p>
+        <p class="cli-note">The protocol follows Claude Code's <code>stream-json</code> as documented by Spatie's Bloom.
+          <code>--permission-prompt-tool stdio</code> is not in Anthropic's documentation: workspaces run Claude Code with
+          auto-update off, so it changes only when you update it, and the bridge's tests, part of CI, run against a stand-in
+          that speaks the protocol.</p>
+      </section>
+
+      <section class="deep-dive-sub" id="deep-dive-server">
+        <h3>On the server</h3>
+        <p><code>studio-admin</code> is a bash script with root, allowed to the <code>studio</code> user through sudo for a
+          fixed list of commands. Names travel as arguments and are validated against <code>[a-z0-9-]</code>; secrets travel
+          as JSON on stdin; the answer is one JSON object. Studio calls it from queued jobs.</p>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Command</th><th>Does</th></tr></thead>
+            <tbody>
+              <tr><td><code>project-bootstrap &lt;slug&gt;</code></td><td>For a repository Studio just created: the latest Laravel, Laravel Boost and Larapilot, installed, committed and pushed.</td></tr>
+              <tr><td><code>project-create &lt;slug&gt;</code></td><td>Linux user, clone with the deploy token, database, <code>.env</code>, build with dev dependencies, migrations, PHP-FPM pool, Caddy host, the services of the project settings (cron, queue workers or Horizon, Reverb, Pulse) and the access check when the project has rules. Returns the Larapilot API token and the commit.</td></tr>
+              <tr><td><code>project-deploy &lt;slug&gt;</code></td><td>Fetch, reset to the branch, build, migrate, restart the services. Returns the commit.</td></tr>
+              <tr><td><code>project-configure</code>, <code>workspace-configure</code></td><td>Apply changed project settings to the site or to one preview: services, cron, Caddy host and access check.</td></tr>
+              <tr><td><code>project-delete &lt;slug&gt;</code></td><td>Removes services, host, pool, database, user and files.</td></tr>
+              <tr><td><code>workspace-create &lt;user&gt; &lt;slug&gt;</code></td><td>Linux user <code>ws-&lt;user&gt;</code> if new, the env file with the person's tokens, clone with their token, database copied from the site, <code>.env</code>, build, custom skills registered, pool, Caddy host, the bridge as a systemd service.</td></tr>
+              <tr><td><code>workspace-env</code></td><td>Rewrites the tokens (the git token and user name, the provider's variables for the agent, the Claude credential) and restarts the bridge.</td></tr>
+              <tr><td><code>workspace-start</code>, <code>-stop</code>, <code>-status</code>, <code>-delete</code></td><td>What they say. Stop also kills the person's processes in that directory.</td></tr>
+              <tr><td><code>update-check</code>, <code>update-start [force]</code>, <code>update-channel</code>, <code>update-auto</code></td><td>For the System page: ask <code>studio-update</code> what the channel would install, start <code>studio-update.service</code> or <code>studio-update-force.service</code> (their own units, so they outlive the queue worker they restart), switch the channel and the nightly timer.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Two drivers in Studio: <code>local</code> points every workspace at one bridge on the developer's machine, for
+          working on Studio itself; <code>native</code> is the one the installer configures. A workspace keeps the driver it
+          was created with.</p>
+      </section>
+
+      <section class="deep-dive-sub" id="deep-dive-security">
+        <h3>Security</h3>
+        <ul>
+          <li><strong>Accounts</strong>: invite-only; email and password with two-factor and passkeys; roles enforced by
+            policies on every page and action.</li>
+          <li><strong>Previews and sites</strong>: served over HTTPS by Caddy. A preview runs with <code>APP_DEBUG=true</code>:
+            every project host is behind the Studio login and the project assignment, narrowed by the
+            <a href="#setup-settings">access rules</a> (address lists, branch overrides), which Caddy checks before the app
+            sees the request. Studio's own session cookie never reaches a
+            project host.</li>
+          <li><strong>Bridge</strong>: listens on the loopback only, one port per workspace, with a token per workspace. Its
+            callbacks carry a second token per workspace that Studio stores hashed and matches on every request.</li>
+          <li><strong>Root</strong>: only <code>studio-admin</code>, through sudo, for named commands with validated arguments.
+            Studio never runs shell commands of its own.</li>
+          <li><strong>Secrets</strong>: git provider and Claude tokens, bridge and callback tokens, webhook secrets, MCP server headers
+            and the Larapilot API token are encrypted at rest with the app key. On the server, each person's tokens sit in a root-owned file
+            readable by their Linux user only, and git gets the token from the environment through an askpass helper, never
+            from a file.</li>
+          <li><strong>The agent</strong>: runs as <code>ws-&lt;user&gt;</code>; Unix permissions keep it out of other people's
+            homes and out of the project sites; managed settings deny reading the login files and disable bypass mode. It is
+            not a kernel boundary between two workspaces of the same person.</li>
+          <li><strong>Updates</strong>: <code>studio-update</code> runs as root and installs the release tags of the repository
+            in <code>studio.env</code> (and, on a beta server, the head of main). Whoever can push such a tag, or push to main
+            for beta servers, can run code as root on every server that updates from it: protect the tags and the branch, sign
+            them, and list the allowed keys in <code>/etc/studio/update-signers</code> so an unsigned or foreign build is
+            refused. Turn the nightly updates off to read each release before installing it.</li>
+          <li><strong>Transport</strong>: HTTPS everywhere; Studio's loopback listener on 8081 serves only the TLS question,
+            the access check of protected hosts and the bridges' callbacks.</li>
+        </ul>
+        <p>For zero public exposure put the server on a tailnet; then every person needs the client. Most agencies will keep
+          Studio public with two-factor on.</p>
+      </section>
+
+      <section class="deep-dive-sub" id="deep-dive-config">
+        <h3>Configuration</h3>
+        <p>The installer writes <code>/opt/studio/shared/.env</code>, which every release links. The keys that are Studio's own:</p>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Variable</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>STUDIO_DOMAIN</code></td><td>The domain every host hangs under</td></tr>
+              <tr><td><code>STUDIO_WORKSPACE_DRIVER</code></td><td><code>native</code> on a server, <code>local</code> while developing Studio</td></tr>
+              <tr><td><code>STUDIO_GIT_PROVIDER</code>, <code>STUDIO_GIT_URL</code></td><td><code>github</code>, <code>gitlab</code>, <code>bitbucket</code> or <code>azure</code>; the address of a self-managed GitLab, or <code>https://dev.azure.com/&lt;organization&gt;</code> (required for Azure DevOps). Change them only with <code>php artisan studio:git-provider</code>, while there are no projects</td></tr>
+              <tr><td><code>STUDIO_PHP_VERSIONS</code></td><td>The PHP versions a project can pick, kept by the installer and the updater in step with what is installed (<code>8.3,8.4,8.5</code>)</td></tr>
+              <tr><td><code>STUDIO_UPDATE_STATE</code>, <code>STUDIO_UPDATE_REPOSITORY</code></td><td>Where the updater leaves its state (<code>/var/lib/studio-update/state.json</code>); the repository the release links point at</td></tr>
+              <tr><td><code>STUDIO_HELPER</code>, <code>STUDIO_HELPER_SUDO</code>, <code>STUDIO_HELPER_TIMEOUT</code></td><td>Path of <code>studio-admin</code>, whether to go through sudo, seconds a command may take (1200)</td></tr>
+              <tr><td><code>STUDIO_BRIDGE_PORT_BASE</code></td><td>Bridges listen on 127.0.0.1 at base + workspace id (42000)</td></tr>
+              <tr><td><code>STUDIO_CALLBACK_URL</code>, <code>STUDIO_BRIDGE_TIMEOUT</code></td><td>Where bridges post events: <code>http://127.0.0.1:8081/api/bridge/events</code> on a server; seconds Studio waits for a bridge (15)</td></tr>
+              <tr><td><code>STUDIO_LOCAL_BRIDGE_URL</code>, <code>STUDIO_LOCAL_BRIDGE_TOKEN</code>, <code>STUDIO_LOCAL_APP_URL</code></td><td>The one bridge and preview of the local driver</td></tr>
+              <tr><td><code>REVERB_*</code>, <code>VITE_REVERB_*</code></td><td>Websockets for the live chat; Caddy proxies <code>/app</code> and <code>/apps</code> on the Studio host to Reverb</td></tr>
+              <tr><td><code>APP_LOCALE</code></td><td><code>en</code> by default; <code>it</code> ships in <code>lang/it.json</code></td></tr>
+              <tr><td><code>BRIDGE_FILE_MAX</code></td><td>Bridge: largest file the Files tab opens or saves, in bytes (512 KB)</td></tr>
+              <tr><td><code>BRIDGE_RUN_TIMEOUT</code>, <code>BRIDGE_RUN_OUTPUT</code>, <code>BRIDGE_RUN_HISTORY</code></td><td>Bridge: seconds a terminal command may run (600), bytes of output kept (200 KB), runs remembered (20)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>config/studio.php</code> holds the permission preset and the allowed modes per role, the
+          model and effort lists, and the terminal shortcuts. What changes per project (services, access rules, MCP servers)
+          lives in the project settings, not in files.
+          <code>/etc/studio/studio.env</code> holds what the helper and the updater need: the domain, the paths, the PHP that
+          runs Studio, the repository releases come from (<code>STUDIO_REPO</code>), <code>AUTO_UPDATE</code> and
+          <code>UPDATE_CHANNEL</code> (<code>stable</code> or <code>beta</code>).</p>
+      </section>
+
+      <section class="deep-dive-sub" id="deep-dive-local">
+        <h3>Local development</h3>
+        <div class="install-commands">
+          <div class="install-commands-header">Terminal</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">1</span>
+              <code class="install-command-text">composer setup &amp;&amp; php artisan studio:make-admin</code>
+              <button type="button" class="install-copy-btn" data-copy="composer setup && php artisan studio:make-admin" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">2</span>
+              <code class="install-command-text">composer run dev   # server, queue, logs, vite · add: php artisan reverb:start</code>
+              <button type="button" class="install-copy-btn" data-copy="composer run dev" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">3</span>
+              <code class="install-command-text">cd ~/code/some-laravel-app &amp;&amp; BRIDGE_TOKEN=local-bridge-token WORKSPACE_DIR=$PWD node ~/code/studio/bridge/bin/bridge.js</code>
+              <button type="button" class="install-copy-btn" data-copy="BRIDGE_TOKEN=local-bridge-token WORKSPACE_DIR=$PWD node ../studio/bridge/bin/bridge.js" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+        <p>The bridge drives the <code>claude</code> on your machine with your login. Create a project in Administration, add
+          yourself, open it: with the <code>local</code> driver the workspace is running at once and the chat talks to that
+          bridge, no git provider or Claude connection needed. <code>php artisan db:seed --class=DemoSeeder</code> gives the agency of
+          the screenshots, password <code>password</code> for everyone.</p>
+        <div class="install-commands">
+          <div class="install-commands-header">Checks</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">✓</span>
+              <code class="install-command-text">composer test          # pint, phpstan, pest</code>
+              <button type="button" class="install-copy-btn" data-copy="composer test" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">✓</span>
+              <code class="install-command-text">cd bridge &amp;&amp; npm test   # node:test with a stand-in Claude CLI</code>
+              <button type="button" class="install-copy-btn" data-copy="cd bridge && npm test" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">✓</span>
+              <code class="install-command-text">bash tests/installer/studio-update.test.sh   # the updater in a sandbox</code>
+              <button type="button" class="install-copy-btn" data-copy="bash tests/installer/studio-update.test.sh" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <p>Studio v1.0 · Open source · MIT · <a href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a> · <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a></p>
+    <p>Made by <a href="https://web.ap.it" target="_blank" rel="noopener">Andrea Pollastri</a></p>
+  </footer>
+
+  <script>
+    (function () {
+      const hamburger = document.getElementById("nav-hamburger");
+      const navLinks = document.getElementById("nav-links");
+      if (hamburger && navLinks) {
+        hamburger.addEventListener("click", () => {
+          const open = navLinks.classList.toggle("open");
+          hamburger.classList.toggle("open", open);
+          hamburger.setAttribute("aria-expanded", open);
+        });
+        navLinks.querySelectorAll("a").forEach((a) => {
+          a.addEventListener("click", () => {
+            navLinks.classList.remove("open");
+            hamburger.classList.remove("open");
+            hamburger.setAttribute("aria-expanded", "false");
+          });
+        });
+      }
+
+      const copyFlash = async (btn, text) => {
+        try {
+          await navigator.clipboard.writeText(text);
+          const prev = btn.textContent;
+          btn.textContent = "Copied";
+          btn.classList.add("copied");
+          setTimeout(() => { btn.textContent = prev || "Copy"; btn.classList.remove("copied"); }, 1600);
+        } catch (_) {
+          btn.textContent = "Failed";
+          setTimeout(() => { btn.textContent = "Copy"; }, 1600);
+        }
+      };
+      document.querySelectorAll(".install-copy-btn[data-copy]").forEach((btn) => {
+        btn.addEventListener("click", () => copyFlash(btn, btn.getAttribute("data-copy") || ""));
+      });
+
+      const sections = [...document.querySelectorAll(".docs-main section[id]")];
+      const tocLinks = [...document.querySelectorAll(".docs-nav a")];
+      const anchorOffsetPx = () => {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue("--docs-anchor-offset").trim();
+        const probe = document.createElement("div");
+        probe.style.cssText = "position:absolute;visibility:hidden;height:" + raw;
+        document.body.appendChild(probe);
+        const px = probe.getBoundingClientRect().height || 112;
+        probe.remove();
+        return px;
+      };
+      const sectionTop = (el) => el.getBoundingClientRect().top + window.scrollY;
+      const setActive = () => {
+        const y = window.scrollY + anchorOffsetPx() + 12;
+        let current = sections[0]?.id;
+        for (const s of sections) { if (sectionTop(s) <= y) current = s.id; }
+        tocLinks.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + current));
+      };
+      setActive();
+      window.addEventListener("load", () => requestAnimationFrame(() => document.documentElement.classList.add("smooth")));
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+    })();
+  </script>
+</body>
+</html>

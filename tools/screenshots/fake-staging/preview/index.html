@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Shop Acme · Orders</title>
+<style>
+body{margin:0;font-family:-apple-system,"Segoe UI",sans-serif;background:#f6f7f9;color:#1f2937}
+.top{background:#111827;color:#fff;padding:12px 20px;display:flex;align-items:center;gap:20px;font-size:14px}
+.top b{font-size:15px}.top span{opacity:.7}
+.wrap{padding:20px}
+h1{font-size:20px;margin:0 0 14px}
+.filters{display:flex;gap:10px;align-items:end;margin-bottom:14px;flex-wrap:wrap}
+label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;display:block;margin-bottom:4px}
+input{border:1px solid #d1d5db;border-radius:6px;padding:7px 9px;font-size:14px;background:#fff}
+.btn{background:#2563eb;color:#fff;border:0;border-radius:6px;padding:8px 14px;font-size:14px}
+.new{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:6px 10px;border-radius:6px;font-size:12px}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-size:14px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid #f1f5f9}th{background:#f9fafb;font-size:12px;color:#6b7280}
+.pill{padding:2px 8px;border-radius:999px;font-size:12px}.ok{background:#dcfce7;color:#166534}.wait{background:#fef9c3;color:#854d0e}.ship{background:#dbeafe;color:#1e40af}
+</style></head><body>
+<div class="top"><b>Shop Acme</b><span>Back office</span><span>Orders</span><span>Customers</span><span>Returns</span></div>
+<div class="wrap"><h1>Orders</h1>
+<div class="filters">
+<div><label>Order number</label><input placeholder="#10432" size="12"></div>
+<div><label>From</label><input type="date" value="2026-09-01"></div>
+<div><label>To</label><input type="date" value="2026-09-30"></div>
+<button class="btn">Filter</button><span class="new">new: date range filter · US-014</span>
+</div>
+<table><thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>
+<tr><td>#10432</td><td>Elena Ferri</td><td>2026-09-29</td><td>€148.00</td><td><span class="pill ship">shipped</span></td></tr>
+<tr><td>#10431</td><td>Marco Vitali</td><td>2026-09-28</td><td>€62.50</td><td><span class="pill ok">delivered</span></td></tr>
+<tr><td>#10429</td><td>Sara Neri</td><td>2026-09-27</td><td>€219.90</td><td><span class="pill wait">processing</span></td></tr>
+<tr><td>#10425</td><td>Paolo Greco</td><td>2026-09-21</td><td>€35.00</td><td><span class="pill ok">delivered</span></td></tr>
+<tr><td>#10418</td><td>Anna Riva</td><td>2026-09-12</td><td>€89.00</td><td><span class="pill ok">delivered</span></td></tr>
+<tr><td>#10411</td><td>Davide Moro</td><td>2026-09-03</td><td>€410.00</td><td><span class="pill ok">delivered</span></td></tr>
+</tbody></table></div></body></html>

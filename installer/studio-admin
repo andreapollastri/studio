@@ -1,0 +1,791 @@
+#!/usr/bin/env bash
+#
+# studio-admin — the privileged helper of Studio.
+#
+# Installed by installer/install.sh in /usr/local/sbin, runnable by the
+# `studio` user through sudo without a password. Studio calls it from queued
+# jobs; names travel as arguments, secrets as a JSON object on stdin, and the
+# answer is one JSON object on stdout ({"ok":true,...} or {"ok":false,"error":"…"}).
+#
+# Git travels as git_token + git_username (what git sends over HTTPS to the
+# installation's provider: GitHub, GitLab, Bitbucket or Azure DevOps); a
+# workspace also gets git_env, the variables the agent's CLI and Larapilot read.
+#
+#   project-bootstrap <slug>           {repo_url, branch, php_version, git_token, git_username, git_provider, git_name, git_email}
+#                                      a repository Studio just created: fresh Laravel + Boost + Larapilot, pushed
+#   project-create   <slug>            {repo_url, branch, php_version, db_engine, site_host, git_token, git_username}
+#   project-deploy   <slug>            {branch, php_version, git_token, git_username}
+#   project-configure <slug>           {php_version, site_host, scheduler, queues, reverb, reverb_port, horizon, pulse}
+#   project-delete   <slug>
+#   workspace-create <handle> <slug>   {repo_url, branch, php_version, db_engine, preview_host, bridge_port,
+#                                       bridge_token, git_token, git_username, git_env, claude_env, claude_token, git_name, git_email}
+#   workspace-env    <handle> <slug>   {git_token, git_username, git_env, claude_env, claude_token}
+#   workspace-start | workspace-stop | workspace-status | workspace-delete | workspace-configure <handle> <slug>
+#   update-check | update-start [force] | update-auto <on|off> | update-channel <stable|beta>
+#                                      the root updater (studio-update), for Administration → System
+#
+set -euo pipefail
+umask 027
+# bash 5.2 expands `&` in ${var//pattern/replacement}: values (tokens, snippets) must stay literal
+shopt -u patsub_replacement 2>/dev/null || true
+
+ETC=/etc/studio
+TPL=$ETC/templates
+PROJECTS=/srv/studio/projects
+WORKSPACES=/srv/studio/workspaces
+ASKPASS=/usr/local/lib/studio/askpass
+
+[ "$(id -u)" = 0 ] || { echo '{"ok":false,"error":"studio-admin must run as root"}'; exit 1; }
+# shellcheck disable=SC1091
+. "$ETC/studio.env"
+
+# ---------------------------------------------------------------- plumbing --
+
+INPUT=$(cat || true)
+[ -n "$INPUT" ] || INPUT='{}'
+
+# The answer goes to fd 3, the helper's own stdout, also from inside $(…) (require_field):
+# Studio reads the first JSON line it finds there.
+exec 3>&1
+REPORTED=0
+fail() { REPORTED=1; printf '{"ok":false,"error":%s}\n' "$(printf '%s' "$1" | jq -Rs .)" >&3; exit 1; }
+# set -e stops the helper at any command that fails: say which one, as JSON, or Studio gets
+# only stderr. An EXIT trap, because an ERR trap does not fire inside functions without
+# set -E, and with set -E it fires inside every $(…) whose failure the caller handles.
+on_exit() {
+    local rc=$? cmd=$BASH_COMMAND
+    [ "$rc" = 0 ] || [ "$REPORTED" = 1 ] || \
+        printf '{"ok":false,"unexpected":true,"error":%s}\n' "$(printf 'studio-admin stopped (exit %s) at: %s' "$rc" "$cmd" | jq -Rs .)" >&3
+}
+trap on_exit EXIT
+field() { printf '%s' "$INPUT" | jq -r --arg k "$1" '.[$k] // empty'; }
+# has_field KEY — the key was sent at all (a null or empty value counts): "clear it" against "leave it"
+has_field() { printf '%s' "$INPUT" | jq -e --arg k "$1" 'has($k)' >/dev/null 2>&1; }
+require_field() { local v; v=$(field "$1"); [ -n "$v" ] || fail "missing input field: $1"; printf '%s' "$v"; }
+
+# Names become Linux users (prj-<slug>, ws-<handle>: 32 characters at most), database names and
+# host labels (<handle>-<slug>: 63 at most); Studio validates the same lengths, this is the backstop.
+valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,27}$ ]] || fail "invalid name: $1"; }
+# A branch is passed to git as a positional argument: it must never look like an option.
+valid_branch() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$1" != *..* ]] && [[ "$1" != *.lock ]] || fail "invalid branch name: $1"; }
+valid_php()  { [[ "$1" =~ ^[0-9]+\.[0-9]+$ ]] && [ -x "/usr/bin/php$1" ] || fail "PHP $1 is not installed"; }
+reload_all_fpm() { local d; for d in /etc/php/*/fpm; do [ -d "$d" ] && systemctl reload "php$(basename "$(dirname "$d")")-fpm" 2>/dev/null || true; done; }
+
+# The variables a workspace may get for the agent's CLI and Larapilot, on any provider.
+GIT_AGENT_VARS=(GITHUB_TOKEN GH_TOKEN GITLAB_TOKEN GLAB_TOKEN GITLAB_HOST BITBUCKET_ACCESS_TOKEN AZURE_DEVOPS_EXT_PAT)
+
+# write_git_env FILE — GIT_TOKEN and GIT_USERNAME for the askpass helper, from the input
+write_git_env() {
+    local f=$1 token user
+    token=$(field git_token); user=$(field git_username)
+    [ -n "$token" ] || return 0
+    [[ "$user" =~ ^[A-Za-z0-9._@-]{1,64}$ ]] || user=x-access-token
+    # quoted: this file is sourced by a shell; an unquoted token can truncate at # or $
+    unset_env "$f" GIT_TOKEN GIT_USERNAME
+    printf "GIT_TOKEN='%s'\nGIT_USERNAME='%s'\n" "${token//\'/\'\\\'\'}" "$user" >> "$f"
+}
+valid_engine() { [[ "$1" =~ ^(mariadb|pgsql)$ ]] || fail "database engine must be mariadb or pgsql"; }
+dbname() { printf '%s' "$1" | tr '-' '_' | cut -c1-60; }
+log() { printf '[studio-admin] %s\n' "$*" >&2; }
+
+render() { # render TEMPLATE OUT KEY=VALUE...
+    local tpl=$1 out=$2; shift 2
+    local content; content=$(cat "$tpl")
+    for kv in "$@"; do
+        local k=${kv%%=*} v=${kv#*=}
+        content=${content//__${k}__/$v}
+    done
+    printf '%s\n' "$content" > "$out"
+    # umask 027 would leave these root:root 640. Caddy's reload runs as user caddy and must read them.
+    case "$out" in
+        /etc/caddy/*) chmod 644 "$out" ;;
+    esac
+}
+
+reload_fpm() { systemctl reload "php$1-fpm"; }
+
+# try_reload_caddy — validate, then reload; on failure CADDY_ERR says why. Caddy reloads as
+# user caddy: every file it imports must be readable by it, or the reload fails although
+# `caddy validate` (root) passes ("Could not import …: permission denied").
+try_reload_caddy() {
+    local err
+    CADDY_ERR=""
+    chmod 755 /etc/caddy /etc/caddy/sites 2>/dev/null || true
+    chmod 644 /etc/caddy/Caddyfile /etc/caddy/sites/*.caddy 2>/dev/null || true
+    if ! err=$(caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
+        CADDY_ERR="the Caddy configuration did not validate: $(printf '%s\n' "$err" | grep -v '"level":"\(info\|warn\)"' | tail -n 4 | tr '\n' ' ')"
+        return 1
+    fi
+    # A stopped Caddy ignores `reload`: start it again.
+    if systemctl is-active --quiet caddy; then
+        err=$(systemctl reload caddy 2>&1) && return 0
+    else
+        err=$(systemctl restart caddy 2>&1) && return 0
+    fi
+    CADDY_ERR="Caddy did not reload: $(printf '%s' "$err" | tr '\n' ' ')| $(journalctl -u caddy -n 6 --no-pager -o cat 2>/dev/null | tr '\n' ' ')"
+    return 1
+}
+reload_caddy() { try_reload_caddy || fail "$CADDY_ERR"; }
+
+set_env() { # set_env FILE KEY VALUE — the value is literal: `\`, `&` and `|` mean nothing to sed here
+    local f=$1 k=$2 v=${3//$'\n'/} escaped
+    escaped=$(printf '%s' "$v" | sed -e 's/[\\&|]/\\&/g')
+    if grep -qE "^${k}=" "$f" 2>/dev/null; then sed -i "s|^${k}=.*|${k}=${escaped}|" "$f"; else printf '%s=%s\n' "$k" "$v" >> "$f"; fi
+}
+unset_env() { # unset_env FILE KEY...
+    local f=$1 k; shift
+    [ -f "$f" ] || return 0
+    for k in "$@"; do sed -i "/^${k}=/d" "$f"; done
+}
+
+# grant_web APPDIR — Caddy (user caddy) serves public/ itself: static files, and the
+# stat behind php_fastcgi's try_files. The app is cloned with umask 027, so Caddy
+# gets its way in through ACLs: traverse the app, read public/ (and the storage
+# behind public/storage), nothing else.
+grant_web() {
+    local app=$1
+    setfacl -m u:caddy:x "$(dirname "$app")" "$app" 2>/dev/null || true
+    [ -d "$app/public" ] && setfacl -R -m u:caddy:rX -m d:u:caddy:rX "$app/public"
+    if [ -d "$app/storage/app/public" ]; then
+        setfacl -m u:caddy:x "$app/storage" "$app/storage/app"
+        setfacl -R -m u:caddy:rX -m d:u:caddy:rX "$app/storage/app/public"
+    fi
+    return 0
+}
+
+# https://user@host/… so git asks only for a password; askpass then sends the token.
+# Without a user in the URL, git may send the token as a password and no username:
+# GitHub answers "Invalid username or token. Password authentication is not supported".
+git_https_with_user() {
+    local url=$1 user
+    user=$(field git_username)
+    [[ "$user" =~ ^[A-Za-z0-9._@-]{1,64}$ ]] || user=x-access-token
+    case "$url" in
+        https://*@*) printf '%s' "$url" ;;
+        https://*)   printf 'https://%s@%s' "$user" "${url#https://}" ;;
+        *)           printf '%s' "$url" ;;
+    esac
+}
+
+# clone_repo USER DIR ENVFILE REPO BRANCH DEST — a clone whose failure says which of the three
+# things went wrong: the URL or the token (the remote is unreachable), or the branch (it is not
+# there, and the ones that are get listed)
+clone_repo() {
+    local user=$1 dir=$2 envfile=$3 repo=$4 branch=$5 dest=$6 heads err remote
+    [ -x "$ASKPASS" ] || fail "the git askpass helper is missing ($ASKPASS)"
+    remote=$(git_https_with_user "$repo")
+    err=$(mktemp)
+    if ! heads=$(run_as "$user" "$dir" "$envfile" git ls-remote --heads "$remote" 2>"$err"); then
+        local why; why=$(grep -m1 -E 'fatal|remote:|error' "$err" | sed 's/^fatal: //' | cut -c1-160 || true); rm -f "$err"
+        fail "the repository cannot be read: check the URL and that the token has access to it${why:+ (git: $why)}"
+    fi
+    rm -f "$err"
+    if ! printf '%s\n' "$heads" | grep -q "[[:space:]]refs/heads/${branch}\$"; then
+        local have; have=$(printf '%s\n' "$heads" | sed -n 's#.*refs/heads/##p' | head -n 8 | paste -sd' ' -)
+        fail "branch '$branch' does not exist on the repository; it has: ${have:-no branches at all (an empty repository)}"
+    fi
+    # what an interrupted clone left behind: git clone refuses a directory that is not empty
+    if [ -d "$dest" ] && [ ! -d "$dest/.git" ]; then rm -rf "${dest:?}"; fi
+    err=$(mktemp)
+    run_as "$user" "$dir" "$envfile" git clone -q --branch "$branch" "$remote" "$dest" 2>"$err" \
+        || { local why; why=$(grep -m1 -E 'fatal|remote:|error' "$err" | cut -c1-160 || true); rm -f "$err"; fail "git clone failed${why:+: $why}"; }
+    rm -f "$err"
+    run_as "$user" "$dest" "$envfile" git remote set-url origin "$repo"
+}
+
+# run_as USER DIR ENVFILE command... — a git/composer/artisan step as the owner, with the token
+# in the environment. env -i would drop it; the sourced .env may overwrite it: keep the value
+# Studio sent on stdin (that is the one that was just checked).
+run_as() {
+    local user=$1 dir=$2 envfile=$3; shift 3
+    local git_token git_user
+    git_token=$(field git_token)
+    git_user=$(field git_username)
+    [[ "$git_user" =~ ^[A-Za-z0-9._@-]{1,64}$ ]] || git_user=x-access-token
+    sudo -u "$user" env -i HOME="$(getent passwd "$user" | cut -d: -f6)" PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        GIT_ASKPASS="$ASKPASS" GIT_TERMINAL_PROMPT=0 COMPOSER_NO_INTERACTION=1 \
+        GIT_TOKEN="$git_token" GIT_USERNAME="$git_user" \
+        bash -c 'saved_token=$GIT_TOKEN; saved_user=$GIT_USERNAME; set -a; [ -f "$0" ] && . "$0"; set +a; export GIT_TOKEN="${saved_token:-$GIT_TOKEN}" GIT_USERNAME="${saved_user:-$GIT_USERNAME}"; cd "$1"; shift; exec "$@"' "$envfile" "$dir" "$@"
+}
+
+# ---------------------------------------------------------------- databases -
+
+db_create() { # db_create ENGINE NAME PASSWORD
+    case "$1" in
+        mariadb)
+            mariadb <<SQL
+CREATE DATABASE IF NOT EXISTS \`$2\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '$2'@'localhost' IDENTIFIED BY '$3';
+ALTER USER '$2'@'localhost' IDENTIFIED BY '$3';
+GRANT ALL PRIVILEGES ON \`$2\`.* TO '$2'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+            ;;
+        pgsql)
+            sudo -u postgres psql -qtAc "SELECT 1 FROM pg_roles WHERE rolname='$2'" | grep -q 1 \
+                || sudo -u postgres psql -qc "CREATE ROLE \"$2\" LOGIN PASSWORD '$3'"
+            sudo -u postgres psql -qc "ALTER ROLE \"$2\" PASSWORD '$3'"
+            sudo -u postgres psql -qtAc "SELECT 1 FROM pg_database WHERE datname='$2'" | grep -q 1 \
+                || sudo -u postgres psql -qc "CREATE DATABASE \"$2\" OWNER \"$2\""
+            ;;
+    esac
+}
+
+db_clone() { # db_clone ENGINE FROM TO -> 0 when data was copied
+    case "$1" in
+        mariadb) mariadb -e "USE \`$2\`" 2>/dev/null || return 1
+                 mariadb-dump --single-transaction --no-tablespaces --routines --triggers "$2" | mariadb "$3" ;;
+        pgsql)   sudo -u postgres psql -qtAc "SELECT 1 FROM pg_database WHERE datname='$2'" | grep -q 1 || return 1
+                 # restored as the workspace's role: tables owned by postgres would be out of the app's reach
+                 { printf 'SET ROLE "%s";\n' "$3"; sudo -u postgres pg_dump --no-owner --no-acl "$2"; } | sudo -u postgres psql -q -d "$3" >/dev/null ;;
+    esac
+}
+
+db_drop() { # db_drop ENGINE NAME
+    case "$1" in
+        mariadb) mariadb -e "DROP DATABASE IF EXISTS \`$2\`; DROP USER IF EXISTS '$2'@'localhost';" ;;
+        pgsql)   sudo -u postgres psql -qc "DROP DATABASE IF EXISTS \"$2\"" ; sudo -u postgres psql -qc "DROP ROLE IF EXISTS \"$2\"" ;;
+    esac
+}
+
+db_port() { [ "$1" = pgsql ] && echo 5432 || echo 3306; }
+db_connection() { [ "$1" = pgsql ] && echo pgsql || echo mysql; }
+
+# ---------------------------------------------------------------- laravel ---
+
+# write_env APPDIR URL ENV DEBUG ENGINE DBNAME DBPASS PREFIX
+write_env() {
+    local app=$1 url=$2 env=$3 debug=$4 engine=$5 db=$6 pass=$7 prefix=$8
+    [ -f "$app/.env" ] || { [ -f "$app/.env.example" ] && cp "$app/.env.example" "$app/.env" || touch "$app/.env"; }
+    set_env "$app/.env" APP_ENV "$env"
+    set_env "$app/.env" APP_DEBUG "$debug"
+    set_env "$app/.env" APP_URL "$url"
+    set_env "$app/.env" DB_CONNECTION "$(db_connection "$engine")"
+    set_env "$app/.env" DB_HOST 127.0.0.1
+    set_env "$app/.env" DB_PORT "$(db_port "$engine")"
+    set_env "$app/.env" DB_DATABASE "$db"
+    set_env "$app/.env" DB_USERNAME "$db"
+    set_env "$app/.env" DB_PASSWORD "$pass"
+    set_env "$app/.env" REDIS_HOST 127.0.0.1
+    set_env "$app/.env" REDIS_PREFIX "$prefix"
+    set_env "$app/.env" CACHE_STORE redis
+    set_env "$app/.env" CACHE_PREFIX "$prefix"
+    set_env "$app/.env" QUEUE_CONNECTION redis
+    set_env "$app/.env" SESSION_DRIVER redis
+}
+
+# build USER APPDIR ENVFILE PHP MODE — MODE 1: a workspace (dev dependencies);
+# staging: the project site (dev dependencies too, since Larapilot and Boost are
+# dev dependencies and the site serves Larapilot's dashboard and API; autoloader
+# optimised); 0: production-like, no dev dependencies.
+build() {
+    local user=$1 app=$2 envfile=$3 php=$4 dev=$5
+    # ${app} cannot be expanded in the same `local` as its assignment (set -u).
+    local build_log="${app%/*}/build.log"
+    : > "$build_log"; chmod 644 "$build_log"
+    if [ -f "$app/composer.json" ]; then
+        case "$dev" in
+            1) run_as "$user" "$app" "$envfile" "php$php" /usr/local/bin/composer install --prefer-dist --no-progress --quiet >>"$build_log" 2>&1 ;;
+            staging) run_as "$user" "$app" "$envfile" "php$php" /usr/local/bin/composer install --prefer-dist --no-progress --optimize-autoloader --quiet >>"$build_log" 2>&1 ;;
+            *) run_as "$user" "$app" "$envfile" "php$php" /usr/local/bin/composer install --no-dev --prefer-dist --no-progress --optimize-autoloader --quiet >>"$build_log" 2>&1 ;;
+        esac || fail "composer install failed: $(tail -n 8 "$build_log" | tr '\n' ' ')"
+    fi
+    if [ -f "$app/package.json" ]; then
+        run_as "$user" "$app" "$envfile" bash -c 'npm ci --no-audit --no-fund --silent || npm install --no-audit --no-fund --silent' >>"$build_log" 2>&1 \
+            || fail "npm install failed: $(tail -n 8 "$build_log" | tr '\n' ' ')"
+        # Laravel's font plugin wants this optional package; without it some Vite builds fail.
+        run_as "$user" "$app" "$envfile" bash -c 'npm install fontaine --no-save --no-audit --no-fund --silent 2>/dev/null || true'
+        if run_as "$user" "$app" "$envfile" bash -c 'node -e "process.exit((require(\"./package.json\").scripts||{}).build?0:1)" && npm run build --silent' >>"$build_log" 2>&1; then
+            :
+        else
+            fail "npm run build failed (full log: $build_log): $(tail -n 12 "$build_log" | tr '\n' ' ')"
+        fi
+    fi
+    grep -qE '^APP_KEY=.+' "$app/.env" || run_as "$user" "$app" "$envfile" "php$php" artisan key:generate --force --quiet
+    run_as "$user" "$app" "$envfile" "php$php" artisan storage:link --force --quiet >/dev/null 2>&1 || true
+}
+
+# ---------------------------------------------------------------- services --
+# Every project host (the site and each workspace preview) gets the scheduler
+# (cron every minute) and one queue worker per queue; Horizon replaces the
+# workers when switched on; Reverb and Pulse run when switched on. The
+# switches come from the input fields scheduler, horizon, reverb, pulse (1|0),
+# queues (comma separated) and reverb_port, as Studio stores them per project.
+
+caddy_ws_snippet() { # MATCHER PORT — empty port = no Reverb on this host
+    [ -n "$2" ] || return 0
+    printf '    @ws_%s path /app/* /apps/*\n    reverse_proxy @ws_%s 127.0.0.1:%s' "$1" "$1" "$2"
+}
+
+reverb_port_if_on() { [ "$(field reverb)" = 1 ] && field reverb_port || true; }
+
+# render_site OUT MATCHER HOST ROOT POOL APP_ENV WSPORT — the host's file, live in Caddy (the
+# login in front of every project host is the Caddyfile's own forward_auth). When Caddy refuses it, the previous file comes back (or none): a file left there
+# would break every later reload, Studio's updates included, and Caddy's next start.
+render_site() {
+    local out=$1 prev="$1.prev" why
+    rm -f "$prev"
+    if [ -f "$out" ]; then cp -p "$out" "$prev"; fi
+    render "$TPL/site.caddy.tpl" "$out" MATCHER="$2" HOST="$3" ROOT="$4" POOL="$5" APP_ENV="$6" WS="$(caddy_ws_snippet "$2" "$7")"
+    if try_reload_caddy; then rm -f "$prev"; return 0; fi
+    why=$CADDY_ERR
+    if [ -f "$prev" ]; then mv -f "$prev" "$out"; else rm -f "$out"; fi
+    try_reload_caddy || true
+    fail "$why"
+}
+
+# apply_services BASE USER APPDIR PHP LOGDIR HOST
+apply_services() {
+    local base=$1 user=$2 app=$3 php=$4 logdir=$5 host=$6
+    local scheduler queues reverb rport horizon pulse
+    scheduler=$(field scheduler); queues=$(field queues); reverb=$(field reverb); rport=$(field reverb_port)
+    horizon=$(field horizon); pulse=$(field pulse)
+    [ -n "$scheduler" ] || scheduler=1; [ -n "$queues" ] || queues=default; [ -n "$reverb" ] || reverb=0
+    [ -n "$horizon" ] || horizon=0; [ -n "$pulse" ] || pulse=0
+
+    local wanted=() q f unit
+    # Horizon supervises the queues itself: no plain workers next to it.
+    [ "$horizon" = 1 ] || IFS=',' read -ra wanted <<< "$queues"
+    for q in "${wanted[@]+"${wanted[@]}"}"; do
+        [[ "$q" =~ ^[a-z0-9][a-z0-9_-]{0,39}$ ]] || fail "invalid queue name: $q"
+    done
+    for f in /etc/systemd/system/"$base"-queue-*.service; do
+        [ -e "$f" ] || continue
+        unit=$(basename "$f" .service); q=${unit#"$base"-queue-}
+        printf '%s\n' "${wanted[@]+"${wanted[@]}"}" | grep -qx "$q" || { systemctl disable --now "$unit" >/dev/null 2>&1 || true; rm -f "$f"; }
+    done
+    for q in "${wanted[@]+"${wanted[@]}"}"; do
+        render "$TPL/site-queue.service.tpl" "/etc/systemd/system/$base-queue-$q.service" NAME="$base ($q)" USER="$user" APP_DIR="$app" PHP="php$php" QUEUE="$q"
+    done
+
+    if [ "$scheduler" = 1 ]; then
+        printf '* * * * * %s cd %s && /usr/bin/php%s artisan schedule:run >> %s/schedule.log 2>&1\n' "$user" "$app" "$php" "$logdir" > "/etc/cron.d/$base"
+        chmod 644 "/etc/cron.d/$base"
+    else
+        rm -f "/etc/cron.d/$base"
+    fi
+
+    if [ "$reverb" = 1 ]; then
+        [[ "$rport" =~ ^[0-9]{4,5}$ ]] || fail "invalid reverb port"
+        grep -qE '^REVERB_APP_ID=.+' "$app/.env" || set_env "$app/.env" REVERB_APP_ID "$(shuf -i 100000-999999 -n1)"
+        grep -qE '^REVERB_APP_KEY=.+' "$app/.env" || set_env "$app/.env" REVERB_APP_KEY "$(openssl rand -hex 10)"
+        grep -qE '^REVERB_APP_SECRET=.+' "$app/.env" || set_env "$app/.env" REVERB_APP_SECRET "$(openssl rand -hex 10)"
+        set_env "$app/.env" BROADCAST_CONNECTION reverb
+        set_env "$app/.env" REVERB_HOST "$host"
+        set_env "$app/.env" REVERB_PORT 443
+        set_env "$app/.env" REVERB_SCHEME https
+        set_env "$app/.env" REVERB_SERVER_HOST 127.0.0.1
+        set_env "$app/.env" REVERB_SERVER_PORT "$rport"
+        set_env "$app/.env" VITE_REVERB_APP_KEY '"${REVERB_APP_KEY}"'
+        set_env "$app/.env" VITE_REVERB_HOST '"${REVERB_HOST}"'
+        set_env "$app/.env" VITE_REVERB_PORT '"${REVERB_PORT}"'
+        set_env "$app/.env" VITE_REVERB_SCHEME '"${REVERB_SCHEME}"'
+    fi
+    daemon "$base" reverb "$reverb" "$user" "$app" "$php" "reverb:start --host=127.0.0.1 --port=$rport"
+    daemon "$base" horizon "$horizon" "$user" "$app" "$php" horizon
+    daemon "$base" pulse "$pulse" "$user" "$app" "$php" pulse:check
+
+    systemctl daemon-reload
+    for f in /etc/systemd/system/"$base"-queue-*.service /etc/systemd/system/"$base"-{reverb,horizon,pulse}.service; do
+        [ -e "$f" ] || continue
+        unit=$(basename "$f" .service)
+        systemctl enable "$unit" >/dev/null 2>&1 || true
+        systemctl restart "$unit" >/dev/null 2>&1 || log "$unit did not start"
+    done
+}
+
+# daemon BASE NAME ON(1|0) USER APPDIR PHP "ARTISAN ARGS" — one long-running artisan command as a unit, or none
+daemon() {
+    local base=$1 name=$2 on=$3 user=$4 app=$5 php=$6 args=$7
+    if [ "$on" = 1 ]; then
+        render "$TPL/site-daemon.service.tpl" "/etc/systemd/system/$base-$name.service" NAME="$name for $base" USER="$user" APP_DIR="$app" PHP="php$php" ARGS="$args"
+    else
+        systemctl disable --now "$base-$name" >/dev/null 2>&1 || true
+        rm -f "/etc/systemd/system/$base-$name.service"
+    fi
+}
+
+service_units() { # BASE — the units that exist for a host
+    local f
+    for f in /etc/systemd/system/"$1"-queue-*.service /etc/systemd/system/"$1"-{reverb,horizon,pulse}.service; do
+        [ -e "$f" ] && basename "$f" .service
+    done
+    return 0
+}
+
+restart_services() { local u; for u in $(service_units "$1"); do systemctl restart "$u" >/dev/null 2>&1 || true; done; }
+stop_services() { local u; for u in $(service_units "$1"); do systemctl stop "$u" >/dev/null 2>&1 || true; done; }
+remove_services() {
+    local u; for u in $(service_units "$1"); do systemctl disable --now "$u" >/dev/null 2>&1 || true; rm -f "/etc/systemd/system/$u.service"; done
+    rm -f "/etc/cron.d/$1"
+}
+
+# --------------------------------------------------------------- projects --
+
+project_paths() { # slug
+    P_USER="prj-$1"; P_HOME="$PROJECTS/$1"; P_APP="$P_HOME/app"; P_ENV="$ETC/projects/$1.env"
+    P_POOL="studio-prj-$1"; P_SITE="/etc/caddy/sites/prj-$1.caddy"; P_BASE="studio-prj-$1"; P_DB="prj_$(dbname "$1")"
+}
+
+cmd_project_create() {
+    local slug=$1; valid_name "$slug"; project_paths "$slug"
+    local repo branch php engine host token
+    repo=$(require_field repo_url); branch=$(require_field branch); php=$(require_field php_version); engine=$(require_field db_engine)
+    host=$(require_field site_host); token=$(require_field git_token)
+    valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"
+
+    id "$P_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$P_HOME" --shell /usr/sbin/nologin "$P_USER"
+    mkdir -p "$P_HOME"; chown "$P_USER:$P_USER" "$P_HOME"; chmod 751 "$P_HOME"
+
+    local dbpass; dbpass=$(openssl rand -hex 16)
+    printf 'DB_PASSWORD=%s\n' "$dbpass" > "$P_ENV"
+    write_git_env "$P_ENV"
+    chown "root:$P_USER" "$P_ENV"; chmod 640 "$P_ENV"
+
+    if [ ! -d "$P_APP/.git" ]; then
+        log "cloning $repo @ $branch"
+        clone_repo "$P_USER" "$P_HOME" "$P_ENV" "$repo" "$branch" "$P_APP"
+    fi
+    chmod 751 "$P_APP"
+
+    db_create "$engine" "$P_DB" "$dbpass"
+    local api_token; api_token=$(grep -E '^LARAPILOT_API_TOKEN=.+' "$P_APP/.env" 2>/dev/null | cut -d= -f2- || true)
+    [ -n "$api_token" ] || api_token=$(openssl rand -hex 24)
+    write_env "$P_APP" "https://$host" staging false "$engine" "$P_DB" "$dbpass" "prj_${slug}_"
+    set_env "$P_APP/.env" LARAPILOT_API_TOKEN "$api_token"
+    chown "$P_USER:$P_USER" "$P_APP/.env"; chmod 600 "$P_APP/.env"
+
+    build "$P_USER" "$P_APP" "$P_ENV" "$php" staging
+    grant_web "$P_APP"
+    run_as "$P_USER" "$P_APP" "$P_ENV" "php$php" artisan migrate --force --quiet || log "migrate failed"
+    run_as "$P_USER" "$P_APP" "$P_ENV" "php$php" artisan larapilot:settings-set --api-auth=YES >/dev/null 2>&1 || true
+    run_as "$P_USER" "$P_APP" "$P_ENV" "php$php" artisan optimize --quiet || true
+
+    render "$TPL/fpm-pool.conf.tpl" "/etc/php/$php/fpm/pool.d/$P_POOL.conf" NAME="$P_POOL" USER="$P_USER" GROUP="$P_USER" MAX=8 LOG="$P_HOME/php.log"
+    reload_fpm "$php"
+    render_site "$P_SITE" "prj_$(dbname "$slug")" "$host" "$P_APP" "$P_POOL" staging "$(reverb_port_if_on)"
+    apply_services "$P_BASE" "$P_USER" "$P_APP" "$php" "$P_HOME" "$host"
+
+    # git as the owner: run by root on a repository another user owns, git refuses ("dubious ownership")
+    local sha; sha=$(run_as "$P_USER" "$P_APP" "$P_ENV" git rev-parse HEAD)
+    jq -n --arg t "$api_token" --arg s "$sha" --arg u "https://$host" '{ok:true, larapilot_api_token:$t, sha:$s, site_url:$u}'
+}
+
+cmd_project_bootstrap() {
+    local slug=$1; valid_name "$slug"; project_paths "$slug"
+    local repo branch php token name email
+    repo=$(require_field repo_url); branch=$(require_field branch); php=$(require_field php_version); token=$(require_field git_token)
+    name=$(field git_name); email=$(field git_email); valid_php "$php"; valid_branch "$branch"
+    local provider; provider=$(field git_provider)
+
+    id "$P_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$P_HOME" --shell /usr/sbin/nologin "$P_USER"
+    mkdir -p "$P_HOME"; chown "$P_USER:$P_USER" "$P_HOME"; chmod 751 "$P_HOME"
+    : > "$P_ENV"; write_git_env "$P_ENV"; chown "root:$P_USER" "$P_ENV"; chmod 640 "$P_ENV"
+
+    local tmp="$P_HOME/bootstrap"
+    rm -rf "${P_HOME:?}/bootstrap"; mkdir -p "$tmp"; chown "$P_USER:$P_USER" "$tmp"
+
+    log "creating a fresh Laravel in $tmp/app"
+    run_as "$P_USER" "$tmp" "$P_ENV" "php$php" /usr/local/bin/composer create-project laravel/laravel app --prefer-dist --no-progress --quiet \
+        || fail "composer create-project laravel/laravel failed"
+    # Laravel Boost always, as a direct dev dependency (it stays even if Larapilot is
+    # ever removed), and Larapilot on top of it.
+    run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" /usr/local/bin/composer require laravel/boost andreapollastri/larapilot --dev --no-progress --quiet \
+        || fail "composer require laravel/boost andreapollastri/larapilot failed"
+    run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan larapilot:install --no-interaction >/dev/null 2>&1 || log "larapilot:install reported a problem; continuing"
+    run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan boost:install --no-interaction >"$tmp/boost.log" 2>&1 \
+        || fail "boost:install failed: $(tail -n 5 "$tmp/boost.log" | tr '\n' ' ')"
+    grep -q '"laravel/boost"' "$tmp/app/composer.json" || fail "laravel/boost is missing from composer.json after the install"
+    # Larapilot's remote forge integration: the same provider as this Studio, committed in .larapilot/config.yaml
+    case "$provider" in
+        github|gitlab|bitbucket|azure)
+            run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan larapilot:settings-set "--$provider=YES" >/dev/null 2>&1 \
+                || log "larapilot:settings-set --$provider=YES reported a problem; continuing" ;;
+    esac
+    rm -f "$tmp/app/.env"
+
+    run_as "$P_USER" "$tmp/app" "$P_ENV" git init -q -b "$branch"
+    run_as "$P_USER" "$tmp/app" "$P_ENV" git config user.name "${name:-Studio}"
+    run_as "$P_USER" "$tmp/app" "$P_ENV" git config user.email "${email:-studio@localhost}"
+    run_as "$P_USER" "$tmp/app" "$P_ENV" git add -A
+    run_as "$P_USER" "$tmp/app" "$P_ENV" git commit -q -m "Laravel, Boost and Larapilot, from Studio"
+    # pushed with the user in the URL, as clone_repo does, then the plain address stays
+    run_as "$P_USER" "$tmp/app" "$P_ENV" git remote add origin "$(git_https_with_user "$repo")"
+    local err; err=$(run_as "$P_USER" "$tmp/app" "$P_ENV" git push -q -u origin "$branch" 2>&1) \
+        || fail "git push failed: the token needs write access to the new repository ($(printf '%s' "$err" | grep -m1 -E 'fatal|remote:|error' | cut -c1-160 || true))"
+    if [ "$branch" != main ]; then
+        run_as "$P_USER" "$tmp/app" "$P_ENV" git branch main "$branch" 2>/dev/null || true
+        run_as "$P_USER" "$tmp/app" "$P_ENV" git push -q origin main 2>/dev/null || true
+    fi
+    run_as "$P_USER" "$tmp/app" "$P_ENV" git remote set-url origin "$repo"
+    local sha; sha=$(run_as "$P_USER" "$tmp/app" "$P_ENV" git rev-parse HEAD)
+    rm -rf "${P_HOME:?}/bootstrap"
+
+    jq -n --arg s "$sha" '{ok:true, sha:$s}'
+}
+
+cmd_project_deploy() {
+    local slug=$1; valid_name "$slug"; project_paths "$slug"
+    [ -d "$P_APP/.git" ] || fail "project $slug has no site yet"
+    local branch php token
+    branch=$(require_field branch); php=$(require_field php_version); token=$(require_field git_token); valid_php "$php"; valid_branch "$branch"
+    write_git_env "$P_ENV"
+
+    log "deploying $slug @ $branch"
+    # fetched with the user in the URL (see git_https_with_user); origin keeps its plain address
+    local origin err
+    origin=$(run_as "$P_USER" "$P_APP" "$P_ENV" git remote get-url origin | sed 's#^https://[^@/]*@#https://#')
+    err=$(run_as "$P_USER" "$P_APP" "$P_ENV" git fetch -q --prune "$(git_https_with_user "$origin")" "+refs/heads/$branch:refs/remotes/origin/$branch" 2>&1) \
+        || fail "git fetch of $branch failed: $(printf '%s' "$err" | grep -m1 -E 'fatal|remote:|error' | cut -c1-160 || true)"
+    run_as "$P_USER" "$P_APP" "$P_ENV" git remote set-url origin "$origin"
+    run_as "$P_USER" "$P_APP" "$P_ENV" git reset -q --hard "origin/$branch"
+    build "$P_USER" "$P_APP" "$P_ENV" "$php" staging
+    grant_web "$P_APP"
+    run_as "$P_USER" "$P_APP" "$P_ENV" "php$php" artisan migrate --force --quiet || fail "migrations failed: the previous release is still running"
+    run_as "$P_USER" "$P_APP" "$P_ENV" "php$php" artisan optimize --quiet || true
+    restart_services "$P_BASE"
+    reload_fpm "$php"
+
+    local sha; sha=$(run_as "$P_USER" "$P_APP" "$P_ENV" git rev-parse HEAD)
+    jq -n --arg s "$sha" '{ok:true, sha:$s}'
+}
+
+cmd_project_configure() {
+    local slug=$1; valid_name "$slug"; project_paths "$slug"
+    [ -d "$P_APP/.git" ] || fail "project $slug has no site yet"
+    local php host; php=$(require_field php_version); host=$(require_field site_host); valid_php "$php"
+    render_site "$P_SITE" "prj_$(dbname "$slug")" "$host" "$P_APP" "$P_POOL" staging "$(reverb_port_if_on)"
+    apply_services "$P_BASE" "$P_USER" "$P_APP" "$php" "$P_HOME" "$host"
+    echo '{"ok":true}'
+}
+
+cmd_project_delete() {
+    local slug=$1; valid_name "$slug"; project_paths "$slug"
+    remove_services "$P_BASE"
+    rm -f "$P_SITE"
+    rm -f /etc/php/*/fpm/pool.d/"$P_POOL".conf
+    systemctl daemon-reload; reload_caddy
+    reload_all_fpm
+    db_drop mariadb "$P_DB"; db_drop pgsql "$P_DB"
+    pkill -u "$P_USER" 2>/dev/null || true
+    userdel "$P_USER" 2>/dev/null || true
+    # ${VAR:?} makes bash stop here instead of removing a top-level path if a variable were ever empty.
+    rm -rf "${PROJECTS:?}/${slug:?}" "${P_ENV:?}"
+    echo '{"ok":true}'
+}
+
+# ------------------------------------------------------------- workspaces --
+
+workspace_paths() { # handle slug
+    W_USER="ws-$1"; W_HOME="/home/ws-$1"; W_DIR="$WORKSPACES/$1/$2"; W_ENV="$ETC/workspaces/$1--$2.env"
+    W_POOL="studio-ws-$1--$2"; W_SITE="/etc/caddy/sites/ws-$1--$2.caddy"; W_UNIT="studio-bridge-$1--$2"; W_BASE="studio-ws-$1--$2"; W_DB="ws_$(dbname "$1")_$(dbname "$2")"
+}
+
+write_workspace_env() { # after workspace_paths; reads tokens from INPUT, keeps existing values when a field is absent
+    local bridge_token bridge_port claude_env claude_token var value
+    bridge_token=$(field bridge_token); bridge_port=$(field bridge_port)
+    claude_env=$(field claude_env); claude_token=$(field claude_token)
+    touch "$W_ENV"; chown "root:$W_USER" "$W_ENV"; chmod 640 "$W_ENV"
+    set_env "$W_ENV" HOME "$W_HOME"
+    set_env "$W_ENV" WORKSPACE_DIR "$W_DIR"
+    set_env "$W_ENV" CLAUDE_CONFIG_DIR "$W_HOME/.claude"
+    set_env "$W_ENV" CLAUDE_CODE_ENTRYPOINT studio
+    set_env "$W_ENV" DISABLE_AUTOUPDATER 1
+    # git in the workspace (the agent's pushes, the Changes tab's fetch) answers with the person's token
+    set_env "$W_ENV" GIT_ASKPASS "$ASKPASS"
+    set_env "$W_ENV" GIT_TERMINAL_PROMPT 0
+    [ -n "$bridge_token" ] && set_env "$W_ENV" BRIDGE_TOKEN "$bridge_token"
+    [ -n "$bridge_port" ] && set_env "$W_ENV" BRIDGE_PORT "$bridge_port"
+    # git_token sent: one provider at a time, drop every agent variable, then set what Studio
+    # sent; sent empty (the person removed their token) the workspace loses it at once.
+    if has_field git_token; then
+        unset_env "$W_ENV" GIT_TOKEN GIT_USERNAME "${GIT_AGENT_VARS[@]}"
+        if [ -n "$(field git_token)" ]; then
+            write_git_env "$W_ENV"
+            for var in "${GIT_AGENT_VARS[@]}"; do
+                value=$(printf '%s' "$INPUT" | jq -r --arg k "$var" '(.git_env // {})[$k] // empty')
+                [ -n "$value" ] && set_env "$W_ENV" "$var" "$value"
+            done
+        fi
+    fi
+    # one Claude credential at a time
+    sed -i '/^CLAUDE_CODE_OAUTH_TOKEN=/d; /^ANTHROPIC_API_KEY=/d' "$W_ENV"
+    if [ -n "$claude_env" ] && [ -n "$claude_token" ]; then
+        [[ "$claude_env" =~ ^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)$ ]] || fail "unexpected claude_env"
+        set_env "$W_ENV" "$claude_env" "$claude_token"
+    fi
+}
+
+cmd_workspace_create() {
+    local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
+    local repo branch php engine host port name email
+    repo=$(require_field repo_url); branch=$(require_field branch); php=$(require_field php_version); engine=$(require_field db_engine)
+    host=$(require_field preview_host); port=$(require_field bridge_port); name=$(field git_name); email=$(field git_email)
+    valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"; [[ "$port" =~ ^[0-9]{4,5}$ ]] || fail "invalid bridge port"
+    [ -n "$(field git_token)" ] || fail "a git provider token is required to clone the repository"
+
+    id "$W_USER" >/dev/null 2>&1 || useradd --create-home --home-dir "$W_HOME" --shell /bin/bash "$W_USER"
+    chmod 751 "$W_HOME"
+    mkdir -p "$W_HOME/.claude" "$WORKSPACES/$handle"
+    chown "$W_USER:$W_USER" "$W_HOME/.claude"; chmod 700 "$W_HOME/.claude"
+    chown "$W_USER:$W_USER" "$WORKSPACES/$handle"; chmod 751 "$WORKSPACES/$handle"
+    # Claude Code policy for every workspace on this server, read as the workspace user
+    # (umask 027 would leave it to root alone)
+    mkdir -p /etc/claude-code; chmod 755 /etc/claude-code
+    [ -f /etc/claude-code/managed-settings.json ] || cat > /etc/claude-code/managed-settings.json <<'JSON'
+{
+  "permissions": {
+    "deny": ["Read(/etc/studio/**)", "Read(/home/*/.claude/**)", "Read(/srv/studio/projects/**)"],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "enableAllProjectMcpServers": true
+}
+JSON
+    chmod 644 /etc/claude-code/managed-settings.json
+
+    write_workspace_env
+
+    if [ ! -d "$W_DIR/.git" ]; then
+        log "cloning $repo @ $branch for $handle"
+        clone_repo "$W_USER" "$WORKSPACES/$handle" "$W_ENV" "$repo" "$branch" "$W_DIR"
+    fi
+    chmod 751 "$W_DIR"
+    [ -n "$name" ] && run_as "$W_USER" "$W_DIR" "$W_ENV" git config user.name "$name"
+    [ -n "$email" ] && run_as "$W_USER" "$W_DIR" "$W_ENV" git config user.email "$email"
+
+    local dbpass; dbpass=$(openssl rand -hex 16)
+    db_create "$engine" "$W_DB" "$dbpass"
+    local seeded=0
+    if db_clone "$engine" "prj_$(dbname "$slug")" "$W_DB" 2>/dev/null; then seeded=1; log "database seeded from the project site"; fi
+    write_env "$W_DIR" "https://$host" local true "$engine" "$W_DB" "$dbpass" "ws_${handle}_${slug}_"
+    set_env "$W_DIR/.env" SESSION_COOKIE "ws_${handle}_${slug}_session"
+    chown "$W_USER:$W_USER" "$W_DIR/.env"; chmod 600 "$W_DIR/.env"
+
+    build "$W_USER" "$W_DIR" "$W_ENV" "$php" 1
+    grant_web "$W_DIR"
+    [ "$seeded" = 1 ] || run_as "$W_USER" "$W_DIR" "$W_ENV" "php$php" artisan migrate --force --quiet || log "migrate failed"
+    run_as "$W_USER" "$W_DIR" "$W_ENV" "php$php" artisan larapilot:custom-skill-list >/dev/null 2>&1 || true
+
+    render "$TPL/fpm-pool.conf.tpl" "/etc/php/$php/fpm/pool.d/$W_POOL.conf" NAME="$W_POOL" USER="$W_USER" GROUP="$W_USER" MAX=4 LOG="$W_HOME/php-$slug.log"
+    reload_fpm "$php"
+    render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"
+    apply_services "$W_BASE" "$W_USER" "$W_DIR" "$php" "$W_HOME" "$host"
+    render "$TPL/bridge.service.tpl" "/etc/systemd/system/$W_UNIT.service" HANDLE="$handle" SLUG="$slug" USER="$W_USER" WORKSPACE_DIR="$W_DIR" ENV_FILE="$W_ENV" STUDIO_DIR="$STUDIO_DIR"
+    systemctl daemon-reload
+    systemctl enable --now "$W_UNIT" >/dev/null
+    systemctl restart "$W_UNIT"
+
+    jq -n --arg u "https://$host" --arg b "http://127.0.0.1:$port" --arg p "$W_DIR" '{ok:true, app_url:$u, bridge_url:$b, path:$p}'
+}
+
+cmd_workspace_env() {
+    local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
+    [ -f "$W_ENV" ] || fail "workspace $handle/$slug does not exist"
+    write_workspace_env
+    systemctl try-restart "$W_UNIT" >/dev/null 2>&1 || true
+    echo '{"ok":true}'
+}
+
+cmd_workspace_start() {
+    local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
+    [ -f "/etc/systemd/system/$W_UNIT.service" ] || fail "workspace $handle/$slug does not exist"
+    if [ -f "$W_SITE" ]; then reload_caddy; else render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$(grep -E '^APP_URL=' "$W_DIR/.env" | cut -d= -f2- | sed 's#https://##')" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"; fi
+    systemctl start "$W_UNIT"
+    restart_services "$W_BASE"
+    echo '{"ok":true,"status":"running"}'
+}
+
+cmd_workspace_stop() {
+    local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
+    systemctl stop "$W_UNIT" >/dev/null 2>&1 || true
+    stop_services "$W_BASE"
+    pkill -u "$W_USER" -f "$W_DIR" 2>/dev/null || true
+    echo '{"ok":true,"status":"stopped"}'
+}
+
+cmd_workspace_status() {
+    local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
+    [ -d "$W_DIR/.git" ] || { echo '{"ok":true,"status":"missing"}'; return; }
+    if systemctl is-active --quiet "$W_UNIT"; then echo '{"ok":true,"status":"running"}'; else echo '{"ok":true,"status":"stopped"}'; fi
+}
+
+cmd_workspace_configure() {
+    local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
+    [ -d "$W_DIR/.git" ] || fail "workspace $handle/$slug does not exist"
+    local php host; php=$(require_field php_version); host=$(require_field preview_host); valid_php "$php"
+    render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"
+    apply_services "$W_BASE" "$W_USER" "$W_DIR" "$php" "$W_HOME" "$host"
+    echo '{"ok":true}'
+}
+
+cmd_workspace_delete() {
+    local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
+    systemctl disable --now "$W_UNIT" >/dev/null 2>&1 || true
+    remove_services "$W_BASE"
+    rm -f "/etc/systemd/system/$W_UNIT.service" "$W_SITE"
+    rm -f /etc/php/*/fpm/pool.d/"$W_POOL".conf
+    systemctl daemon-reload; reload_caddy
+    reload_all_fpm
+    db_drop mariadb "$W_DB"; db_drop pgsql "$W_DB"
+    # ${VAR:?} makes bash stop here instead of removing a top-level path if a variable were ever empty.
+    rm -rf "${WORKSPACES:?}/${handle:?}/${slug:?}" "${W_ENV:?}"
+    # the Linux user stays while it owns other workspaces
+    if [ -z "$(ls -A "$WORKSPACES/$handle" 2>/dev/null)" ]; then
+        pkill -u "$W_USER" 2>/dev/null || true
+        userdel -r "$W_USER" 2>/dev/null || true
+        rm -rf "${WORKSPACES:?}/${handle:?}"
+    fi
+    echo '{"ok":true}'
+}
+
+# ------------------------------------------------------------------ updates --
+# Administration → System: Studio reads /var/lib/studio-update/state.json itself;
+# these start what needs root. The update runs as its own systemd unit, so it
+# survives the restart of the queue worker that asked for it.
+
+cmd_update_check() {
+    /usr/local/sbin/studio-update check || fail "could not reach the Studio repository"
+}
+
+cmd_update_start() { # [force] — force builds and installs the channel's newest build even when it is installed
+    local unit=studio-update.service
+    [ "${1:-}" = force ] && unit=studio-update-force.service
+    if systemctl is-active --quiet studio-update.service || systemctl is-active --quiet studio-update-force.service; then
+        fail "an update is already running"
+    fi
+    systemctl start --no-block "$unit" || fail "could not start $unit"
+    jq -n --arg u "$unit" '{ok:true, started:true, unit:$u}'
+}
+
+cmd_update_channel() {
+    [[ "$1" =~ ^(stable|beta)$ ]] || fail "usage: update-channel stable|beta"
+    /usr/local/sbin/studio-update channel "$1" || fail "could not change the update channel"
+}
+
+cmd_update_auto() {
+    [[ "$1" =~ ^(on|off)$ ]] || fail "usage: update-auto on|off"
+    /usr/local/sbin/studio-update auto "$1" || fail "could not change automatic updates"
+}
+
+# ---------------------------------------------------------------- dispatch --
+
+cmd=${1:-}; shift || true
+case "$cmd" in
+    project-bootstrap) [ $# -eq 1 ] || fail "usage: project-bootstrap <slug>"; cmd_project_bootstrap "$1" ;;
+    project-create)   [ $# -eq 1 ] || fail "usage: project-create <slug>";   cmd_project_create "$1" ;;
+    project-deploy)   [ $# -eq 1 ] || fail "usage: project-deploy <slug>";   cmd_project_deploy "$1" ;;
+    project-delete)   [ $# -eq 1 ] || fail "usage: project-delete <slug>";   cmd_project_delete "$1" ;;
+    project-configure) [ $# -eq 1 ] || fail "usage: project-configure <slug>"; cmd_project_configure "$1" ;;
+    workspace-create) [ $# -eq 2 ] || fail "usage: workspace-create <handle> <slug>"; cmd_workspace_create "$1" "$2" ;;
+    workspace-env)    [ $# -eq 2 ] || fail "usage: workspace-env <handle> <slug>";    cmd_workspace_env "$1" "$2" ;;
+    workspace-start)  [ $# -eq 2 ] || fail "usage";  cmd_workspace_start "$1" "$2" ;;
+    workspace-stop)   [ $# -eq 2 ] || fail "usage";  cmd_workspace_stop "$1" "$2" ;;
+    workspace-status) [ $# -eq 2 ] || fail "usage";  cmd_workspace_status "$1" "$2" ;;
+    workspace-delete) [ $# -eq 2 ] || fail "usage";  cmd_workspace_delete "$1" "$2" ;;
+    workspace-configure) [ $# -eq 2 ] || fail "usage: workspace-configure <handle> <slug>"; cmd_workspace_configure "$1" "$2" ;;
+    update-check)     cmd_update_check ;;
+    update-start)     [ $# -le 1 ] && [[ "${1:-}" =~ ^(force)?$ ]] || fail "usage: update-start [force]"; cmd_update_start "${1:-}" ;;
+    update-channel)   [ $# -eq 1 ] || fail "usage: update-channel stable|beta"; cmd_update_channel "$1" ;;
+    update-auto)      [ $# -eq 1 ] || fail "usage: update-auto on|off"; cmd_update_auto "$1" ;;
+    *) fail "unknown command: ${cmd:-none}" ;;
+esac

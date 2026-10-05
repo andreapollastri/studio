@@ -1,0 +1,15 @@
+[Unit]
+Description=Studio websockets (Reverb)
+After=network.target
+
+[Service]
+Type=simple
+User=studio
+Group=studio
+WorkingDirectory=__STUDIO_DIR__
+ExecStart=/usr/bin/__PHP__ artisan reverb:start --host=127.0.0.1 --port=8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

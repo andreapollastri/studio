@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# GIT_ASKPASS helper: git asks "Username for …" then "Password for …";
+# the token comes from the environment, never from a file git can read.
+# GIT_USERNAME depends on the provider: x-access-token (GitHub), oauth2 (GitLab),
+# x-bitbucket-api-token-auth (Bitbucket), anything (Azure DevOps).
+case "$1" in
+    Username*) printf '%s\n' "${GIT_USERNAME:-x-access-token}" ;;
+    *)         printf '%s\n' "${GIT_TOKEN:-${GITHUB_TOKEN:-}}" ;;
+esac

@@ -1,0 +1,14 @@
+{
+  "name": "studio-bridge",
+  "version": "1.0.0",
+  "description": "Runs inside a Studio workspace: drives Claude Code (stream-json) and relays events to Studio over HTTP.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "bin": { "studio-bridge": "bin/bridge.js" },
+  "scripts": {
+    "start": "node bin/bridge.js",
+    "test": "node --test --test-timeout=20000 \"test/*.test.js\""
+  }
+}

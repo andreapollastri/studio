@@ -1,0 +1,9 @@
+[Unit]
+Description=Studio forced update: the newest build of the channel, built and installed again (Force update)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/studio-update apply --force
+TimeoutStartSec=3600

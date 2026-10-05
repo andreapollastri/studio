@@ -1,0 +1,15 @@
+[Unit]
+Description=Studio queue worker
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=studio
+Group=studio
+WorkingDirectory=__STUDIO_DIR__
+ExecStart=/usr/bin/__PHP__ artisan queue:work --sleep=2 --tries=1 --timeout=1800 --max-time=3600
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

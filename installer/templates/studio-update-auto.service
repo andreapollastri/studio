@@ -1,0 +1,9 @@
+[Unit]
+Description=Studio automatic update (when AUTO_UPDATE=1 in /etc/studio/studio.env)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/studio-update apply --auto
+TimeoutStartSec=3600

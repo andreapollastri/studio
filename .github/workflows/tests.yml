@@ -1,0 +1,48 @@
+name: tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Setup Application
+        run: composer setup
+
+      - name: Run CI Checks
+        run: composer ci:check
+
+      - name: Bridge tests (a stand-in Claude Code CLI speaks the stream-json protocol)
+        working-directory: bridge
+        run: npm test
+
+      - name: Installer scripts (shellcheck)
+        run: shellcheck -S warning -x installer/install.sh installer/studio-admin installer/studio-update installer/studio-recover installer/lib/system.sh installer/templates/askpass tests/installer/studio-update.test.sh tests/installer/system-lib.test.sh
+
+      - name: Updater, end to end in a sandbox (release tags, failures, rollback, signatures)
+        run: bash tests/installer/studio-update.test.sh && bash tests/installer/system-lib.test.sh

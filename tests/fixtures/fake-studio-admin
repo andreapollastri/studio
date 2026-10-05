@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Stand-in for /usr/local/sbin/studio-admin in the test suite: echoes what it
+# was asked, answers like the real helper would.
+set -euo pipefail
+cmd=${1:-}; shift || true
+input=$(cat)
+log=${FAKE_STUDIO_ADMIN_LOG:-}
+[ -n "$log" ] && printf '%s %s %s\n' "$cmd" "$*" "$input" >> "$log"
+case "$cmd" in
+  workspace-create)
+    handle=$1; slug=$2
+    host=$(printf '%s' "$input" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_host"])')
+    port=$(printf '%s' "$input" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bridge_port"])')
+    printf '{"ok":true,"app_url":"https://%s","bridge_url":"http://127.0.0.1:%s","path":"/srv/studio/workspaces/%s/%s"}\n' "$host" "$port" "$handle" "$slug" ;;
+  workspace-start|workspace-stop|workspace-delete|workspace-env|workspace-configure|project-configure)
+    printf '{"ok":true}\n' ;;
+  workspace-status)
+    printf '{"ok":true,"status":"%s"}\n' "${FAKE_STUDIO_ADMIN_STATUS:-running}" ;;
+  project-bootstrap)
+    printf '{"ok":true,"sha":"b00t5trap"}\n' ;;
+  project-create)
+    printf '{"ok":true,"larapilot_api_token":"lp-token-%s","sha":"abc1234"}\n' "$1" ;;
+  project-deploy)
+    printf '{"ok":true,"sha":"def5678"}\n' ;;
+  project-delete)
+    printf '{"ok":true}\n' ;;
+  update-check)
+    printf '{"ok":true,"channel":"stable","current":"v1.0.0","latest":"%s","target":"%s","update_available":%s,"waiting":"","waiting_reason":""}\n' "${FAKE_STUDIO_LATEST:-v1.1.0}" "${FAKE_STUDIO_LATEST:-v1.1.0}" "${FAKE_STUDIO_AVAILABLE:-true}" ;;
+  update-start)
+    printf '{"ok":true,"started":true,"unit":"%s"}\n' "$([ "${1:-}" = force ] && echo studio-update-force.service || echo studio-update.service)" ;;
+  update-channel)
+    printf '{"ok":true,"channel":"%s"}\n' "$1" ;;
+  update-auto)
+    printf '{"ok":true,"auto":%s}\n' "$([ "$1" = on ] && echo true || echo false)" ;;
+  fail)
+    printf '{"ok":false,"error":"boom"}\n'; exit 1 ;;
+  fail-in-subshell)
+    # fail() inside $(require_field …), then the helper's own line for the command that stopped it
+    printf '{"ok":false,"error":"missing input field: repo_url"}\n{"ok":false,"unexpected":true,"error":"studio-admin stopped (exit 1) at: repo=$(require_field repo_url)"}\n'; exit 1 ;;
+  fail-unexpected)
+    printf '[studio-admin] cloning https://github.com/acme/shop @ main\nJob for php8.4-fpm.service failed.\n' >&2
+    printf '{"ok":false,"unexpected":true,"error":"studio-admin stopped (exit 1) at: systemctl reload \\"php$1-fpm\\""}\n'; exit 1 ;;
+  *)
+    printf '{"ok":false,"error":"unknown command %s"}\n' "$cmd" >&2; exit 2 ;;
+esac

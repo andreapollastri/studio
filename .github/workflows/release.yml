@@ -1,0 +1,27 @@
+name: release
+
+# A release is a vMAJOR.MINOR.PATCH tag whose VERSION file says the same:
+# every Studio server installs it on its next update (studio-update), so the
+# tag must point at a commit that passed the tests.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The tag is a stable release and matches VERSION
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::warning::$tag is not a stable release tag: servers ignore it"; exit 0; }
+          [ "v$(tr -d '[:space:]' < VERSION)" = "$tag" ] || { echo "::error::VERSION says $(cat VERSION), the tag says $tag: servers refuse this release"; exit 1; }
