@@ -128,6 +128,7 @@
     "Host": "Host",
     "Host key forgotten: the next connection asks to accept it again.": "Chiave dell'host dimenticata: la prossima connessione chiederà di accettarla di nuovo.",
     "Hosting panel, database, mailbox…": "Pannello hosting, database, casella email…",
+    "If Claude Code asks which account, choose your Claude account (Pro or Max), not the Console.": "Se Claude Code chiede quale account, scegli il tuo account Claude (Pro o Max), non la Console.",
     "Import": "Importa",
     "In development Claude Code uses the sign-in of this computer: run": "In sviluppo Claude Code usa l'accesso di questo computer: esegui",
     "In development Claude Code uses the sign-in of this computer: run claude auth login in your terminal, then Check.": "In sviluppo Claude Code usa l'accesso di questo computer: esegui claude auth login nel terminale, poi Verifica.",
@@ -812,5 +813,14 @@
     "Every night, every package to its newest version": "Ogni notte, ogni pacchetto all'ultima versione",
     ":count changed": ":count aggiornati",
     "Log": "Log",
-    "Every night, an hour before Studio's own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider's CLI. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.": "Ogni notte, un'ora prima dell'aggiornamento di Studio, il server porta ogni pacchetto all'ultima versione: Ubuntu e le sue correzioni di sicurezza, ogni PHP installato con le sue estensioni, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code e la CLI del provider git. Resta su ciò che è installato: una nuova versione di PHP arriva con una release di Studio; una nuova release di Ubuntu o una nuova versione major di un database è una decisione per una persona."
+    "Every night, an hour before Studio's own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider's CLI. Then it checks every TLS certificate: Caddy renews them by itself, and one it did not renew in time gets renewed now or shows up here. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.": "Ogni notte, un'ora prima dell'aggiornamento di Studio, il server porta ogni pacchetto all'ultima versione: Ubuntu e le sue correzioni di sicurezza, ogni PHP installato con le sue estensioni, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code e la CLI del provider git. Poi controlla ogni certificato TLS: Caddy li rinnova da solo, e quello che non ha rinnovato in tempo viene rinnovato ora o compare qui. Resta su ciò che è installato: una nuova versione di PHP arriva con una release di Studio; una nuova release di Ubuntu o una nuova versione major di un database è una decisione per una persona.",
+    "Caddy could not renew these certificates": "Caddy non è riuscito a rinnovare questi certificati",
+    "expired": "scaduto",
+    ":days days left": "ancora :days giorni",
+    "Check that the DNS record still points at this server and read journalctl -u caddy there. Once a certificate expires, visitors of that host see a security error.": "Controlla che il record DNS punti ancora a questo server e leggi journalctl -u caddy sul server. Quando un certificato scade, chi visita quell'host vede un errore di sicurezza.",
+    "No TLS certificates yet: Caddy issues each one on the first visit of its host.": "Ancora nessun certificato TLS: Caddy li emette alla prima visita di ogni host.",
+    ":count TLS certificates, all valid": ":count certificati TLS, tutti validi",
+    "the next to expire: :host in :days days": "il prossimo a scadere: :host tra :days giorni",
+    "renewed by the last check: :hosts": "rinnovati dall'ultimo controllo: :hosts",
+    "certificates checked :when": "certificati verificati :when"
 }

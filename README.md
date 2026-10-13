@@ -60,7 +60,8 @@ database back when a step fails. Signed tags (and, on beta, signed commits) are 
 **Server updates.** An hour before, `studio-update system` brings every package and tool on the server to its
 newest version, every night or from *Administration → System*: `apt full-upgrade` (Ubuntu, every PHP and its
 extensions, Caddy, MariaDB, PostgreSQL, redis, Node within its major, the provider's CLI), Composer, Claude Code,
-glab; then needrestart, Studio's services and its health check. The page lists what changed and whether a new
+glab; then needrestart, Studio's services and its health check, and every TLS certificate: Caddy renews them by
+itself, the check renews one it left late and lists one it could not renew. The page lists what changed and whether a new
 kernel needs a reboot (`SYSTEM_REBOOT=1` in `/etc/studio/studio.env` reboots by itself). A new Ubuntu release or
 a new major of a database stays a decision for a person.
 

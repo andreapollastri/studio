@@ -41,6 +41,16 @@ server is in `installer/upgrades/<version>.sh`.
 - **Terminal tab**: colours (ANSI) instead of escape codes; git, Composer, artisan and the test tools
   are asked for colour; characters split across chunks arrive whole.
 
+### Server
+- **Nightly server update** (`studio-update system`, an hour before Studio's own update, or
+  *Administration → System → Update the server now*): every package and tool to its newest version,
+  `apt full-upgrade` (Ubuntu, every PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node
+  within its major, the provider's CLI), Composer, Claude Code, glab; then needrestart, Studio's
+  services and its health check. The System page lists what changed and whether a new kernel needs a
+  reboot; `SYSTEM_REBOOT=1` in `/etc/studio/studio.env` reboots by itself. A switch turns it off.
+- **TLS certificates** are checked in the same run (`studio-update certificates` alone): one Caddy left
+  late is renewed on the spot, one it could not renew shows up on the System page.
+
 ### Upgrading from 1.0
 Nothing to do by hand: the update installs the SSH gateway and its Caddy route, migrates, moves the
 workspaces' Claude variables and restarts their bridges (`installer/upgrades/1.1.0.sh`). Whoever used

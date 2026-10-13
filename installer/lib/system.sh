@@ -14,6 +14,8 @@
 #   upgrade_system RELEASE_DIR CHANGES_FILE
 #                                  every package and tool on the server to its newest
 #                                  version (studio-update system, nightly)
+#   check_certificates OUT_FILE    every TLS certificate Caddy keeps: renew the late
+#                                  ones, report what is still late (same run)
 #
 # Expects /etc/studio/studio.env to exist (DOMAIN, ACME_EMAIL, STUDIO_HOME, STUDIO_DIR…).
 # Nothing here removes software: a rollback leaves new packages in place.
@@ -384,6 +386,88 @@ upgrade_system() {
     else
         sys_note "everything was already on its newest version"
     fi
+}
+
+# ------------------------------------------------------------- certificates
+# Caddy issues every certificate on demand (after asking Studio) and renews it by itself
+# when a third of its lifetime is left. check_certificates is the safety net of the nightly
+# server update: a certificate past that point gets a TLS handshake, which makes Caddy
+# renew an on-demand certificate, and whatever is still late is reported on the System page.
+
+CADDY_CERTIFICATES=${CADDY_CERTIFICATES:-/var/lib/caddy/.local/share/caddy/certificates}
+TLS_ASK_URL=${TLS_ASK_URL:-http://127.0.0.1:8081/api/tls/ask}
+
+# cert_epoch FILE startdate|enddate -> the date, in seconds since 1970 (GNU date; BSD for tests)
+cert_epoch() {
+    local d
+    d=$(openssl x509 -in "$1" -noout "-$2" 2>/dev/null | cut -d= -f2) || return 1
+    [ -n "$d" ] || return 1
+    date -u -d "$d" +%s 2>/dev/null || date -u -j -f '%b %e %T %Y %Z' "$d" +%s 2>/dev/null
+}
+
+# cert_state START END NOW -> ok; due (a third of its lifetime left: Caddy renews it now);
+# late (a fifth left and not renewed: something stops Caddy); expired. In fractions of the
+# lifetime, so it holds for 90-day, 45-day and 6-day certificates alike.
+cert_state() {
+    local life=$(($2 - $1)) left=$(($2 - $3))
+    if [ "$left" -le 0 ]; then echo expired
+    elif [ $((left * 5)) -lt "$life" ]; then echo late
+    elif [ $((left * 3)) -lt "$life" ]; then echo due
+    else echo ok
+    fi
+}
+
+# latest_certificates -> "host file" of the newest certificate of each host (Caddy keeps
+# one per issuer: Let's Encrypt, and ZeroSSL when it fell back to it)
+latest_certificates() {
+    local f
+    [ -d "$CADDY_CERTIFICATES" ] || return 0
+    find "$CADDY_CERTIFICATES" -mindepth 3 -maxdepth 3 -name '*.crt' | while IFS= read -r f; do
+        printf '%s %s %s\n' "$(basename "$f" .crt)" "$(cert_epoch "$f" enddate || echo 0)" "$f"
+    done | sort -k1,1 -k2,2nr | awk '!seen[$1]++ {print $1, $3}'
+}
+
+# host_wanted HOST: Studio still serves it (the question Caddy asks before issuing); the
+# certificate of a deleted project or workspace is left to expire
+host_wanted() {
+    [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${TLS_ASK_URL}?domain=$1" || true)" = 200 ]
+}
+
+renew_by_handshake() { # renew_by_handshake HOST — a client hello to the local Caddy for that name
+    curl -sk -o /dev/null --max-time 90 --resolve "$1:443:127.0.0.1" "https://$1/" >/dev/null 2>&1 || true
+}
+
+# check_certificates OUT — one line per certificate of a host Studio serves, "host days state":
+# ok, renewed (tonight), due (Caddy is renewing it), late or expired (Caddy could not renew it)
+check_certificates() {
+    local report=$1 seen host file start end now old state nudged=0
+    seen=$(mktemp)
+    : > "$report"
+    now=$(date +%s)
+    while read -r host file; do
+        host_wanted "$host" || continue
+        start=$(cert_epoch "$file" startdate) || continue
+        end=$(cert_epoch "$file" enddate) || continue
+        echo "$host $end" >> "$seen"
+        if [ "$(cert_state "$start" "$end" "$now")" != ok ]; then
+            sys_note "certificate of $host: $(( (end - now + 43200) / 86400 )) days left, renewing"
+            renew_by_handshake "$host"
+            nudged=1
+        fi
+    done < <(latest_certificates)
+    # a certificate that has not expired yet is renewed in the background
+    [ "$nudged" = 0 ] || sleep "${CERT_RENEW_WAIT:-30}"
+    now=$(date +%s)
+    while read -r host file; do
+        old=$(awk -v h="$host" '$1 == h {print $2}' "$seen")
+        [ -n "$old" ] || continue
+        start=$(cert_epoch "$file" startdate) || continue
+        end=$(cert_epoch "$file" enddate) || continue
+        state=$(cert_state "$start" "$end" "$now")
+        [ "$end" -le "$old" ] || state=renewed
+        printf '%s %s %s\n' "$host" "$(( (end - now + 43200) / 86400 ))" "$state" >> "$report"
+    done < <(latest_certificates)
+    rm -f "$seen"
 }
 
 # ------------------------------------------------------------ release files

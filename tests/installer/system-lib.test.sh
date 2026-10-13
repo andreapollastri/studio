@@ -61,5 +61,48 @@ expected=$(printf 'caddy 2.10.0 → 2.10.2\nlinux-image-6.8.0-85 6.8.0-85.85 (re
 [ -z "$(changed_versions "$T/after" "$T/after")" ] || fail "changed_versions with nothing changed"
 ok "changed_versions lists what a server update upgraded, added and removed"
 
+day=86400
+[ "$(cert_state 0 $((90 * day)) $((10 * day)))" = ok ] || fail "cert_state ok"
+[ "$(cert_state 0 $((90 * day)) $((65 * day)))" = due ] || fail "cert_state due"
+[ "$(cert_state 0 $((90 * day)) $((80 * day)))" = late ] || fail "cert_state late"
+[ "$(cert_state 0 $((90 * day)) $((91 * day)))" = expired ] || fail "cert_state expired"
+[ "$(cert_state 0 $((6 * day)) $((3 * day)))" = ok ] && [ "$(cert_state 0 $((6 * day)) $((5 * day)))" = late ] || fail "cert_state on a 6-day certificate"
+ok "cert_state: ok, due, late, expired, in fractions of the lifetime"
+
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$T/key.pem" -out "$T/cert.pem" -days 90 -subj /CN=shop.dev.example.test >/dev/null 2>&1
+start=$(cert_epoch "$T/cert.pem" startdate); end=$(cert_epoch "$T/cert.pem" enddate)
+[ $((end - start)) = $((90 * day)) ] && [ $((start - $(date +%s))) -le 60 ] || fail "cert_epoch: $start $end"
+ok "cert_epoch reads the dates of a real certificate"
+
+# check_certificates with Caddy's storage in a directory: each certificate's dates in <file>.dates,
+# "wanted" hosts in $T/wanted, a handshake renews a host listed in $T/renewable
+now=$(date +%s)
+cert_epoch() { local d; d=$(cat "$1.dates"); if [ "$2" = startdate ]; then echo "${d% *}"; else echo "${d#* }"; fi; }
+host_wanted() { grep -qx "$1" "$T/wanted"; }
+renew_by_handshake() {
+    echo "$1" >> "$T/handshakes"
+    grep -qx "$1" "$T/renewable" && echo "$now $((now + 90 * day))" > "$CADDY_CERTIFICATES/le/$1/$1.crt.dates"
+    return 0
+}
+sleep() { :; }
+fake_cert() { # fake_cert ISSUER HOST START END
+    mkdir -p "$CADDY_CERTIFICATES/$1/$2"; touch "$CADDY_CERTIFICATES/$1/$2/$2.crt"
+    echo "$3 $4" > "$CADDY_CERTIFICATES/$1/$2/$2.crt.dates"
+}
+CADDY_CERTIFICATES=$T/caddy
+fake_cert le studio.example.test $((now - 10 * day)) $((now + 80 * day))
+fake_cert le shop.example.test $((now - 70 * day)) $((now + 20 * day))
+fake_cert le stuck.example.test $((now - 85 * day)) $((now + 5 * day))
+fake_cert le gone.example.test $((now - 89 * day)) $((now + 1 * day))
+fake_cert le zero.example.test $((now - 89 * day)) $((now + 1 * day))
+fake_cert zerossl zero.example.test $((now - 1 * day)) $((now + 89 * day))
+printf 'studio.example.test\nshop.example.test\nstuck.example.test\nzero.example.test\n' > "$T/wanted"
+echo shop.example.test > "$T/renewable"; : > "$T/handshakes"
+check_certificates "$T/report" >/dev/null
+report=$(sort "$T/report" | tr '\n' '|')
+[ "$report" = "shop.example.test 90 renewed|stuck.example.test 5 late|studio.example.test 80 ok|zero.example.test 89 ok|" ] || fail "check_certificates: $report"
+[ "$(sort "$T/handshakes" | tr '\n' ' ')" = "shop.example.test stuck.example.test " ] || fail "handshakes: $(cat "$T/handshakes")"
+ok "check_certificates: renews the late ones, reports what stays late, skips hosts Studio no longer serves"
+
 [ "$(env_get "$HERE/../../installer/requirements.env" STUDIO_PHP)" != "" ] || fail "installer/requirements.env has no STUDIO_PHP"
 ok "installer/requirements.env is readable"

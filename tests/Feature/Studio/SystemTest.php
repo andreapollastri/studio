@@ -123,6 +123,35 @@ test('the last server update shows what changed and whether a reboot is needed',
         ->assertSee('Update the server now');
 });
 
+test('certificates Caddy could not renew are shown with what to check', function () {
+    writeState($this->state, ['current' => 'v1.0.0', 'system' => ['status' => 'ok', 'certificates' => [
+        'checked_at' => now()->toIso8601String(), 'total' => 3, 'renewed' => ['shop.example.test'],
+        'problems' => [['host' => 'old.example.test', 'days' => -2, 'state' => 'expired'], ['host' => 'stuck.example.test', 'days' => 5, 'state' => 'late']],
+        'next' => ['host' => 'old.example.test', 'days' => -2, 'state' => 'expired'],
+    ]]]);
+
+    Livewire::actingAs(User::factory()->admin()->create())
+        ->test(System::class)
+        ->assertSee('Caddy could not renew these certificates')
+        ->assertSee('old.example.test · expired')
+        ->assertSee('stuck.example.test · 5 days left')
+        ->assertSee('journalctl -u caddy');
+});
+
+test('valid certificates show how many, the next to expire and what the last check renewed', function () {
+    writeState($this->state, ['current' => 'v1.0.0', 'system' => ['status' => 'ok', 'certificates' => [
+        'checked_at' => now()->toIso8601String(), 'total' => 4, 'renewed' => ['shop.example.test'], 'problems' => [],
+        'next' => ['host' => 'acme.example.test', 'days' => 41, 'state' => 'ok'],
+    ]]]);
+
+    Livewire::actingAs(User::factory()->admin()->create())
+        ->test(System::class)
+        ->assertSee('4 TLS certificates, all valid')
+        ->assertSee('the next to expire: acme.example.test in 41 days')
+        ->assertSee('renewed by the last check: shop.example.test')
+        ->assertDontSee('Caddy could not renew');
+});
+
 test('the server update and its nightly switch go through the helper', function () {
     writeState($this->state, ['current' => 'v1.0.0', 'system' => ['auto' => true]]);
 

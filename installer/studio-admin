@@ -601,8 +601,9 @@ ensure_person() { # handle
 }
 
 # Claude Code policy for every workspace on this server, read as the workspace user (umask 027
-# would leave it to root alone). forceLoginMethod: a login is always the person's own Claude
-# subscription, through Anthropic's own flow.
+# would leave it to root alone). No forceLoginMethod: it would refuse the API key a person may
+# choose (ANTHROPIC_API_KEY "cannot be checked against that policy"); a build of 1.1 set it, so
+# it is taken out here. The subscription sign-in is the person's own `claude auth login` anyway.
 ensure_claude_policy() {
     local f=/etc/claude-code/managed-settings.json
     mkdir -p /etc/claude-code; chmod 755 /etc/claude-code
@@ -615,7 +616,9 @@ ensure_claude_policy() {
   "enableAllProjectMcpServers": true
 }
 JSON
-    jq -e 'has("forceLoginMethod")' "$f" >/dev/null 2>&1 || { jq '. + {forceLoginMethod: "claudeai"}' "$f" > "$f.new" && mv -f "$f.new" "$f"; }
+    if jq -e 'has("forceLoginMethod")' "$f" >/dev/null 2>&1; then
+        jq 'del(.forceLoginMethod)' "$f" > "$f.new" && mv -f "$f.new" "$f"
+    fi
     chmod 644 "$f"
 }
 

@@ -103,6 +103,7 @@
                                     <flux:text class="mt-1">{{ __('This is Claude Code’s own sign-in, running in your home on the server. Studio only shows the terminal.') }}</flux:text>
                                 </div>
                                 <ol class="list-decimal space-y-1 ps-5 text-sm text-zinc-600 dark:text-zinc-300">
+                                    <li>{{ __('If Claude Code asks which account, choose your Claude account (Pro or Max), not the Console.') }}</li>
                                     <li>{{ __('Open Anthropic’s sign-in page and approve with your Claude account.') }}</li>
                                     <li>{{ __('Copy the code the page shows you and paste it below (or in the terminal).') }}</li>
                                 </ol>

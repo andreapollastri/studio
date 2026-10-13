@@ -181,6 +181,40 @@
             </div>
         </div>
 
+        {{-- TLS certificates: Caddy renews them; the nightly check renews the late ones and reports the rest --}}
+        @php($certificates = is_array($server['certificates'] ?? null) ? $server['certificates'] : null)
+        @if ($certificates && ! empty($certificates['problems']))
+            <flux:callout variant="danger" icon="lock-open">
+                <flux:callout.heading>{{ __('Caddy could not renew these certificates') }}</flux:callout.heading>
+                <flux:callout.text>
+                    <ul class="mt-1 space-y-0.5 font-mono text-xs">
+                        @foreach ((array) $certificates['problems'] as $problem)
+                            <li>{{ $problem['host'] ?? '' }} · {{ ($problem['state'] ?? '') === 'expired' ? __('expired') : __(':days days left', ['days' => $problem['days'] ?? 0]) }}</li>
+                        @endforeach
+                    </ul>
+                    <span class="mt-2 block">{{ __('Check that the DNS record still points at this server and read journalctl -u caddy there. Once a certificate expires, visitors of that host see a security error.') }}</span>
+                </flux:callout.text>
+            </flux:callout>
+        @elseif ($certificates)
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-700">
+                <flux:icon.lock-closed class="size-4 shrink-0 text-green-600 dark:text-green-400" />
+                @if ((int) ($certificates['total'] ?? 0) === 0)
+                    <span>{{ __('No TLS certificates yet: Caddy issues each one on the first visit of its host.') }}</span>
+                @else
+                    <span>{{ __(':count TLS certificates, all valid', ['count' => (int) $certificates['total']]) }}</span>
+                    @if (! empty($certificates['next']['host']))
+                        <flux:text class="text-xs">· {{ __('the next to expire: :host in :days days', ['host' => $certificates['next']['host'], 'days' => $certificates['next']['days'] ?? 0]) }}</flux:text>
+                    @endif
+                    @if (! empty($certificates['renewed']))
+                        <flux:text class="text-xs">· {{ __('renewed by the last check: :hosts', ['hosts' => implode(', ', (array) $certificates['renewed'])]) }}</flux:text>
+                    @endif
+                @endif
+                @if (! empty($certificates['checked_at']))
+                    <flux:text class="ms-auto text-xs">{{ __('certificates checked :when', ['when' => \Illuminate\Support\Carbon::parse($certificates['checked_at'])->diffForHumans()]) }}</flux:text>
+                @endif
+            </div>
+        @endif
+
         @if (! empty($server['changes']) || ! empty($server['log']))
             <div class="rounded-xl border border-zinc-200 dark:border-zinc-700">
                 @if (! empty($server['changes']))
@@ -199,7 +233,7 @@
         @endif
 
         <flux:text class="text-xs">
-            {{ __('Every night, an hour before Studio\'s own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider\'s CLI. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.') }}
+            {{ __('Every night, an hour before Studio\'s own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider\'s CLI. Then it checks every TLS certificate: Caddy renews them by itself, and one it did not renew in time gets renewed now or shows up here. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.') }}
         </flux:text>
     </section>
 

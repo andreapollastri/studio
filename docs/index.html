@@ -2711,6 +2711,12 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <li><strong>Services</strong>: <code>needrestart</code> restarts every service still on an old library (never a
             workspace bridge, where a conversation may be running: it picks the new Node up at its next start); when anything
             changed, Studio's services restart; then Studio must answer <code>/up</code>.</li>
+          <li><strong>TLS certificates</strong>: Caddy issues each one on demand and renews it by itself when a third of its
+            lifetime is left. The check goes through every certificate Caddy keeps for a host Studio still serves: one past
+            that point gets a TLS handshake on the server, which makes Caddy renew it now; one still not renewed (a DNS
+            record moved, the CA unreachable) is listed on the System page with its days left, until it is. The
+            certificates of deleted projects and workspaces are left to expire. <code>studio-update certificates</code>
+            runs the check alone.</li>
           <li><strong>Reboot</strong>: a new kernel shows <em>reboot required</em> on the System page. With
             <code>SYSTEM_REBOOT=1</code> in <code>/etc/studio/studio.env</code> the nightly run reboots the server five minutes
             after it ends; a run by hand never does.</li>
@@ -2751,7 +2757,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             </li>
             <li class="install-command">
               <span class="install-command-num" aria-hidden="true">⟳</span>
-              <code class="install-command-text">studio-update system           # every package to its newest version · system-auto on|off</code>
+              <code class="install-command-text">studio-update system           # every package to its newest version, the certificates · system-auto on|off · certificates</code>
               <button type="button" class="install-copy-btn" data-copy="sudo studio-update system" title="Copy command">Copy</button>
             </li>
           </ol>

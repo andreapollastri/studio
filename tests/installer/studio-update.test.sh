@@ -72,6 +72,11 @@ upgrade_system() {
     [ ! -f "$SANDBOX/fail-upgrade" ] || return 1
     cat "$SANDBOX/system-changes" > "$2" 2>/dev/null || : > "$2"
 }
+# check_certificates OUT — the lines in $SANDBOX/certificates ("host days state")
+check_certificates() {
+    echo "check_certificates" >> "$SANDBOX/calls.log"
+    cat "$SANDBOX/certificates" > "$1" 2>/dev/null || : > "$1"
+}
 EOF
 printf 'STUDIO_PHP=8.4\nPHP_VERSIONS="8.4"\nNODE_MAJOR=22\n' > "$REMOTE/installer/requirements.env"
 echo '<?php' > "$REMOTE/artisan"; echo '{}' > "$REMOTE/composer.json"; echo '{}' > "$REMOTE/package.json"; touch "$REMOTE/storage/.keep"
@@ -316,6 +321,24 @@ if update system >/dev/null 2>&1; then fail "a server update after which Studio 
 rm -f "$SANDBOX/fail-health"
 grep -q 'health check' <<<"$(state .system.message)" || fail "message $(state .system.message)"
 ok "a server update after which Studio does not answer is reported as failed"
+
+printf 'studio.dev.example.test 80 ok\nshop.dev.example.test 90 renewed\nold.dev.example.test -2 expired\n' > "$SANDBOX/certificates"
+rm -f "$SANDBOX/system-changes"
+reset_calls
+update system >/dev/null || fail "server update with a late certificate"
+calls | grep -q check_certificates || fail "no certificate check"
+[ "$(state .system.certificates.total)" = 3 ] && [ "$(state '.system.certificates.renewed | join(",")')" = shop.dev.example.test ] || fail "certificates $(state .system.certificates)"
+[ "$(state '.system.certificates.problems[0].host')" = old.dev.example.test ] && [ "$(state '.system.certificates.problems[0].days')" = -2 ] || fail "problems $(state .system.certificates)"
+[ "$(state .system.certificates.next.host)" = old.dev.example.test ] || fail "next $(state .system.certificates.next)"
+[ "$(state .system.status)" = up-to-date ] && grep -q '1 certificate is late' <<<"$(state .system.message)" || fail "message $(state .system.message)"
+grep -q 'certificate of old.dev.example.test: expired' "$SANDBOX/var/log/studio-update.log" || fail "the late certificate is not in the log"
+ok "server update: the certificates Caddy keeps, renewed and late ones on the System page"
+
+printf 'studio.dev.example.test 80 ok\n' > "$SANDBOX/certificates"
+out=$(update certificates) || fail "certificates on their own"
+[ "$(jq -r .total <<<"$out")" = 1 ] && [ "$(jq -r '.problems | length' <<<"$out")" = 0 ] || fail "certificates: $out"
+[ "$(state '.system.certificates.problems | length')" = 0 ] || fail "the state kept the old problems"
+ok "studio-update certificates checks them on their own"
 
 reset_calls
 out=$(update system-auto off)

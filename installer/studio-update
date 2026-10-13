@@ -27,6 +27,8 @@
 #                                        Studio's services and its health check; nightly from
 #                                        studio-system-update-auto.timer, an hour before Studio's
 #   studio-update system-auto on|off     the nightly server update
+#   studio-update certificates           every TLS certificate Caddy keeps: renew the late ones,
+#                                        report what Caddy could not renew (also in every system run)
 #
 # One update, in order:
 #   1. clone the build into /opt/studio/releases/<tag or main-sha>; when
@@ -516,6 +518,36 @@ finish_system() { # finish_system STATUS MESSAGE CHANGES_FILE
             log: ($log | split("\n") | map(select(length > 0)) | .[-80:])})'
 }
 
+# record_certificates FILE — the lines of check_certificates into .system.certificates;
+# CERT_PROBLEMS: how many Caddy could not renew
+record_certificates() {
+    local summary host days st
+    summary=$(jq -R -s --arg t "$(now)" 'split("\n") | map(select(length > 0) | split(" ") | {host: .[0], days: (.[1] | tonumber), state: .[2]}) as $c
+        | {checked_at: $t, total: ($c | length), renewed: [$c[] | select(.state == "renewed") | .host],
+           problems: [$c[] | select(.state == "late" or .state == "expired")], next: ($c | min_by(.days))}' "$1")
+    state_merge --argjson c "$summary" '.system = ((.system // {}) + {certificates: $c})'
+    CERT_PROBLEMS=$(jq '.problems | length' <<<"$summary")
+    while read -r host days st; do
+        say "certificate of $host: $st ($days days left), Caddy could not renew it: see journalctl -u caddy"
+    done < <(jq -r '.problems[] | "\(.host) \(.days) \(.state)"' <<<"$summary")
+    say "certificates: $(jq -r '.total' <<<"$summary") checked, $(jq -r '.renewed | length' <<<"$summary") renewed now, $CERT_PROBLEMS late"
+}
+
+certificates_step() { # certificates_step RELEASE_DIR
+    local certs; certs=$(mktemp)
+    say "certificates: every one Caddy keeps for a host Studio serves"
+    lib "$1" check_certificates "$certs" || say "the certificate check did not finish"
+    record_certificates "$certs"
+    rm -f "$certs"
+}
+
+cmd_certificates() {
+    local rel; rel=$(current_dir)
+    [ -n "$rel" ] && [ -d "$rel" ] || { echo "Studio is not installed here ($CURRENT is missing)" >&2; exit 1; }
+    certificates_step "$rel" >&2   # the JSON alone on stdout
+    state_read | jq '.system.certificates'
+}
+
 cmd_system() {
     local auto=0 rel changes count
     case "${1:-}" in
@@ -556,6 +588,11 @@ cmd_system() {
         healthy || { finish_system failed "Studio did not answer its health check after the server update." "$changes"; exit 1; }
     fi
 
+    CERT_PROBLEMS=0
+    certificates_step "$rel"
+    local late=""
+    [ "$CERT_PROBLEMS" = 0 ] || late=" $CERT_PROBLEMS $([ "$CERT_PROBLEMS" = 1 ] && echo 'certificate is' || echo 'certificates are') late: Caddy could not renew them."
+
     if [ -f "$ROOT/run/reboot-required" ]; then
         if [ "$auto" = 1 ] && [ "${SYSTEM_REBOOT:-0}" = 1 ]; then
             say "a reboot is required (a new kernel or system library): rebooting in 5 minutes (SYSTEM_REBOOT=1)"
@@ -567,10 +604,10 @@ cmd_system() {
 
     if [ "$count" -gt 0 ]; then
         say "the server is up to date: $count changed"
-        finish_system ok "Updated $count $([ "$count" = 1 ] && echo package || echo packages)." "$changes"
+        finish_system ok "Updated $count $([ "$count" = 1 ] && echo package || echo packages).$late" "$changes"
     else
         say "the server was already up to date"
-        finish_system up-to-date "Everything was already on its newest version." "$changes"
+        finish_system up-to-date "Everything was already on its newest version.$late" "$changes"
     fi
     rm -f "$changes"
 }
@@ -595,5 +632,6 @@ case "$cmd" in
     rollback) cmd_rollback ;;
     system) cmd_system "$@" ;;
     system-auto) cmd_system_auto "$@" ;;
-    *) sed -n '3,29p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    certificates) cmd_certificates ;;
+    *) sed -n '3,31p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
