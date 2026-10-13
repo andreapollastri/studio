@@ -17,6 +17,14 @@
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
+                @can('ssh')
+                    <flux:sidebar.group :heading="__('Tools')" class="grid">
+                        <flux:sidebar.item icon="command-line" :href="route('ssh')" :current="request()->routeIs('ssh')" wire:navigate>
+                            {{ __('SSH terminal') }}
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+                @endcan
+
                 @if (auth()->user()->isAdmin())
                     <flux:sidebar.group :heading="__('Administration')" class="grid">
                         <flux:sidebar.item icon="rectangle-stack" :href="route('admin.projects')" :current="request()->routeIs('admin.projects')" wire:navigate>

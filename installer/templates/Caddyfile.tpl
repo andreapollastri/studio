@@ -12,7 +12,7 @@
 }
 
 # Plain HTTP on the loopback, for Caddy itself (the "ask" endpoint, forward_auth), the
-# bridges' callbacks and the updater's health check. Every other process on this server
+# bridges' callbacks, the SSH gateway's tickets and the updater's health check. Every other process on this server
 # (a workspace's agent, a project's PHP) can reach this port too, so nothing else of
 # Studio is served here: the dashboard is only at https://studio.__DOMAIN__.
 # Any Host header: forward_auth keeps the visitor's Host, and a block for host 127.0.0.1
@@ -20,7 +20,7 @@
 # always was (closed to the outside by the firewall): a reload keeps the same socket.
 http://:8081 {
     root * __STUDIO_DIR__/public
-    @internal path /api/tls/ask /api/site-auth /api/bridge/* /up
+    @internal path /api/tls/ask /api/site-auth /api/bridge/* /api/ssh/redeem /up
     handle @internal {
         php_fastcgi unix//run/php/studio.sock
     }
@@ -42,6 +42,11 @@ https:// {
         root * __STUDIO_DIR__/public
         @ws path /app/* /apps/*
         reverse_proxy @ws 127.0.0.1:8080
+        # The SSH terminal's sockets; a Caddy reload (a site added) does not cut open shells.
+        @ssh path /ssh/ws
+        reverse_proxy @ssh 127.0.0.1:8082 {
+            stream_close_delay 8h
+        }
         php_fastcgi unix//run/php/studio.sock
         file_server
     }

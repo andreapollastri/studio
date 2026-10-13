@@ -88,6 +88,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SSH terminal
+    |--------------------------------------------------------------------------
+    | The SSH page talks to the gateway (ssh-gateway/, the studio-ssh service)
+    | over a WebSocket; Caddy serves it at /ssh/ws on Studio's own host. The
+    | gateway trades a one-time ticket for the connection at /api/ssh/redeem.
+    | STUDIO_SSH_URL only for development, e.g. ws://127.0.0.1:8082/ssh/ws.
+    */
+    'ssh' => [
+        'url' => env('STUDIO_SSH_URL'),
+        'ticket_ttl' => (int) env('STUDIO_SSH_TICKET_TTL', 60),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Demo data
     |--------------------------------------------------------------------------
     */

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\BridgeEventController;
 use App\Http\Controllers\Api\GitWebhookController;
+use App\Http\Controllers\Api\SshTicketController;
 use App\Http\Controllers\Api\TlsAskController;
 use App\Http\Controllers\SiteAuthController;
 use Illuminate\Support\Facades\Route;
@@ -20,3 +21,8 @@ Route::get('tls/ask', TlsAskController::class)
 // Caddy's forward_auth for protected project hosts: no session, the visitor's pass cookie is per host.
 Route::get('site-auth', SiteAuthController::class)
     ->name('api.site.auth');
+
+// The SSH gateway redeems the page's one-time ticket for the connection, key or password included.
+Route::post('ssh/redeem', SshTicketController::class)
+    ->middleware('throttle:120,1')
+    ->name('api.ssh.redeem');

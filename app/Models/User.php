@@ -105,6 +105,18 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(Workspace::class);
     }
 
+    /** @return HasMany<SshConnection, $this> */
+    public function sshConnections(): HasMany
+    {
+        return $this->hasMany(SshConnection::class);
+    }
+
+    /** @return HasMany<SshKey, $this> */
+    public function sshKeys(): HasMany
+    {
+        return $this->hasMany(SshKey::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;
@@ -113,6 +125,11 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function canChat(): bool
     {
         return $this->role->canChat();
+    }
+
+    public function canUseSsh(): bool
+    {
+        return $this->role->canUseSsh();
     }
 
     public function canAccess(Project $project): bool

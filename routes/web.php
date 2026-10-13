@@ -5,6 +5,7 @@ use App\Livewire\Admin\Projects as AdminProjects;
 use App\Livewire\Admin\System as AdminSystem;
 use App\Livewire\Admin\Users as AdminUsers;
 use App\Livewire\Projects\Index as ProjectsIndex;
+use App\Livewire\Ssh\Terminal as SshTerminal;
 use App\Livewire\Studio\Shell;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +19,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('site-login', SiteLoginController::class)->name('site.login');
     Route::get('p/{project:slug}', Shell::class)->name('studio.show');
     Route::get('p/{project:slug}/c/{conversation}', Shell::class)->name('studio.conversation');
+
+    // Sessions from this server to any host: asks for the password again, as Settings → Security does.
+    Route::get('ssh', SshTerminal::class)->middleware(['can:ssh', 'password.confirm'])->name('ssh');
 
     Route::middleware('can:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('projects', AdminProjects::class)->name('projects');

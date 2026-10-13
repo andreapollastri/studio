@@ -1,0 +1,24 @@
+[Unit]
+Description=Studio SSH gateway (the SSH terminal page)
+After=network.target
+
+[Service]
+Type=simple
+User=studio
+Group=studio
+WorkingDirectory=__STUDIO_DIR__/ssh-gateway
+# APP_KEY and APP_URL come from Studio's own .env: the gateway's token is derived from APP_KEY.
+EnvironmentFile=__STUDIO_HOME__/shared/.env
+Environment=SSH_GATEWAY_HOST=127.0.0.1
+Environment=SSH_GATEWAY_PORT=8082
+Environment=SSH_GATEWAY_REDEEM_URL=http://127.0.0.1:8081/api/ssh/redeem
+ExecStart=/usr/bin/node __STUDIO_DIR__/ssh-gateway/bin/gateway.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

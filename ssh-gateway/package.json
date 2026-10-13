@@ -1,0 +1,22 @@
+{
+  "name": "studio-ssh-gateway",
+  "version": "1.0.0",
+  "description": "Runs next to Studio: turns a WebSocket from the SSH page into an SSH session, with the key Studio hands over for a one-time ticket.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "studio-ssh-gateway": "bin/gateway.js"
+  },
+  "scripts": {
+    "start": "node bin/gateway.js",
+    "test": "node --test --test-timeout=20000 \"test/*.test.js\""
+  },
+  "dependencies": {
+    "ssh2": "^1.17.0",
+    "ws": "^8.22.0"
+  }
+}

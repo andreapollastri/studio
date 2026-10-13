@@ -78,7 +78,8 @@ MCP servers from the repository, hooks. *Model & mode* picks the model, the effo
 | Bridge (Node, `bridge/`): drives `claude -p` stream-json, permissions, resume, skills, git | done, tested with a fake CLI |
 | Updater (`installer/studio-update`): stable and beta channels, force, system step, upgrade scripts, dump, migrate, switch, health check, rollback, signatures | done, tested end to end in a sandbox with a real git repository and stubbed system commands (`tests/installer/`, 18 checks) |
 | Installer (`installer/install.sh`), system steps (`installer/lib/system.sh`) and helper (`installer/studio-admin`) | written for Ubuntu 24.04/26.04 and shellchecked, **not yet run on a live server** |
-| Not started | atomic releases for project sites, SSH access from the dashboard, notifications, mobile layout |
+| SSH terminal (*Tools → SSH terminal*, admins and developers): saved connections with favourites, several terminals at once (tabs or side by side), Ed25519/RSA keys generated or imported (OpenSSH, PEM, PuTTY, with passphrase), passwords, host keys accepted on first use | done, tested (Pest, and `ssh-gateway/` against a real SSH server); the `studio-ssh` unit and its Caddy route not yet run on a live server |
+| Not started | atomic releases for project sites, notifications, mobile layout |
 
 ## Run it locally (no server)
 
@@ -89,6 +90,10 @@ composer run dev                 # server, queue, logs, vite · add: php artisan
 ```
 
 Locked out of the dashboard (lost password or 2FA, the only administrator demoted)? `php artisan studio:reset-admin` resets the main administrator; on a server, root runs `studio-recover admin` over SSH (see the [docs](https://studio.web.ap.it/#setup-recovery)).
+
+The SSH page needs the gateway: `cd ssh-gateway && npm install`, then
+`APP_KEY=… SSH_GATEWAY_REDEEM_URL=http://127.0.0.1:8000/api/ssh/redeem SSH_GATEWAY_ORIGIN= node bin/gateway.js`
+(the `APP_KEY` of Studio's `.env`), and `STUDIO_SSH_URL=ws://127.0.0.1:8082/ssh/ws` in `.env`.
 
 Then run the bridge inside any Laravel project with Larapilot on this machine:
 
@@ -113,6 +118,7 @@ The screenshots in `docs/img/` are regenerated from that demo with `tools/screen
 ```bash
 composer test                               # pint --test, phpstan, pest
 cd bridge && npm test                       # node:test with a fake Claude CLI
+cd ssh-gateway && npm test                  # node:test against a real (in-process) SSH server
 bash tests/installer/studio-update.test.sh  # the updater in a sandbox (also system-lib.test.sh)
 ```
 
@@ -127,6 +133,8 @@ Studio ──sudo──▶ studio-admin        create sites and workspaces, depl
 Git provider ──webhook──▶ Studio     push on the deploy branch → deploy the project site
 studio-update (root) ──▶ /opt/studio newest release tag: system step, build, migrate, switch (or roll back)
 Caddy  ──ask──▶ Studio               may I issue a certificate for this host?
+browser ──wss /ssh/ws──▶ ssh-gateway ──SSH──▶ any host
+                             └── POST /api/ssh/redeem ──▶ Studio   one-time ticket → host, key or password
 ```
 
 - `App\Bridge\BridgeClient` sends turns, permission answers and interrupts to the bridge, and tells it
@@ -137,6 +145,8 @@ Caddy  ──ask──▶ Studio               may I issue a certificate for thi
   lifecycle of a project site; `App\Workspaces\NativeDriver` the workspaces.
 - `App\Git\Providers\{GitHub,GitLab,Bitbucket,AzureDevOps}` behind `GitProvider`: token check, owners,
   new repositories, the push webhook and its verification, the agent's environment.
+- `App\Ssh\Gateway` issues the SSH page's one-time tickets and redeems them for the gateway (its token is
+  an HMAC of `APP_KEY`, so the `studio-ssh` unit reads Studio's `.env`); `App\Ssh\Keys` generates and imports keys.
 - `App\Server\Updates` reads the updater's state and asks the helper to check, update or switch the nightly timer.
 - `App\Larapilot\LarapilotApi` reads the backlog from the project site.
 

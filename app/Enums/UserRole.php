@@ -25,6 +25,12 @@ enum UserRole: string
         return $this !== self::Client;
     }
 
+    /** The SSH terminal opens sessions from the server to any host: administrators and developers. */
+    public function canUseSsh(): bool
+    {
+        return $this === self::Admin || $this === self::Dev;
+    }
+
     public function permissionMode(): string
     {
         return (string) config("studio.permission_mode.{$this->value}", 'default');

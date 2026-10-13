@@ -363,6 +363,8 @@ EOF
     for unit in studio-queue studio-reverb studio-scheduler; do
         render_tpl "$rel/installer/templates/${unit}.service" "/etc/systemd/system/${unit}.service" STUDIO_DIR="$STUDIO_HOME/current" PHP="php${php}"
     done
+    install_ssh_gateway "$rel"
+    render_tpl "$rel/installer/templates/studio-ssh.service" /etc/systemd/system/studio-ssh.service STUDIO_DIR="$STUDIO_HOME/current" STUDIO_HOME="$STUDIO_HOME"
     for unit in studio-update.service studio-update-force.service studio-update-auto.service studio-update-auto.timer; do
         cp "$rel/installer/templates/$unit" "/etc/systemd/system/$unit"
     done
@@ -380,6 +382,18 @@ EOF
     env_set "$STUDIO_ETC/studio.env" STUDIO_PHP "$php"
 }
 
+# install_ssh_gateway RELEASE_DIR — the SSH gateway's own dependencies (ssh2, ws), kept in
+# the release: unlike Studio's assets it runs from there. A release that has them already
+# (a rollback) is left as it is.
+install_ssh_gateway() {
+    local dir=$1/ssh-gateway
+    [ -f "$dir/package-lock.json" ] || return 0
+    [ -d "$dir/node_modules" ] && return 0
+    chown -R studio:studio "$dir"
+    ( cd "$dir" && sudo -u studio env HOME=/var/lib/studio npm ci --omit=dev --no-audit --no-fund --silent ) \
+        || { sys_warn "npm ci of the SSH gateway failed: the SSH terminal stays unavailable"; return 0; }
+}
+
 # Caddy runs and reloads as user caddy: a file it cannot read under /etc/caddy fails every
 # reload ("Could not import …: permission denied") and its next start. studio-admin up to
 # 1.0 wrote the site files root-only (umask 027).
@@ -393,8 +407,10 @@ caddy_readable() {
 restart_studio() {
     local v
     for v in /etc/php/*/fpm; do systemctl reload "php$(basename "$(dirname "$v")")-fpm" 2>/dev/null || true; done
-    systemctl enable studio-queue studio-reverb studio-scheduler >/dev/null 2>&1 || true
+    systemctl enable studio-queue studio-reverb studio-scheduler studio-ssh >/dev/null 2>&1 || true
     systemctl restart studio-queue studio-reverb studio-scheduler
+    # Open SSH sessions end with a restart; a gateway that does not start leaves Studio up.
+    systemctl restart studio-ssh || sys_warn "the SSH gateway (studio-ssh) did not start"
     systemctl enable --now caddy >/dev/null 2>&1 || true
     caddy_readable
     # a Caddy that is down (it could not read its files) does not reload: start it
