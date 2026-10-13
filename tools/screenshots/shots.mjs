@@ -54,7 +54,8 @@ for (const job of jobs) {
     const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: !!job.full || !!clip, ...(clip ? { clip } : {}) });
     await writeFile(join(outDir, `${job.name}.png`), Buffer.from(shot.result.data, 'base64'));
     const overflow = await evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth');
-    console.log(`${job.name}.png ${width}x${height}${job.dark ? ' dark' : ''}${overflow ? '  (horizontal overflow!)' : ''}`);
+    const broken = await evaluate(`/^(\\d{3}\\b|Not Found|Forbidden|Server Error|Internal Server Error|Page Expired)/i.test(document.title) || /\\b(ParseError|ErrorException|Internal Server Error)\\b/.test(document.body.innerText.slice(0, 2000)) || /^\\s*(403|404|419|500)\\s*\\|?\\s*(Forbidden|Not Found|Page Expired|Server Error)/.test(document.body.innerText)`);
+    console.log(`${job.name}.png ${width}x${height}${job.dark ? ' dark' : ''}${overflow ? '  (horizontal overflow!)' : ''}${broken ? '  (ERROR PAGE!)' : ''}`);
   }
 }
 

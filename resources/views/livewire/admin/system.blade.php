@@ -3,7 +3,7 @@
 <div class="flex h-full w-full flex-1 flex-col gap-8" x-data="systemWatch({ url: @js(route('admin.system.status')), running: @js($running || $serverRunning), finishedAt: @js($state['finished_at'] ?? null), serverFinishedAt: @js($server['finished_at'] ?? null) })">
     <div>
         <flux:heading size="xl">{{ __('System') }}</flux:heading>
-        <flux:text class="mt-1">{{ __('This installation of Studio: the release it runs, its updates, its SSH keys, and the git provider every project lives on.') }}</flux:text>
+        <flux:text class="mt-1">{{ __('This installation of Studio: the release it runs, its updates, the server\'s own, its SSH keys and the git hosts its projects live on.') }}</flux:text>
     </div>
 
     @if ($error)
@@ -129,7 +129,7 @@
         @endif
 
         <flux:text class="text-xs">
-            {{ __('Each update builds the new release next to the running one, installs what it needs on the server (a new PHP, Node, packages, the provider\'s CLI) as root, backs up the database, migrates, switches, and checks that Studio answers; if any step fails, the previous release and the database come back.') }}
+            {{ __('Each update builds the new release next to the running one, installs what it needs on the server (a new PHP, Node, packages, the git hosts\' CLIs) as root, backs up the database, migrates, switches, and checks that Studio answers; if any step fails, the previous release and the database come back.') }}
         </flux:text>
     </section>
 
@@ -140,7 +140,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
             <flux:heading size="lg">{{ __('Server') }}</flux:heading>
             <flux:button size="sm" icon="arrow-path" wire:click="updateServer" :disabled="! $managed || $running || $serverRunning"
-                wire:confirm="{{ __('Update every package on the server to its newest version now? Ubuntu, PHP, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider\'s CLI; Studio\'s services restart for a moment at the end.') }}">
+                wire:confirm="{{ __('Update every package on the server to its newest version now? Ubuntu, PHP, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git hosts\' CLIs; Studio\'s services restart for a moment at the end.') }}">
                 {{ __('Update the server now') }}
             </flux:button>
         </div>
@@ -233,7 +233,7 @@
         @endif
 
         <flux:text class="text-xs">
-            {{ __('Every night, an hour before Studio\'s own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider\'s CLI. Then it checks every TLS certificate: Caddy renews them by itself, and one it did not renew in time gets renewed now or shows up here. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.') }}
+            {{ __('Every night, an hour before Studio\'s own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git hosts\' CLIs. Then it checks every TLS certificate: Caddy renews them by itself, and one it did not renew in time gets renewed now or shows up here. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.') }}
         </flux:text>
     </section>
 

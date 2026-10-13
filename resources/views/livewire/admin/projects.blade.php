@@ -31,7 +31,7 @@
             </thead>
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @forelse ($projects as $project)
-                    @php($deployer = $project->repositoryAccount)
+                    @php($deployer = $project->deployAccount()?->account)
                     <tr wire:key="project-{{ $project->uuid }}">
                         <td class="px-4 py-2" data-cell="main">
                             <a href="{{ route('studio.show', $project) }}" wire:navigate class="font-medium hover:underline">{{ $project->name }}</a>

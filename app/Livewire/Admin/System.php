@@ -17,7 +17,7 @@ use Livewire\Component;
 
 /**
  * The installation itself: its release and updates, its SSH keys and the
- * projects they are shared with, and its git provider.
+ * projects they are shared with, and the git hosts.
  */
 #[Layout('layouts::app')]
 #[Title('System · Administration')]

@@ -6,7 +6,7 @@ the changes, the backlog, approvals. Each conversation is **the person's own Cla
 inside their workspace with the Larapilot skills of the project. Nothing to install on a laptop but
 a browser.
 
-**Version 1.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
+**Version 2.0** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
 (Netlify publishes the `docs/` folder as it is, see `netlify.toml`).
@@ -124,7 +124,7 @@ and releases, start or retry pipelines. Everyone works with their own accounts, 
 as they need (personal, work, a client's), each with the name and email its commits carry. Tokens and scopes per
 provider: [the docs](https://studio.web.ap.it/#git).
 
-## Status (1.2, unreleased)
+## Status (2.0)
 
 What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
@@ -185,7 +185,7 @@ the chat talks to that bridge, which talks to the `claude` on your machine with 
 ## Demo data
 
 ```bash
-php artisan db:seed --class=DemoSeeder   # an agency, three projects, a live conversation; password "password"
+php artisan db:seed --class=DemoSeeder   # an agency, five projects with roles per project, a live conversation; password "password"
 ```
 
 The screenshots in `docs/img/` are regenerated from that demo with `tools/screenshots/` (see its README).

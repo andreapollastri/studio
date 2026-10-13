@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 1.2.0
+# 2.0.0
 #   - The agents' browser: the system step installs Playwright MCP and its Chromium; every
 #     workspace's bridge learns where they are (BRIDGE_BROWSER_MCP, PLAYWRIGHT_BROWSERS_PATH).
 #   - Sandboxes: each bridge learns where its sandboxes' worktrees go (BRIDGE_SANDBOX_ROOT).
@@ -15,7 +15,7 @@ case "${1:-}" in
             name=$(basename "$env" .env); handle=${name%%--*}; slug=${name#*--}
             # the helper writes the variables (and leaves everything else as it is)
             echo '{}' | /usr/local/sbin/studio-admin workspace-env "$handle" "$slug" >/dev/null \
-                || echo "1.2.0: the environment of $handle/$slug could not be updated" >&2
+                || echo "2.0.0: the environment of $handle/$slug could not be updated" >&2
         done
         systemctl try-restart 'studio-bridge-*' >/dev/null 2>&1 || true
         ;;

@@ -101,7 +101,7 @@
                     <flux:checkbox.group wire:model="actions" :label="__('What they may do')">
                         <div class="grid max-h-64 gap-x-4 gap-y-1 overflow-y-auto rounded-lg border border-zinc-200 p-3 sm:grid-cols-2 dark:border-zinc-700">
                             @foreach ($editingActions as $key => $item)
-                                <flux:checkbox :value="$key" :label="$item['label']" :description="$item['list'].($item['danger'] ? ' · '.__('destructive') : '')" wire:key="edit-action-{{ md5($key) }}" />
+                                <flux:checkbox :value="$key" :label="$item['label']" :description="collect([str_contains($key, '.') ? $item['list'] : null, $item['danger'] ? __('destructive') : null])->filter()->implode(' · ') ?: null" wire:key="edit-action-{{ md5($key) }}" />
                             @endforeach
                         </div>
                     </flux:checkbox.group>

@@ -13,19 +13,41 @@
     "wait": 300
   },
   {
-    "name": "projects",
-    "url": "${BASE}/projects",
-    "wait": 800
+    "name": "home",
+    "url": "${BASE}/",
+    "height": 1000,
+    "wait": 3000
   },
   {
-    "name": "connections",
-    "url": "${BASE}/settings/connections",
+    "name": "projects",
+    "url": "${BASE}/projects",
+    "wait": 900
+  },
+  {
+    "name": "accounts",
+    "url": "${BASE}/settings/accounts",
     "height": 1100,
     "wait": 900
   },
   {
+    "name": "accounts-git",
+    "url": "${BASE}/settings/accounts?tab=git",
+    "wait": 900
+  },
+  {
+    "name": "accounts-ssh",
+    "url": "${BASE}/settings/accounts?tab=ssh",
+    "wait": 900
+  },
+  {
+    "name": "git",
+    "url": "${BASE}/git",
+    "height": 1000,
+    "wait": 1500
+  },
+  {
     "name": "chat-permission",
-    "url": "${BASE}/p/shop-acme/c/1",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
     "height": 960,
     "wait": 1800
   },
@@ -37,47 +59,41 @@
   },
   {
     "name": "chat-changes",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Changes').click()",
-    "height": 960,
-    "wait": 3000
-  },
-  {
-    "name": "chat-board",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Board').click()",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Changes\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 3000
   },
   {
     "name": "chat-dark",
-    "url": "${BASE}/p/shop-acme/c/1",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
     "dark": true,
     "height": 960,
     "wait": 1800
   },
   {
     "name": "chat-tools-open",
-    "url": "${BASE}/p/shop-acme/c/1",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Details')?.click()",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Details\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 1800
   },
   {
     "name": "chat-settings",
-    "url": "${BASE}/p/shop-acme/c/1",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Model & mode')?.click()",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Model & mode\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 1500
   },
   {
     "name": "terminal",
-    "url": "${BASE}/p/shop-acme/c/1",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Terminal').click()",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Terminal\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 1200
   },
   {
     "name": "terminal",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Git status').click()",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Git status\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 3500
   },
@@ -85,23 +101,23 @@
     "name": "terminal-refused",
     "eval": "(() => { const w = Livewire.all().find(c => c.name === 'studio.side-pane').$wire; w.set('command', 'php artisan tinker', false); w.call('runCommand'); return true; })()",
     "height": 960,
-    "wait": 2000
+    "wait": 2500
   },
   {
     "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Files\"); if (b) b.click(); return !!b; })()",
     "wait": 1800
   },
   {
-    "eval": "(() => { const b = [...document.querySelectorAll(\"aside button\")].find(b => b.textContent.trim() === \"app\"); if (b) b.click(); return !!b; })()",
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'app'); if (b) b.click(); return !!b; })()",
     "wait": 900
   },
   {
-    "eval": "(() => { const b = [...document.querySelectorAll(\"aside button\")].find(b => b.textContent.trim() === \"Models\"); if (b) b.click(); return !!b; })()",
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'Models'); if (b) b.click(); return !!b; })()",
     "wait": 900
   },
   {
     "name": "files",
-    "eval": "(() => { const b = [...document.querySelectorAll(\"aside button\")].find(b => b.textContent.trim() === \"Order.php\"); if (b) b.click(); return !!b; })()",
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'Order.php'); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 6000
   },
@@ -109,7 +125,7 @@
     "name": "files-menu",
     "eval": "(() => { const row = [...document.querySelectorAll('aside .group')].find(r => r.querySelector('button span')?.textContent.trim() === 'app'); row?.querySelector('[aria-label=\"Actions\"]')?.click(); return !!row; })()",
     "height": 960,
-    "wait": 1200
+    "wait": 900
   },
   {
     "eval": "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'})); document.body.click()",
@@ -127,7 +143,7 @@
   },
   {
     "name": "history-commit",
-    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Fix the returns badge colour'); b?.click(); return !!b; })()",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Fix the returns badge colour\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 2000
   },
@@ -139,9 +155,20 @@
   },
   {
     "name": "chat-plan",
-    "url": "${BASE}/p/shop-acme/c/3",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PLAN}",
     "height": 960,
     "wait": 2000
+  },
+  {
+    "name": "project-repository",
+    "url": "${BASE}/p/shop-acme/repository",
+    "height": 960,
+    "wait": 2000
+  },
+  {
+    "name": "project-access",
+    "url": "${BASE}/p/shop-acme/access",
+    "wait": 1200
   },
   {
     "name": "studio-empty",
@@ -149,7 +176,38 @@
     "wait": 1200
   },
   {
+    "url": "${BASE}/",
+    "eval": "document.querySelector('form[action$=\"/logout\"]').submit()",
+    "wait": 800
+  },
+  {
+    "url": "${BASE}/login",
+    "login": {
+      "email": "luca@agency.test",
+      "password": "password"
+    },
+    "wait": 300
+  },
+  {
+    "name": "project-infrastructure",
+    "url": "${BASE}/p/shop-acme/infrastructure",
+    "wait": 2000
+  },
+  {
+    "name": "projects-roles",
     "url": "${BASE}/projects",
+    "wait": 900
+  },
+  {
+    "name": "phone-project",
+    "url": "${BASE}/p/shop-acme/access",
+    "width": 390,
+    "height": 844,
+    "mobile": true,
+    "wait": 1200
+  },
+  {
+    "url": "${BASE}/",
     "eval": "document.querySelector('form[action$=\"/logout\"]').submit()",
     "wait": 800
   },
@@ -167,7 +225,7 @@
     "wait": 1800
   },
   {
-    "url": "${BASE}/projects",
+    "url": "${BASE}/",
     "eval": "document.querySelector('form[action$=\"/logout\"]').submit()",
     "wait": 800
   },
@@ -182,48 +240,53 @@
   {
     "name": "admin-projects",
     "url": "${BASE}/admin/projects",
-    "wait": 900
-  },
-  {
-    "name": "admin-project-settings",
-    "eval": "(() => { const b = [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Settings')[1]; if (b) b.click(); return !!b; })()",
-    "height": 1250,
-    "wait": 1500
-  },
-  {
-    "name": "admin-project-settings-mcp",
-    "eval": "(() => { const c = Livewire.all().find(c => c.name === 'admin.projects'); c.$wire.set('settingsTab', 'mcp'); setTimeout(() => c.$wire.call('editMcp', 2), 600); return true; })()",
-    "height": 1250,
-    "wait": 2500
-  },
-  {
-    "name": "admin-project-settings-access",
-    "eval": "(() => { const w = Livewire.all().find(c => c.name === 'admin.projects').$wire; w.set('settingsTab', 'access', false); w.set('site_mode', 'studio', false); w.set('site_ips', '203.0.113.0/24', false); w.set('previews_mode', 'public', false); w.call('addBranchRule').then(() => { w.set('branch_rules.0.branch', 'feature/US-016-returns-approval', false); w.set('branch_rules.0.mode', 'studio', false); return w.$refresh(); }); return true; })()",
-    "height": 1250,
-    "wait": 2500
-  },
-  {
-    "eval": "(() => { document.querySelector('[data-flux-modal] button[aria-label], dialog button[aria-label=\"Close\"]')?.click(); })()",
-    "wait": 600
-  },
-  {
-    "name": "admin-project-form",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Edit').click()",
-    "height": 1000,
-    "wait": 1200
+    "wait": 1000
   },
   {
     "name": "admin-project-new",
     "url": "${BASE}/admin/projects",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'New project').click()",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"New project\"); if (b) b.click(); return !!b; })()",
+    "height": 1150,
+    "wait": 1500
+  },
+  {
+    "name": "admin-project-new-repository",
+    "eval": "(() => { Livewire.all().find(c => c.name === 'admin.projects').$wire.set('source', 'new'); return true; })()",
+    "height": 1150,
+    "wait": 1500
+  },
+  {
+    "name": "project-settings",
+    "url": "${BASE}/p/shop-acme/settings",
+    "wait": 1200
+  },
+  {
+    "name": "project-settings-members",
+    "url": "${BASE}/p/shop-acme/settings?tab=members",
+    "wait": 1200
+  },
+  {
+    "name": "project-settings-server",
+    "url": "${BASE}/p/shop-acme/settings?tab=server",
     "height": 1000,
     "wait": 1200
   },
   {
-    "name": "admin-project-new",
-    "eval": "(() => { Livewire.all().find(c => c.name === 'admin.projects').$wire.set('source', 'new'); return true; })()",
+    "name": "project-settings-access",
+    "url": "${BASE}/p/shop-acme/settings?tab=access",
+    "wait": 1200
+  },
+  {
+    "name": "project-settings-mcp",
+    "url": "${BASE}/p/shop-acme/settings?tab=mcp",
     "height": 1000,
-    "wait": 1500
+    "eval": "(() => { setTimeout(() => Livewire.all().find(c => c.name === 'projects.settings').$wire.call('editMcp', '${MCP_ERRORS}'), 400); return true; })()",
+    "wait": 1800
+  },
+  {
+    "name": "project-infrastructure-admin",
+    "url": "${BASE}/p/shop-acme/infrastructure",
+    "wait": 2000
   },
   {
     "name": "admin-users",
@@ -232,8 +295,33 @@
   },
   {
     "name": "admin-user-form",
-    "eval": "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'New user').click()",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"New user\"); if (b) b.click(); return !!b; })()",
     "wait": 1000
+  },
+  {
+    "name": "admin-connectors",
+    "url": "${BASE}/admin/connectors",
+    "height": 1400,
+    "wait": 1200
+  },
+  {
+    "url": "${BASE}/infrastructure/digitalocean?tab=droplets",
+    "wait": 1200
+  },
+  {
+    "eval": "(() => { const p = document.querySelector('input[name=password]'); if (!p) return false; p.value = 'password'; p.form.submit(); return true; })()",
+    "wait": 2500
+  },
+  {
+    "name": "infra-console",
+    "url": "${BASE}/infrastructure/digitalocean?tab=droplets",
+    "wait": 2000
+  },
+  {
+    "name": "infra-attach",
+    "eval": "(() => { Livewire.all().find(c => c.name === 'infrastructure.console').$wire.call('attach', '424242', '${PROJECT_SHOP}'); return true; })()",
+    "height": 1100,
+    "wait": 2000
   },
   {
     "name": "admin-system",

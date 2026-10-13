@@ -257,12 +257,12 @@ class Chat extends Component
         });
     }
 
-    /** Commit what the sandbox holds and push its branch, for a pull request on the git provider. */
+    /** Commit what the sandbox holds and push its branch, for a pull request on the git host. */
     public function pushSandbox(Sandboxes $sandboxes): void
     {
         $this->sandboxAction(function () use ($sandboxes): void {
             $sandboxes->push($this->conversation);
-            Flux::toast(variant: 'success', text: __('Pushed :branch: open a pull request from it on the git provider.', ['branch' => $this->conversation->sandbox['branch']]));
+            Flux::toast(variant: 'success', text: __('Pushed :branch: open a pull request from it on the git host.', ['branch' => $this->conversation->sandbox['branch']]));
         });
     }
 
