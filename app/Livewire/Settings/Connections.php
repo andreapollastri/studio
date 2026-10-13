@@ -30,7 +30,7 @@ class Connections extends Component
 {
     public string $git_token = '';
 
-    /** subscription (Sign in with Claude) or api_key */
+    /** Which account the conversations use when the person has both: subscription or api_key. */
     public string $claude_auth_mode = 'subscription';
 
     /** An Anthropic API key, the only Claude credential Studio keeps. */
@@ -43,6 +43,24 @@ class Connections extends Component
         if ($user->claude_auth_mode !== ClaudeAuthMode::None) {
             $this->claude_auth_mode = $user->claude_auth_mode->value;
         }
+    }
+
+    /** Subscription or API key, for every conversation that does not say otherwise. */
+    public function updatedClaudeAuthMode(string $value): void
+    {
+        $user = auth()->user();
+
+        if (! in_array($value, $user->claudeAccounts(), true)) {
+            $this->claude_auth_mode = $user->claude_auth_mode->value;
+
+            return;
+        }
+
+        $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::from($value)])->save();
+
+        Flux::toast(variant: 'success', text: $value === 'api_key'
+            ? __('Your conversations use the API key from the next message on.')
+            : __('Your conversations use your Claude subscription from the next message on.'));
     }
 
     /**
@@ -81,9 +99,7 @@ class Connections extends Component
             $this->afterChange($user);
         }
 
-        if ($user->claude_auth_mode === ClaudeAuthMode::Subscription) {
-            $this->claude_auth_mode = 'subscription';
-        }
+        $this->claude_auth_mode = $user->claude_auth_mode->value;
 
         if ($quiet) {
             return;
@@ -101,6 +117,7 @@ class Connections extends Component
     {
         $user = auth()->user();
         $login->logout($user);
+        $this->claude_auth_mode = $user->claude_auth_mode->value;
         $this->afterChange($user);
 
         Flux::toast(text: __('Signed out of Claude.'));
@@ -157,9 +174,14 @@ class Connections extends Component
         ]);
 
         $user = auth()->user();
-        $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::ApiKey, 'claude_token' => $this->claude_token])->save();
+        $user->forceFill([
+            'claude_token' => $this->claude_token,
+            // the first account a person connects is the one they use
+            'claude_auth_mode' => $user->claude_auth_mode === ClaudeAuthMode::None ? ClaudeAuthMode::ApiKey : $user->claude_auth_mode,
+        ])->save();
 
         $this->claude_token = '';
+        $this->claude_auth_mode = $user->claude_auth_mode->value;
         $this->afterChange($user);
 
         Flux::toast(variant: 'success', text: __('API key saved.'));
@@ -168,7 +190,13 @@ class Connections extends Component
     public function forgetClaude(): void
     {
         $user = auth()->user();
-        $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::None, 'claude_token' => null])->save();
+        $user->forceFill([
+            'claude_token' => null,
+            'claude_auth_mode' => $user->claude_auth_mode === ClaudeAuthMode::ApiKey
+                ? ($user->claude_signed_in ? ClaudeAuthMode::Subscription : ClaudeAuthMode::None)
+                : $user->claude_auth_mode,
+        ])->save();
+        $this->claude_auth_mode = $user->claude_auth_mode->value;
         $this->afterChange($user);
 
         Flux::toast(text: __('API key removed.'));

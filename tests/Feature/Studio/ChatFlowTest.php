@@ -220,6 +220,23 @@ test('a failed result leaves a notice and marks the conversation failed', functi
         ->and($conversation->messages()->where('kind', 'notice')->first()->content)->toBe('Qualcosa è andato storto');
 });
 
+test('a process that dies shows its reason once, not as error and result both', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running]);
+    $reason = 'Claude is not signed in, or its credentials are no longer valid.';
+
+    $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), [
+        'conversation' => (string) $conversation->id,
+        'events' => [
+            ['type' => 'error', 'code' => 'process_exit', 'message' => $reason],
+            ['type' => 'result', 'subtype' => 'error_during_execution', 'is_error' => true, 'result' => $reason],
+        ],
+    ])->assertOk();
+
+    expect($conversation->messages()->where('kind', 'notice')->pluck('content')->all())->toBe([$reason])
+        ->and($conversation->refresh()->status)->toBe(ConversationStatus::Failed);
+});
+
 test('the bridge endpoint refuses unknown tokens and foreign conversations', function () {
     [$user, $project, $workspace] = memberWithRunningWorkspace();
     $conversation = Conversation::factory()->forWorkspace($workspace)->create();

@@ -1767,7 +1767,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#deep-dive" title="How it is built">v1.0</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What is new in 1.1">v1.1</a></div>
       <h1>Talk to your Laravel project. Approve what ships.</h1>
       <p>
         One Ubuntu server, one script, one wildcard DNS record. Studio gives a product team a human interface
@@ -1791,6 +1791,7 @@
   <div class="docs" id="docs">
     <aside class="docs-nav" aria-label="Documentation">
       <div class="docs-nav-label">Start</div>
+      <a href="#whats-new">What's new in 1.1</a>
       <a href="#quickstart">Quickstart</a>
       <a class="sub" href="#quickstart-installs">What it installs</a>
       <a class="sub" href="#quickstart-layout">Where things land</a>
@@ -1822,6 +1823,11 @@
       <a href="#work-workspaces">Workspaces</a>
       <a href="#work-clients">Clients</a>
 
+      <div class="docs-nav-label">Tools</div>
+      <a href="#tools-ssh">SSH terminal</a>
+      <a href="#tools-passwords">Password manager</a>
+      <a href="#tools-drive">Drive</a>
+
       <div class="docs-nav-label">Deep dive</div>
       <a href="#deep-dive">Architecture</a>
       <a class="sub" href="#deep-dive-bridge">The bridge</a>
@@ -1832,6 +1838,34 @@
     </aside>
 
     <main class="docs-main">
+<!-- What's new -->
+      <section class="doc-section" id="whats-new">
+        <div class="section-header">
+          <span class="section-label">Release</span>
+          <h2>What's new in 1.1</h2>
+          <p>Three tools next to the projects, a lawful way to bring a Claude subscription, and pages that follow what
+            happens on the server without a reload. The full list is in <code>CHANGELOG.md</code>.</p>
+        </div>
+        <div class="walkthrough-grid">
+          <dl><dt>SSH terminal</dt><dd>Real terminals in the browser to any server, saved connections and keys, several at once;
+            a connection can be shared with a project without sharing its key. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
+          <dl><dt>Password manager</dt><dd>Encrypted items in folders, with TOTP codes and a generator, shared with a project by
+            role or with single people. See <a href="#tools-passwords">Password manager</a>.</dd></dl>
+          <dl><dt>Drive</dt><dd>Folders and files with access by project and role, and <em>Copy / Move into the workspace</em>.
+            See <a href="#tools-drive">Drive</a>.</dd></dl>
+          <dl><dt>Sign in with Claude</dt><dd>A Pro or Max subscription is your own <code>claude auth login</code> in your home on
+            the server; Studio keeps nothing of it. With an API key too, you choose which one runs. See
+            <a href="#setup-connections">Git &amp; Claude</a>.</dd></dl>
+          <dl><dt>Live pages</dt><dd>The workspace badge, the chat, the projects and the System page update on their own; an
+            update is followed through its switch and the page reloads onto the new release.</dd></dl>
+          <dl><dt>Uuids</dt><dd>Links and buttons carry uuids, never sequential ids. Old numeric links to a conversation no
+            longer open.</dd></dl>
+        </div>
+        <p>Upgrading from 1.0 needs nothing by hand: the update installs the SSH gateway (<code>studio-ssh</code>) and its
+          Caddy route, migrates, moves the workspaces' Claude variables and restarts their bridges. Whoever used a
+          <code>setup-token</code> signs in again once.</p>
+      </section>
+
 <!-- Quickstart -->
       <section class="doc-section" id="quickstart">
         <div class="section-header">
@@ -1937,7 +1971,7 @@
   releases/&lt;build&gt;/                    <span class="comment">the last three: v1.2.0, or main-1a2b3c4 on the beta channel; owned by the studio user</span>
   shared/.env, shared/storage/         <span class="comment">what every release shares</span>
 /etc/studio/
-  studio.env                           <span class="comment">the domain, paths, Studio's PHP, the repository, AUTO_UPDATE, UPDATE_CHANNEL; root only</span>
+  studio.env                           <span class="comment">the domain, paths, Studio's PHP, the repository, AUTO_UPDATE, UPDATE_CHANNEL, SYSTEM_UPDATE, SYSTEM_REBOOT; root only</span>
   update-signers                       <span class="comment">optional: SSH keys allowed to sign release tags</span>
   projects/&lt;slug&gt;.env                  <span class="comment">the deploy token and database password of a site</span>
   workspaces/&lt;user&gt;--&lt;slug&gt;.env        <span class="comment">one person's tokens for one workspace, readable by their Linux user only</span>
@@ -2367,8 +2401,10 @@
           your <code>~/.claude</code>, every workspace of yours uses it, and Studio never sees or keeps it. Anthropic does not
           let a platform collect or forward claude.ai credentials, which is why Studio no longer takes a
           <code>setup-token</code>; signing in to the unmodified Claude Code where a platform hosts it is what its terms allow.
-          With an Anthropic Console account: paste the API key, and the workspace exports <code>ANTHROPIC_API_KEY</code>.
-          The login files are denied to the agent itself.</p>
+          With an Anthropic Console account: paste the API key; Studio keeps it encrypted and the bridge hands it to Claude
+          Code only in the conversations that run on it. The login files and the kept key are denied to the agent itself.</p>
+        <p>You may have both. <em>Your conversations use</em> picks the one for every conversation, and <em>Model &amp; mode</em>
+          lets a single conversation use the other; when the chosen one is no longer connected, the other is used.</p>
 
         <div class="note"><strong>Changing a token</strong> updates every workspace the person already has and restarts its
           bridge. Removing one stops what depends on it: no git token, no new workspaces; no Claude, no chat.</div>
@@ -2593,7 +2629,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <img src="img/admin-system.png" alt="Administration → System: installed and newest release, Check now, Force update and Update buttons, the nightly switch, the channel, the last update with its log, the git provider" loading="lazy" width="2880" height="1920" />
           <figcaption><strong>Administration → System.</strong> The installed build and the newest one, <em>Check now</em>,
             <em>Force update</em> and <em>Update to</em>, the nightly switch, the channel, the last run with its log, and the
-            git provider of the installation.</figcaption>
+            git provider of the installation. While an update runs the page follows it live, through the maintenance of the
+            switch, and reloads onto the new release when it is done.</figcaption>
         </figure>
 
         <h3>Channels</h3>
@@ -2658,6 +2695,32 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           (a workspace stopped and started, a changed token); a release that changes the bridge protocol restarts them in its
           upgrade script. Three releases and five database dumps stay on disk.</p>
 
+        <h3 id="setup-server-updates">The server itself</h3>
+        <p>Studio's update installs what a release needs and adds what is missing; it does not upgrade what is already there.
+          That is the job of the <strong>server update</strong>, <code>studio-update system</code>: every night between 03:00
+          and 03:30 (an hour before Studio's own update, which waits for it), from <em>Administration → System</em> with
+          <em>Update the server now</em>, or by hand. It brings every package and tool on the server to its newest version:</p>
+        <ul>
+          <li><strong>apt</strong>: <code>update</code>, <code>full-upgrade</code>, <code>autoremove</code>. That is Ubuntu and
+            its security fixes, every installed PHP and its extensions (<code>ppa:ondrej/php</code>), Caddy, MariaDB, PostgreSQL,
+            redis, Node within its major (NodeSource), <code>gh</code> or <code>az</code>. Configuration files changed by hand
+            are kept.</li>
+          <li><strong>Outside apt</strong>: Composer (<code>self-update</code>), Claude Code (<code>npm</code>, <code>@latest</code>),
+            <code>glab</code> (its newest release), the <code>azure-devops</code> extension, through the system step of the
+            installed release, which also installs what that release names and is missing.</li>
+          <li><strong>Services</strong>: <code>needrestart</code> restarts every service still on an old library (never a
+            workspace bridge, where a conversation may be running: it picks the new Node up at its next start); when anything
+            changed, Studio's services restart; then Studio must answer <code>/up</code>.</li>
+          <li><strong>Reboot</strong>: a new kernel shows <em>reboot required</em> on the System page. With
+            <code>SYSTEM_REBOOT=1</code> in <code>/etc/studio/studio.env</code> the nightly run reboots the server five minutes
+            after it ends; a run by hand never does.</li>
+        </ul>
+        <p>It stays on what is installed: a new PHP version comes with a release of Studio (<code>requirements.env</code>); a
+          new Ubuntu release, a new Node major or a new major version of MariaDB or PostgreSQL is a decision for a person. The
+          System page lists what the last run changed (<code>php8.4-fpm 8.4.12-1 → 8.4.13-1</code>) with its log; apt's own
+          output is in <code>/var/log/studio-install.log</code>. The switch <em>Nightly server updates</em> (or
+          <code>studio-update system-auto off</code>) turns the timer off.</p>
+
         <div class="install-commands">
           <div class="install-commands-header">On the server, as root</div>
           <ol class="install-commands-list">
@@ -2685,6 +2748,11 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
               <span class="install-command-num" aria-hidden="true">⚙</span>
               <code class="install-command-text">studio-update ensure           # the system step again · status</code>
               <button type="button" class="install-copy-btn" data-copy="sudo studio-update ensure" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">⟳</span>
+              <code class="install-command-text">studio-update system           # every package to its newest version · system-auto on|off</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-update system" title="Copy command">Copy</button>
             </li>
           </ol>
         </div>
@@ -2721,7 +2789,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           way back short and recorded.</p>
 
         <h3>Releasing</h3>
-        <p>For whoever maintains Studio: set <code>VERSION</code> (1.0.0 today), commit, and push a <code>vX.Y.Z</code> tag on a
+        <p>For whoever maintains Studio: set <code>VERSION</code> (1.1.0 today), add the release to <code>CHANGELOG.md</code>, commit, and push a <code>vX.Y.Z</code> tag on a
           commit that passed the tests. Every stable server installs it at its next run; beta servers already run that commit.
           The release workflow refuses a tag whose <code>VERSION</code> says otherwise, and so does the updater. To sign
           releases, tag with <code>git tag -s</code> and an SSH key (<code>gpg.format=ssh</code>), sign the commits of main
@@ -2812,6 +2880,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             <tbody>
               <tr><td><strong>Model</strong></td><td>Default, Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 (the list is in <code>config/studio.php</code>)</td><td><code>--model</code></td></tr>
               <tr><td><strong>Effort</strong></td><td>Default, low, medium, high, max: how much the model thinks before it answers</td><td><code>--effort</code></td></tr>
+              <tr><td><strong>Claude account</strong></td><td>With both a subscription and an API key: your choice in Settings, the subscription, or the API key</td><td>the key in the environment, or none</td></tr>
               <tr><td><strong>Ask before actions</strong></td><td>Claude asks before commands and edits outside the automatic scope</td><td><code>--permission-mode default</code></td></tr>
               <tr><td><strong>Ask, edits allowed</strong></td><td>File edits in the workspace run; commands still ask</td><td><code>acceptEdits</code></td></tr>
               <tr><td><strong>Autopilot</strong></td><td>No questions: Claude Code's classifier reviews each action before it runs; the turn goes to the end on its own</td><td><code>auto</code></td></tr>
@@ -2970,7 +3039,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             </tbody>
           </table>
         </div>
-        <p>Output is kept to 200 KB and a command is killed after ten minutes. The shortcuts come from
+        <p>Output comes in colour: git, Composer, artisan and the test tools are asked for it, and the pane draws the ANSI
+          colours instead of their escape codes. Output is kept to 200 KB and a command is killed after ten minutes. The shortcuts come from
           <code>config/studio.php</code>; the allowlist lives in the bridge (<code>bridge/src/commands.js</code>), so what the
           dashboard sends is checked where it runs. Clients have no terminal.</p>
         <figure class="shot">
@@ -3020,8 +3090,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </div>
         <figure class="shot">
           <img src="img/studio-empty.png" alt="A project opened for the first time: no conversation yet, the workspace pill in the header" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>First open.</strong> The header pill follows the workspace: to create, creating, running,
-            stopping, stopped, failed. A failed one shows the server's reason on hover.</figcaption>
+          <figcaption><strong>First open.</strong> The header pill follows the workspace live: to create, creating, running,
+            stopping, stopped, failed; the chat and the preview follow it. A failed one shows the server's reason on hover.</figcaption>
         </figure>
         <ul>
           <li><strong>Start / Stop</strong> start or stop the bridge and release the preview. Conversations and their sessions
@@ -3046,6 +3116,72 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <p>It is the role for the person who pays: they follow what is in review and what shipped without opening another
           tool, and without an email thread. If a client should also talk to the project, give them the PM role; from then on
           they have a workspace and a Claude plan of their own.</p>
+      </section>
+
+<!-- Tools: SSH -->
+      <section class="doc-section" id="tools-ssh">
+        <div class="section-header">
+          <span class="section-label">Tools</span>
+          <h2>SSH terminal</h2>
+          <p><em>Tools → SSH terminal</em>, for administrators and developers: real terminals in the browser to any server,
+            opened from Studio's server.</p>
+        </div>
+        <div class="walkthrough-grid">
+          <dl><dt>Connections</dt><dd>Host, port, user and a key or a password, saved per person; favourites stay on top. A
+            click opens a terminal; open as many as you like, in tabs or all side by side.</dd></dl>
+          <dl><dt>Keys</dt><dd>Generate Ed25519 or RSA 4096, or import yours (OpenSSH, PEM, PuTTY, with its passphrase, which is
+            not kept). The page shows the public key and the command that adds it to <code>authorized_keys</code>.</dd></dl>
+          <dl><dt>Host keys</dt><dd>The first connection shows the server's fingerprint and asks; from then on a different key
+            is refused.</dd></dl>
+          <dl><dt>Shared with a project</dt><dd>Tie a connection to a project and its administrators and developers find host,
+            port and user ready, tagged with your name. Each connects with a key or password of their own: credentials are
+            never shared.</dd></dl>
+        </div>
+        <p>Private keys and passwords are encrypted with <code>APP_KEY</code> and never reach the browser. The page asks Studio
+          for a one-time ticket (60 seconds) and opens a WebSocket to the gateway, <code>studio-ssh</code>
+          (<code>ssh-gateway/</code>, behind Caddy at <code>/ssh/ws</code>), which redeems the ticket on the loopback and only
+          then sees host and secret. The page asks for your password again, as <em>Settings → Security</em> does.</p>
+      </section>
+
+<!-- Tools: passwords -->
+      <section class="doc-section" id="tools-passwords">
+        <div class="section-header">
+          <span class="section-label">Tools</span>
+          <h2>Password manager</h2>
+          <p><em>Tools → Password manager</em>: the team's credentials, encrypted on the server, shared on purpose.</p>
+        </div>
+        <ul>
+          <li><strong>Items</strong>: title, URL, username, password, notes and a two-factor secret (base32 or
+            <code>otpauth://</code>), for which Studio shows the current code. A generator makes passwords of any length.</li>
+          <li><strong>Folders</strong>: yours, nested, to put your own items in order.</li>
+          <li><strong>Projects</strong>: tie an item to a project and tick who of its members sees it: clients, PMs,
+            developers. Administrators see every project item.</li>
+          <li><strong>People</strong>: share an item with a single person, to view or to edit. The sharing dialog shows who
+            sees it and why.</li>
+        </ul>
+        <p>Everything but title and URL is encrypted with <code>APP_KEY</code>. Secrets do not sit in the page: they come
+          from the server when you press show or copy. Personal items stay personal, also for administrators; clients see
+          what is shared with them and create nothing.</p>
+      </section>
+
+<!-- Tools: drive -->
+      <section class="doc-section" id="tools-drive">
+        <div class="section-header">
+          <span class="section-label">Tools</span>
+          <h2>Drive</h2>
+          <p><em>Tools → Drive</em>: folders and files on Studio's own disk, with access by project and role.</p>
+        </div>
+        <ul>
+          <li><strong>Files</strong>: upload with the button or by dropping them on the page, up to
+            <code>STUDIO_DRIVE_MAX_UPLOAD_MB</code> (100) each; rename, move, remove, download; images and PDFs open in the
+            browser.</li>
+          <li><strong>Access</strong>: tie a folder to a project and choose, for clients, PMs and developers, no access, view,
+            or view and edit. It applies to everything inside, down to a folder tied to another project. The owner of a top
+            folder and the administrators always read and write; everyone but clients creates folders.</li>
+          <li><strong>Into the workspace</strong>: from a folder tied to a project, <em>Copy</em> or <em>Move into the
+            workspace</em> sends a file, a selection or the whole folder into your workspace of that project, where you
+            choose; a move removes from the drive only what arrived.</li>
+        </ul>
       </section>
 
 <!-- Deep dive -->
@@ -3176,6 +3312,7 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
               <tr><td><code>workspace-env</code></td><td>Rewrites the tokens (the git token and user name, the provider's variables for the agent, the Claude credential) and restarts the bridge.</td></tr>
               <tr><td><code>workspace-start</code>, <code>-stop</code>, <code>-status</code>, <code>-delete</code></td><td>What they say. Stop also kills the person's processes in that directory.</td></tr>
               <tr><td><code>update-check</code>, <code>update-start [force]</code>, <code>update-channel</code>, <code>update-auto</code></td><td>For the System page: ask <code>studio-update</code> what the channel would install, start <code>studio-update.service</code> or <code>studio-update-force.service</code> (their own units, so they outlive the queue worker they restart), switch the channel and the nightly timer.</td></tr>
+              <tr><td><code>system-update-start</code>, <code>system-update-auto</code></td><td>Start <code>studio-update system</code> as <code>studio-system-update.service</code>, switch the nightly server update. Neither starts while an update of Studio or of the server runs.</td></tr>
             </tbody>
           </table>
         </div>
@@ -3244,8 +3381,9 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
           model and effort lists, and the terminal shortcuts. What changes per project (services, access rules, MCP servers)
           lives in the project settings, not in files.
           <code>/etc/studio/studio.env</code> holds what the helper and the updater need: the domain, the paths, the PHP that
-          runs Studio, the repository releases come from (<code>STUDIO_REPO</code>), <code>AUTO_UPDATE</code> and
-          <code>UPDATE_CHANNEL</code> (<code>stable</code> or <code>beta</code>).</p>
+          runs Studio, the repository releases come from (<code>STUDIO_REPO</code>), <code>AUTO_UPDATE</code>,
+          <code>UPDATE_CHANNEL</code> (<code>stable</code> or <code>beta</code>), <code>SYSTEM_UPDATE</code> (the nightly
+          <a href="#setup-server-updates">server update</a>, on by default) and <code>SYSTEM_REBOOT</code> (off by default).</p>
       </section>
 
       <section class="deep-dive-sub" id="deep-dive-local">
@@ -3300,7 +3438,7 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
   </div>
 
   <footer>
-    <p>Studio v1.0 · Open source · MIT · <a href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a> · <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a></p>
+    <p>Studio v1.1 · Open source · MIT · <a href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a> · <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a></p>
     <p>Made by <a href="https://web.ap.it" target="_blank" rel="noopener">Andrea Pollastri</a></p>
   </footer>
 

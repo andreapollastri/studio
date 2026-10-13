@@ -10,6 +10,7 @@
                 · {{ $conversation->modeLabel() }}
                 @if ($conversation->model) · {{ $conversation->model }} @endif
                 @if ($conversation->effort) · {{ __('effort') }} {{ $conversation->effort }} @endif
+                @if (count($conversation->user->claudeAccounts()) === 2) · {{ \App\Enums\ClaudeAuthMode::from($conversation->user->claudeAccountFor($conversation->claude_auth) ?? 'none')->label() }} @endif
                 @if ($conversation->last_result['total_cost_usd'] ?? null) · {{ number_format((float) $conversation->last_result['total_cost_usd'], 2) }} $ {{ __('last turn') }} @endif
             </div>
         </div>
@@ -133,6 +134,13 @@
                         <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
                     @endforeach
                 </flux:select>
+                @if (count($conversation->user->claudeAccounts()) === 2)
+                    <flux:select wire:model="account" :label="__('Claude account')">
+                        <flux:select.option value="">{{ __('Your choice in Settings (:account)', ['account' => \App\Enums\ClaudeAuthMode::from($conversation->user->claudeAccountFor() ?? 'none')->label()]) }}</flux:select.option>
+                        <flux:select.option value="subscription">{{ __('Claude subscription') }}</flux:select.option>
+                        <flux:select.option value="api_key">{{ __('API key') }}</flux:select.option>
+                    </flux:select>
+                @endif
                 <flux:radio.group wire:model="mode" :label="__('Mode')">
                     @foreach ($modes as $value => $definition)
                         <flux:radio :value="$value" :label="$definition['label']" :description="$definition['hint']" />

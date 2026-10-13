@@ -6,7 +6,7 @@ the changes, the backlog, approvals. Each conversation is **the person's own Cla
 inside their workspace with the Larapilot skills of the project. Nothing to install on a laptop but
 a browser.
 
-**Version 1.0** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
+**Version 1.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
 (Netlify publishes the `docs/` folder as it is, see `netlify.toml`). The interface is in English;
@@ -57,11 +57,20 @@ database, migrates, switches `/opt/studio/current`, checks `/up`, and puts the p
 database back when a step fails. Signed tags (and, on beta, signed commits) are enforced when
 `/etc/studio/update-signers` exists. Releasing is: set `VERSION`, push a `vX.Y.Z` tag.
 
+**Server updates.** An hour before, `studio-update system` brings every package and tool on the server to its
+newest version, every night or from *Administration → System*: `apt full-upgrade` (Ubuntu, every PHP and its
+extensions, Caddy, MariaDB, PostgreSQL, redis, Node within its major, the provider's CLI), Composer, Claude Code,
+glab; then needrestart, Studio's services and its health check. The page lists what changed and whether a new
+kernel needs a reboot (`SYSTEM_REBOOT=1` in `/etc/studio/studio.env` reboots by itself). A new Ubuntu release or
+a new major of a database stays a decision for a person.
+
 Inside a conversation the chat is the full Claude Code CLI: subagents, plan mode, skills and slash commands,
 MCP servers from the repository, hooks. *Model & mode* picks the model, the effort and the permission mode
 (ask, ask with edits, autopilot, plan only); the *Terminal* tab runs allowlisted commands in the workspace; the *Files* tab is a file manager with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
-## Status (1.0, 2026-10-05)
+## Status (1.1)
+
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 | Area | State |
 | --- | --- |
@@ -78,11 +87,12 @@ MCP servers from the repository, hooks. *Model & mode* picks the model, the effo
 | Project settings: scheduler and queues on every host by default, extra queues, Horizon, Reverb, Pulse; every project host behind the Studio login and the project assignment (a per-host pass), narrowed by address lists per site, previews and branch | done in Studio and the helper, tested with stand-ins; the helper's services block exercised in a sandbox with systemctl stubbed; units, cron and Caddy `forward_auth` not yet run on a live server |
 | New project from scratch: repository created on the git provider, latest Laravel + Laravel Boost + Larapilot (with its forge integration on) pushed by the server | done, tested with stand-ins for the provider and the helper |
 | Bridge (Node, `bridge/`): drives `claude -p` stream-json, permissions, resume, skills, git | done, tested with a fake CLI |
-| Updater (`installer/studio-update`): stable and beta channels, force, system step, upgrade scripts, dump, migrate, switch, health check, rollback, signatures | done, tested end to end in a sandbox with a real git repository and stubbed system commands (`tests/installer/`, 18 checks) |
+| Updater (`installer/studio-update`): stable and beta channels, force, system step, upgrade scripts, dump, migrate, switch, health check, rollback, signatures; nightly server update (`studio-update system`) | done, tested end to end in a sandbox with a real git repository and stubbed system commands (`tests/installer/`, 24 checks); the server update's apt run not yet on a live server |
 | Installer (`installer/install.sh`), system steps (`installer/lib/system.sh`) and helper (`installer/studio-admin`) | written for Ubuntu 24.04/26.04 and shellchecked, **not yet run on a live server** |
 | SSH terminal (*Tools → SSH terminal*, admins and developers): saved connections with favourites, several terminals at once (tabs or side by side), Ed25519/RSA keys generated or imported (OpenSSH, PEM, PuTTY, with passphrase), passwords, host keys accepted on first use; a connection tied to a project shows up for its admins and developers, who connect with their own key or password | done, tested (Pest, and `ssh-gateway/` against a real SSH server); the `studio-ssh` unit and its Caddy route not yet run on a live server |
 | Password manager (*Tools → Password manager*): nested personal folders, items encrypted (username, password, notes, TOTP with live codes), password generator; an item is tied to a project for the roles ticked (client, PM, dev) and shared with single people to view or edit, with a table of who sees it and why | done, tested |
 | Drive (*Tools → Drive*): folders and files on Studio's disk, upload by button or drag and drop; a folder tied to a project opens by role to view or to view and edit, down the tree; administrators see everything, clients create nothing; *Copy / Move into the workspace* sends files or whole folders to the person's workspace of that project through the bridge | done, tested (the bridge's `PUT /files/upload` against real directories) |
+| Claude: *Sign in with Claude* (the official `claude auth login` in the person's home on the server, through the SSH gateway), or an API key; with both, a choice per person and per conversation | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
 | Not started | atomic releases for project sites, notifications, mobile layout |
 
 ## Run it locally (no server)

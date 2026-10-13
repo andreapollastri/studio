@@ -1,4 +1,6 @@
-<div class="flex h-full w-full flex-1 flex-col gap-8" @if ($running) wire:poll.5s @endif>
+{{-- Followed by systemWatch (resources/js/system-watch.js), not wire:poll: it keeps going through the
+     maintenance of an update's switch and reloads onto the new release when the update is done. --}}
+<div class="flex h-full w-full flex-1 flex-col gap-8" x-data="systemWatch({ url: @js(route('admin.system.status')), running: @js($running || $serverRunning), finishedAt: @js($state['finished_at'] ?? null), serverFinishedAt: @js($server['finished_at'] ?? null) })">
     <div>
         <flux:heading size="xl">{{ __('System') }}</flux:heading>
         <flux:text class="mt-1">{{ __('This installation of Studio: the release it runs, its updates, and the git provider every project lives on.') }}</flux:text>
@@ -98,6 +100,16 @@
             <flux:text class="mt-3 text-xs">{{ __('Neither channel goes backwards: back on stable after beta, Studio keeps its main build until a release contains it.') }}</flux:text>
         </div>
 
+        {{-- An update under way, followed live (also through the maintenance of the switch). --}}
+        <div x-show="live" x-transition class="rounded-xl border border-sky-300 dark:border-sky-800" style="display: none">
+            <div class="flex flex-wrap items-center gap-2 border-b border-sky-200 px-4 py-2 dark:border-sky-900">
+                <flux:icon.loading class="size-4 text-sky-500" />
+                <span class="text-sm font-medium" x-text="maintenance ? @js(__('Studio is switching to the new release…')) : (message || @js(__('The update is starting…')))"></span>
+            </div>
+            <pre x-show="log.length" class="max-h-72 overflow-auto px-4 py-3 font-mono text-xs leading-5 text-zinc-600 dark:text-zinc-300" x-text="log.join('\n')" x-effect="log; $nextTick(() => $el.scrollTop = $el.scrollHeight)"></pre>
+            <flux:text class="border-t border-sky-200 px-4 py-2 text-xs dark:border-sky-900">{{ __('This page follows the update and reloads itself when it is done.') }}</flux:text>
+        </div>
+
         @if (! empty($state['status']) && ! in_array($state['status'], ['installed'], true))
             <div class="rounded-xl border border-zinc-200 dark:border-zinc-700">
                 <div class="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-700">
@@ -118,6 +130,76 @@
 
         <flux:text class="text-xs">
             {{ __('Each update builds the new release next to the running one, installs what it needs on the server (a new PHP, Node, packages, the provider\'s CLI) as root, backs up the database, migrates, switches, and checks that Studio answers; if any step fails, the previous release and the database come back.') }}
+        </flux:text>
+    </section>
+
+    <flux:separator />
+
+    {{-- The server itself --}}
+    <section class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <flux:heading size="lg">{{ __('Server') }}</flux:heading>
+            <flux:button size="sm" icon="arrow-path" wire:click="updateServer" :disabled="! $managed || $running || $serverRunning"
+                wire:confirm="{{ __('Update every package on the server to its newest version now? Ubuntu, PHP, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider\'s CLI; Studio\'s services restart for a moment at the end.') }}">
+                {{ __('Update the server now') }}
+            </flux:button>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+            <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                <flux:text class="text-xs uppercase tracking-wide">{{ __('Last server update') }}</flux:text>
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                    @if ($serverRunning)
+                        <flux:badge size="sm" color="blue">{{ __('updating…') }}</flux:badge>
+                    @elseif (! empty($server['finished_at']))
+                        <span class="text-lg">{{ \Illuminate\Support\Carbon::parse($server['finished_at'])->diffForHumans() }}</span>
+                        <flux:badge size="sm" :color="match ($server['status'] ?? '') { 'ok', 'up-to-date' => 'green', 'failed' => 'red', default => 'zinc' }">{{ match ($server['status'] ?? '') { 'ok' => __('updated'), 'up-to-date' => __('up to date'), 'failed' => __('failed'), default => (string) ($server['status'] ?? '') } }}</flux:badge>
+                    @else
+                        <span class="text-lg text-zinc-400">{{ __('not yet') }}</span>
+                    @endif
+                </div>
+                @if (! empty($server['message']) && ! $serverRunning)
+                    <flux:text class="text-xs">{{ $server['message'] }}</flux:text>
+                @endif
+            </div>
+            <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                <flux:text class="text-xs uppercase tracking-wide">{{ __('Reboot') }}</flux:text>
+                <div class="mt-1">
+                    @if (($server['reboot_required'] ?? false) === true)
+                        <flux:badge size="sm" color="yellow">{{ __('reboot required') }}</flux:badge>
+                        <flux:text class="mt-1 text-xs">{{ __('A new kernel or system library is installed: it runs from the next reboot of the server.') }}</flux:text>
+                    @else
+                        <span class="text-lg">{{ __('not needed') }}</span>
+                    @endif
+                </div>
+            </div>
+            <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                <flux:text class="text-xs uppercase tracking-wide">{{ __('Nightly server updates') }}</flux:text>
+                <div class="mt-2">
+                    <flux:switch wire:model.live="serverAutomatic" :disabled="! $managed" :label="__('Every night, every package to its newest version')" />
+                </div>
+            </div>
+        </div>
+
+        @if (! empty($server['changes']) || ! empty($server['log']))
+            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700">
+                @if (! empty($server['changes']))
+                    <div class="border-b border-zinc-200 px-4 py-2 dark:border-zinc-700">
+                        <flux:text class="text-xs uppercase tracking-wide">{{ __(':count changed', ['count' => count((array) $server['changes'])]) }}</flux:text>
+                    </div>
+                    <pre class="max-h-56 overflow-auto px-4 py-3 font-mono text-xs leading-5 text-zinc-600 dark:text-zinc-300">{{ implode("\n", (array) $server['changes']) }}</pre>
+                @endif
+                @if (! empty($server['log']))
+                    <details class="border-t border-zinc-200 dark:border-zinc-700">
+                        <summary class="cursor-pointer px-4 py-2 text-xs">{{ __('Log') }}</summary>
+                        <pre class="max-h-72 overflow-auto px-4 py-3 font-mono text-xs leading-5 text-zinc-600 dark:text-zinc-300">{{ implode("\n", (array) $server['log']) }}</pre>
+                    </details>
+                @endif
+            </div>
+        @endif
+
+        <flux:text class="text-xs">
+            {{ __('Every night, an hour before Studio\'s own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git provider\'s CLI. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.') }}
         </flux:text>
     </section>
 

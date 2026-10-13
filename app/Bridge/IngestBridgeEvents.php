@@ -206,10 +206,18 @@ final class IngestBridgeEvents
         ]);
 
         if ($isError) {
+            $content = (string) (($event['result'] ?? '') ?: __('The turn ended with an error (:subtype).', ['subtype' => $event['subtype'] ?? 'error']));
+
+            // A process that dies sends its reason as an error and again as the result: say it once.
+            $last = $conversation->messages()->latest('id')->first();
+            if ($last?->kind === Message::KIND_NOTICE && $last->content === Str::limit($content, 2000)) {
+                return;
+            }
+
             $conversation->messages()->create([
                 'role' => Message::ROLE_SYSTEM,
                 'kind' => Message::KIND_NOTICE,
-                'content' => (string) (($event['result'] ?? '') ?: __('The turn ended with an error (:subtype).', ['subtype' => $event['subtype'] ?? 'error'])),
+                'content' => $content,
                 'payload' => ['level' => 'error'],
             ]);
         }

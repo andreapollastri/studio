@@ -1,0 +1,51 @@
+# Changelog
+
+Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install it on their next
+update (*Administration → System*, or every night). What a release needs done as root on every
+server is in `installer/upgrades/<version>.sh`.
+
+## 1.1.0
+
+### Tools
+- **SSH terminal** (*Tools → SSH terminal*, administrators and developers): saved connections with
+  favourites, any number of terminals at once (tabs or side by side), Ed25519 and RSA keys generated
+  or imported (OpenSSH, PEM, PuTTY, with passphrase), passwords, host keys accepted on first use and
+  refused when they change. A connection tied to a project shows up for its administrators and
+  developers, who connect with a key or password of their own: credentials are never shared.
+  Runs through a new service, `studio-ssh` (`ssh-gateway/`), behind Caddy at `/ssh/ws`.
+- **Password manager** (*Tools → Password manager*): nested folders, items encrypted (username,
+  password, notes, TOTP with the live code), a password generator. An item is tied to a project for
+  the roles ticked (client, PM, developer) and shared with single people, to view or to edit; a
+  table shows who sees it and why.
+- **Drive** (*Tools → Drive*): folders and files, upload by button or drag and drop with progress.
+  A folder tied to a project opens by role, to view or to view and edit, down the tree;
+  administrators see everything, clients create nothing. *Copy / Move into the workspace* sends
+  files, a selection or whole folders into the person's workspace of that project.
+
+### Claude
+- **Sign in with Claude**: a Pro or Max subscription is the person's own `claude auth login` of the
+  unmodified Claude Code, in their own home on the server (`/home/ws-<handle>`, shared by all their
+  workspaces). Studio never sees, stores or forwards it, as Anthropic's terms require of a platform
+  that hosts Claude Code. Stored `setup-token`s are dropped: people sign in again once.
+- A person may have **both a subscription and an API key** and choose which one their conversations
+  use; a conversation may use the other one (*Model & mode*). The API key reaches only the
+  conversations that run on it.
+
+### Everywhere
+- **Public uuids**: links, buttons, pickers and broadcast channels carry uuids, never sequential ids.
+  Old links with a number (`/p/<project>/c/5`) no longer open.
+- **Live pages**: the workspace badge follows the status (Reverb, and polling while it moves); the
+  chat gets its messages live (the Echo event name was wrong: it only polled); the projects list,
+  *Administration → Projects* and *Administration → System* refresh on their own; System follows an
+  update through the maintenance of its switch and reloads onto the new release.
+- **Terminal tab**: colours (ANSI) instead of escape codes; git, Composer, artisan and the test tools
+  are asked for colour; characters split across chunks arrive whole.
+
+### Upgrading from 1.0
+Nothing to do by hand: the update installs the SSH gateway and its Caddy route, migrates, moves the
+workspaces' Claude variables and restarts their bridges (`installer/upgrades/1.1.0.sh`). Whoever used
+a subscription signs in again in *Settings → Connections*.
+
+## 1.0.0
+
+First release.

@@ -338,6 +338,10 @@ STUDIO_PHP=8.4
 STUDIO_REPO=${STUDIO_REPO}
 AUTO_UPDATE=1
 UPDATE_CHANNEL=${STUDIO_CHANNEL}
+# every package on the server to its newest version, every night (studio-update system);
+# SYSTEM_REBOOT=1 also reboots after it when a new kernel asks for it
+SYSTEM_UPDATE=1
+SYSTEM_REBOOT=0
 EOF
 chmod 600 "$STUDIO_ETC/studio.env"
 
@@ -399,7 +403,7 @@ for f in "$RELEASE"/installer/upgrades/*.sh; do
     upgrades=$(jq --arg v "$v" --arg h "$(git hash-object "$f")" '. + {($v): $h}' <<<"$upgrades")
 done
 jq -n --arg c "$RELEASE_NAME" --arg cc "$STUDIO_COMMIT" --arg ch "$STUDIO_CHANNEL" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson u "$upgrades" \
-    '{current: $c, current_commit: $cc, current_dir: $c, channel: $ch, status: "installed", message: "Installed.", finished_at: $t, auto: true, upgrades: $u}' > /var/lib/studio-update/state.json
+    '{current: $c, current_commit: $cc, current_dir: $c, channel: $ch, status: "installed", message: "Installed.", finished_at: $t, auto: true, upgrades: $u, system: {auto: true}}' > /var/lib/studio-update/state.json
 chmod 644 /var/lib/studio-update/state.json
 
 # ---------------------------------------------------------------- done -------
@@ -408,5 +412,6 @@ printf '\n\033[1;32m  Studio %s is installed.\033[0m\n' "$RELEASE_NAME"
 credentials_banner
 note "Next: sign in, turn on two-factor in Settings → Security, add your Claude credential in"
 note "Settings → Connections, then create the first project from Administration → Projects."
-note "Updates: every night to the newest release (Administration → System, or  sudo studio-update apply)."
+note "Updates: every night to the newest release (Administration → System, or  sudo studio-update apply),"
+note "         and every package on the server to its newest version an hour before (sudo studio-update system)."
 printf '\n'

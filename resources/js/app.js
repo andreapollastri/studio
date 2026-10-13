@@ -8,3 +8,4 @@ import './echo';
 import './ssh';
 import './search-picker';
 import './claude-login';
+import './system-watch';

@@ -22,6 +22,11 @@
 #   studio-update status                 the last check and the last run, as JSON
 #   studio-update ensure                 the system step of the installed release, again
 #   studio-update rollback               back to the previous release and its database
+#   studio-update system [--auto]        the server itself: every package and tool to its newest
+#                                        version (apt full-upgrade, Composer, Claude Code…), then
+#                                        Studio's services and its health check; nightly from
+#                                        studio-system-update-auto.timer, an hour before Studio's
+#   studio-update system-auto on|off     the nightly server update
 #
 # One update, in order:
 #   1. clone the build into /opt/studio/releases/<tag or main-sha>; when
@@ -266,10 +271,14 @@ switch_to() { # point /opt/studio/current at a release directory, atomically
     mv -Tf "$STUDIO_HOME/current.next" "$CURRENT"
 }
 
-lock() {
+lock() { # lock [SECONDS] — one update at a time; the nightly runs wait for each other
     mkdir -p "$(dirname "$LOCK")"
     exec 9>"$LOCK"
-    flock -n 9 || { echo "another update is running" >&2; exit 1; }
+    if [ "${1:-0}" -gt 0 ]; then
+        flock -w "$1" 9 || { echo "another update is still running after $1 seconds" >&2; exit 1; }
+    else
+        flock -n 9 || { echo "another update is running" >&2; exit 1; }
+    fi
 }
 
 # The log of this run goes to the shared log and, trimmed, into the state for the System page.
@@ -332,7 +341,7 @@ cmd_apply() {
     done
     [ -z "$want" ] || is_tag "$want" || { echo "not a release tag: $want" >&2; exit 2; }
 
-    lock
+    if [ "$auto" = 1 ]; then lock 3600; else lock; fi
     if ! sync_mirror; then
         echo "the Studio repository is not reachable: $STUDIO_REPO" >&2
         state_merge --arg t "$(now)" '. + {checked_at: $t, waiting: "The Studio repository is not reachable.", waiting_reason: "unreachable"}'
@@ -492,6 +501,89 @@ cmd_rollback() {
     finish_state ok "Rolled back $cur → $prev."
 }
 
+# ------------------------------------------------------------------ server --
+# The server itself, kept on the newest version of everything installed: the current
+# release's upgrade_system (apt full-upgrade, then its system step), Studio's services
+# again, and its health check. Its state is .system in the state file.
+
+finish_system() { # finish_system STATUS MESSAGE CHANGES_FILE
+    sleep 0.2
+    state_merge --arg s "$1" --arg m "$2" --arg t "$(now)" --rawfile log "$RUNLOG" --rawfile ch "$3" \
+        --argjson rb "$(bool [ -f "$ROOT/run/reboot-required" ])" --arg rbp "$(cat "$ROOT/run/reboot-required.pkgs" 2>/dev/null || true)" \
+        '.system = ((.system // {}) + {status: $s, message: $m, finished_at: $t, reboot_required: $rb,
+            reboot_packages: ($rbp | split("\n") | map(select(length > 0)) | unique),
+            changes: ($ch | split("\n") | map(select(length > 0))),
+            log: ($log | split("\n") | map(select(length > 0)) | .[-80:])})'
+}
+
+cmd_system() {
+    local auto=0 rel changes count
+    case "${1:-}" in
+        --auto) auto=1 ;;
+        "") ;;
+        *) echo "usage: studio-update system [--auto]" >&2; exit 2 ;;
+    esac
+    if [ "$auto" = 1 ] && [ "${SYSTEM_UPDATE:-1}" != 1 ]; then
+        echo "automatic server updates are off (SYSTEM_UPDATE=0)"
+        exit 0
+    fi
+    rel=$(current_dir)
+    [ -n "$rel" ] && [ -d "$rel" ] || { echo "Studio is not installed here ($CURRENT is missing)" >&2; exit 1; }
+    if [ "$auto" = 1 ]; then lock 3600; else lock; fi
+
+    changes=$(mktemp)
+    start_run_log
+    state_merge --arg t "$(now)" --argjson a "$(bool [ "$auto" = 1 ])" \
+        '.system = ((.system // {}) + {status: "running", message: "Updating the server", started_at: $t, finished_at: null, triggered_automatically: $a})'
+    say "server update: every package and tool to its newest version"
+
+    if ! lib "$rel" upgrade_system "$rel" "$changes"; then
+        say "FAILED: the server update stopped; the details are in /var/log/studio-install.log"
+        lib "$rel" restart_studio || true
+        finish_system failed "The server update stopped before the end: see /var/log/studio-install.log." "$changes"
+        exit 1
+    fi
+
+    count=$(grep -c . "$changes" || true)
+    if [ "$count" -gt 0 ]; then
+        say "restarting Studio's services on the new packages"
+        lib "$rel" restart_studio || say "Studio's services did not all restart"
+        as_studio "php$(php_of "$rel")" "$rel/artisan" optimize --quiet || true
+    fi
+    if ! healthy; then
+        say "Studio does not answer: restarting its services once more"
+        lib "$rel" restart_studio || true
+        healthy || { finish_system failed "Studio did not answer its health check after the server update." "$changes"; exit 1; }
+    fi
+
+    if [ -f "$ROOT/run/reboot-required" ]; then
+        if [ "$auto" = 1 ] && [ "${SYSTEM_REBOOT:-0}" = 1 ]; then
+            say "a reboot is required (a new kernel or system library): rebooting in 5 minutes (SYSTEM_REBOOT=1)"
+            shutdown -r +5 "Studio: reboot after the nightly server update" >/dev/null 2>&1 || say "the reboot could not be scheduled"
+        else
+            say "a reboot is required (a new kernel or system library): reboot the server when it suits the team"
+        fi
+    fi
+
+    if [ "$count" -gt 0 ]; then
+        say "the server is up to date: $count changed"
+        finish_system ok "Updated $count $([ "$count" = 1 ] && echo package || echo packages)." "$changes"
+    else
+        say "the server was already up to date"
+        finish_system up-to-date "Everything was already on its newest version." "$changes"
+    fi
+    rm -f "$changes"
+}
+
+cmd_system_auto() {
+    local val
+    case "${1:-}" in on) val=1 ;; off) val=0 ;; *) echo "usage: studio-update system-auto on|off" >&2; exit 2 ;; esac
+    set_conf SYSTEM_UPDATE "$val"
+    if [ "$val" = 1 ]; then systemctl enable --now studio-system-update-auto.timer >/dev/null 2>&1 || true; else systemctl disable --now studio-system-update-auto.timer >/dev/null 2>&1 || true; fi
+    state_merge --argjson a "$(bool [ "$val" = 1 ])" '.system = ((.system // {}) + {auto: $a})'
+    jq -n --argjson a "$(bool [ "$val" = 1 ])" '{ok: true, auto: $a}'
+}
+
 cmd=${1:-}; shift || true
 case "$cmd" in
     check) cmd_check ;;
@@ -501,5 +593,7 @@ case "$cmd" in
     auto) cmd_auto "$@" ;;
     ensure) cmd_ensure ;;
     rollback) cmd_rollback ;;
-    *) sed -n '3,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    system) cmd_system "$@" ;;
+    system-auto) cmd_system_auto "$@" ;;
+    *) sed -n '3,29p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

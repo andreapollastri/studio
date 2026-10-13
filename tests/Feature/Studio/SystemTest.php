@@ -101,6 +101,52 @@ test('the beta channel shows the newest commit on main and links to it', functio
         ->assertSee('Beta tester mode');
 });
 
+test('the last server update shows what changed and whether a reboot is needed', function () {
+    writeState($this->state, [
+        'current' => 'v1.0.0', 'status' => 'ok',
+        'system' => [
+            'auto' => true, 'status' => 'ok', 'message' => 'Updated 2 packages.', 'finished_at' => now()->toIso8601String(),
+            'changes' => ['mariadb-server 1:10.11.13 → 1:10.11.14', 'php8.4-fpm 8.4.12-1 → 8.4.13-1'],
+            'reboot_required' => true, 'reboot_packages' => ['linux-image-6.8.0-90'],
+            'log' => ['server update: every package and tool to its newest version'],
+        ],
+    ]);
+
+    expect(app(Updates::class)->systemRunning())->toBeFalse();
+
+    Livewire::actingAs(User::factory()->admin()->create())
+        ->test(System::class)
+        ->assertSet('serverAutomatic', true)
+        ->assertSee('Updated 2 packages.')
+        ->assertSee('php8.4-fpm 8.4.12-1 → 8.4.13-1')
+        ->assertSee('reboot required')
+        ->assertSee('Update the server now');
+});
+
+test('the server update and its nightly switch go through the helper', function () {
+    writeState($this->state, ['current' => 'v1.0.0', 'system' => ['auto' => true]]);
+
+    Livewire::actingAs(User::factory()->admin()->create())
+        ->test(System::class)
+        ->call('updateServer')
+        ->set('serverAutomatic', false)
+        ->assertSet('error', null);
+
+    expect(helperCalls($this->log))->toBe(['system-update-start', 'system-update-auto off']);
+});
+
+test('a server update in progress keeps the page following it', function () {
+    writeState($this->state, ['current' => 'v1.0.0', 'system' => ['status' => 'running', 'auto' => false]]);
+
+    expect(app(Updates::class)->systemRunning())->toBeTrue();
+
+    Livewire::actingAs(User::factory()->admin()->create())
+        ->test(System::class)
+        ->assertSet('serverAutomatic', false)
+        ->assertSee('running: true', false)
+        ->assertSee('updating…');
+});
+
 test('a local installation explains that updates happen on the server', function () {
     config(['studio.driver' => 'local']);
 
@@ -108,6 +154,8 @@ test('a local installation explains that updates happen on the server', function
         ->test(System::class)
         ->assertSee('local installation')
         ->call('forceUpdate')
+        ->assertSet('error', 'Updates run on the server. This Studio is a local installation.')
+        ->call('updateServer')
         ->assertSet('error', 'Updates run on the server. This Studio is a local installation.');
 
     expect(file_get_contents($this->log))->toBe('');
@@ -120,4 +168,27 @@ test('the git provider can only change while there are no projects', function ()
 
     Project::factory()->create();
     Livewire::actingAs($admin)->test(System::class)->assertDontSee('studio:git-provider')->assertSee('so the provider stays');
+});
+
+test('the page follows an update through a JSON status that answers even during the maintenance of the switch', function () {
+    $admin = User::factory()->admin()->create();
+    writeState($this->state, [
+        'status' => 'running', 'message' => 'Updating v1.0.0 → v1.1.0', 'started_at' => '2026-10-17T10:00:00Z', 'finished_at' => null,
+        'log' => ['==> building v1.1.0', '==> migrating'],
+        'system' => ['status' => 'ok', 'finished_at' => '2026-10-17T03:00:00Z', 'log' => []],
+    ]);
+
+    $this->actingAs(User::factory()->create())->getJson(route('admin.system.status'))->assertForbidden();
+
+    $this->actingAs($admin)->get(route('admin.system'))->assertOk()->assertSee('systemWatch', false)->assertDontSee('wire:poll', false);
+
+    $this->artisan('down');
+    try {
+        $this->actingAs($admin)->getJson(route('admin.system.status'))
+            ->assertOk()
+            ->assertJson(['status' => 'running', 'message' => 'Updating v1.0.0 → v1.1.0', 'log' => ['==> building v1.1.0', '==> migrating'], 'server' => ['status' => 'ok']]);
+        $this->actingAs($admin)->get(route('admin.system'))->assertStatus(503);
+    } finally {
+        $this->artisan('up');
+    }
 });

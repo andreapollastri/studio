@@ -67,13 +67,13 @@ final class ClaudeLogin
             return $status;
         }
 
-        if ($status['logged_in'] && $status['method'] === 'claude.ai') {
-            $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_token' => null, 'claude_checked_at' => now()])->save();
-        } elseif ($user->claude_auth_mode === ClaudeAuthMode::Subscription) {
-            $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::None, 'claude_checked_at' => now()])->save();
-        } else {
-            $user->forceFill(['claude_checked_at' => now()])->save();
-        }
+        $signedIn = $status['logged_in'] && $status['method'] === 'claude.ai';
+        $user->forceFill([
+            'claude_signed_in' => $signedIn,
+            'claude_checked_at' => now(),
+            // the first account a person connects is the one they use
+            'claude_auth_mode' => $signedIn && $user->claude_auth_mode === ClaudeAuthMode::None ? ClaudeAuthMode::Subscription : $user->claude_auth_mode,
+        ])->save();
 
         return $status;
     }
@@ -84,8 +84,12 @@ final class ClaudeLogin
             $this->admin->run('claude-logout', [(string) $user->handle]);
         }
 
-        if ($user->claude_auth_mode === ClaudeAuthMode::Subscription) {
-            $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::None, 'claude_checked_at' => now()])->save();
-        }
+        $user->forceFill([
+            'claude_signed_in' => false,
+            'claude_checked_at' => now(),
+            'claude_auth_mode' => $user->claude_auth_mode === ClaudeAuthMode::Subscription
+                ? (filled($user->claude_token) ? ClaudeAuthMode::ApiKey : ClaudeAuthMode::None)
+                : $user->claude_auth_mode,
+        ])->save();
     }
 }

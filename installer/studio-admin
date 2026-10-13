@@ -18,8 +18,8 @@
 #   project-configure <slug>           {php_version, site_host, scheduler, queues, reverb, reverb_port, horizon, pulse}
 #   project-delete   <slug>
 #   workspace-create <handle> <slug>   {repo_url, branch, php_version, db_engine, preview_host, bridge_port,
-#                                       bridge_token, git_token, git_username, git_env, claude_env, claude_token, git_name, git_email}
-#   workspace-env    <handle> <slug>   {git_token, git_username, git_env, claude_env, claude_token}
+#                                       bridge_token, git_token, git_username, git_env, claude_api_key, git_name, git_email}
+#   workspace-env    <handle> <slug>   {git_token, git_username, git_env, claude_api_key}
 #   workspace-start | workspace-stop | workspace-status | workspace-delete | workspace-configure <handle> <slug>
 #   person-ensure    <handle>          the person's Linux user (ws-<handle>) and home, shared by their workspaces
 #   claude-status    <handle>          {ok, logged_in, auth_method, status}: `claude auth status` in their home
@@ -31,6 +31,8 @@
 #                                      ~/.claude/.credentials.json; Studio never sees or keeps it.
 #   update-check | update-start [force] | update-auto <on|off> | update-channel <stable|beta>
 #                                      the root updater (studio-update), for Administration → System
+#   system-update-start | system-update-auto <on|off>
+#                                      the server update (studio-update system), same page
 #
 set -euo pipefail
 umask 027
@@ -665,9 +667,9 @@ workspace_paths() { # handle slug
 }
 
 write_workspace_env() { # after workspace_paths; reads tokens from INPUT, keeps existing values when a field is absent
-    local bridge_token bridge_port claude_env claude_token var value
+    local bridge_token bridge_port claude_api_key var value
     bridge_token=$(field bridge_token); bridge_port=$(field bridge_port)
-    claude_env=$(field claude_env); claude_token=$(field claude_token)
+    claude_api_key=$(field claude_api_key)
     touch "$W_ENV"; chown "root:$W_USER" "$W_ENV"; chmod 640 "$W_ENV"
     set_env "$W_ENV" HOME "$W_HOME"
     set_env "$W_ENV" WORKSPACE_DIR "$W_DIR"
@@ -691,12 +693,13 @@ write_workspace_env() { # after workspace_paths; reads tokens from INPUT, keeps 
             done
         fi
     fi
-    # One Claude credential at a time. Only an API key travels here: a subscription is the
-    # person's own login in ~/.claude, made with `claude auth login` (claude-login), never a token.
+    # Claude: a subscription is the person's own login in ~/.claude (claude-login), never a
+    # token here. An API key is kept apart from Claude Code's own variable: the bridge hands it
+    # over as ANTHROPIC_API_KEY only to the conversations that run on it.
     sed -i '/^CLAUDE_CODE_OAUTH_TOKEN=/d; /^ANTHROPIC_API_KEY=/d' "$W_ENV"
-    if [ -n "$claude_env" ] && [ -n "$claude_token" ]; then
-        [ "$claude_env" = ANTHROPIC_API_KEY ] || fail "unexpected claude_env"
-        set_env "$W_ENV" "$claude_env" "$claude_token"
+    if has_field claude_api_key; then
+        unset_env "$W_ENV" STUDIO_ANTHROPIC_API_KEY
+        [ -n "$claude_api_key" ] && set_env "$W_ENV" STUDIO_ANTHROPIC_API_KEY "$claude_api_key"
     fi
 }
 
@@ -816,12 +819,19 @@ cmd_update_check() {
     /usr/local/sbin/studio-update check || fail "could not reach the Studio repository"
 }
 
+# an update of Studio and an update of the server never run together
+update_running() {
+    local u
+    for u in studio-update.service studio-update-force.service studio-update-auto.service studio-system-update.service studio-system-update-auto.service; do
+        systemctl is-active --quiet "$u" && return 0
+    done
+    return 1
+}
+
 cmd_update_start() { # [force] — force builds and installs the channel's newest build even when it is installed
     local unit=studio-update.service
     [ "${1:-}" = force ] && unit=studio-update-force.service
-    if systemctl is-active --quiet studio-update.service || systemctl is-active --quiet studio-update-force.service; then
-        fail "an update is already running"
-    fi
+    update_running && fail "an update is already running"
     systemctl start --no-block "$unit" || fail "could not start $unit"
     jq -n --arg u "$unit" '{ok:true, started:true, unit:$u}'
 }
@@ -834,6 +844,17 @@ cmd_update_channel() {
 cmd_update_auto() {
     [[ "$1" =~ ^(on|off)$ ]] || fail "usage: update-auto on|off"
     /usr/local/sbin/studio-update auto "$1" || fail "could not change automatic updates"
+}
+
+cmd_system_update_start() { # every package on the server to its newest version, as its own unit
+    update_running && fail "an update is already running"
+    systemctl start --no-block studio-system-update.service || fail "could not start studio-system-update.service"
+    jq -n '{ok:true, started:true, unit:"studio-system-update.service"}'
+}
+
+cmd_system_update_auto() {
+    [[ "$1" =~ ^(on|off)$ ]] || fail "usage: system-update-auto on|off"
+    /usr/local/sbin/studio-update system-auto "$1" || fail "could not change the nightly server update"
 }
 
 # ---------------------------------------------------------------- dispatch --
@@ -860,5 +881,7 @@ case "$cmd" in
     update-start)     [ $# -le 1 ] && [[ "${1:-}" =~ ^(force)?$ ]] || fail "usage: update-start [force]"; cmd_update_start "${1:-}" ;;
     update-channel)   [ $# -eq 1 ] || fail "usage: update-channel stable|beta"; cmd_update_channel "$1" ;;
     update-auto)      [ $# -eq 1 ] || fail "usage: update-auto on|off"; cmd_update_auto "$1" ;;
+    system-update-start) [ $# -eq 0 ] || fail "usage: system-update-start"; cmd_system_update_start ;;
+    system-update-auto)  [ $# -eq 1 ] || fail "usage: system-update-auto on|off"; cmd_system_update_auto "$1" ;;
     *) fail "unknown command: ${cmd:-none}" ;;
 esac

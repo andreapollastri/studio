@@ -11,6 +11,9 @@
 #   install_release_files RELEASE_DIR
 #                                  the root helper, the updater, templates, sudoers,
 #                                  Studio's services, its PHP-FPM pool and the Caddyfile
+#   upgrade_system RELEASE_DIR CHANGES_FILE
+#                                  every package and tool on the server to its newest
+#                                  version (studio-update system, nightly)
 #
 # Expects /etc/studio/studio.env to exist (DOMAIN, ACME_EMAIL, STUDIO_HOME, STUDIO_DIR…).
 # Nothing here removes software: a rollback leaves new packages in place.
@@ -29,7 +32,7 @@ STUDIO_APT_LOG=${STUDIO_APT_LOG:-/var/log/studio-install.log}
 
 studio_apt() {
     if ! DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
-        apt-get -y -qq -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef "$@" >>"$STUDIO_APT_LOG" 2>&1; then
+        apt-get -y -qq -o DPkg::Lock::Timeout=900 -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef "$@" >>"$STUDIO_APT_LOG" 2>&1; then
         sys_warn "apt-get $* failed; the end of $STUDIO_APT_LOG:"
         tail -n 25 "$STUDIO_APT_LOG" | sed 's/^/      /' >&2
         return 1
@@ -242,9 +245,8 @@ ensure_git_cli() {
             if ! command -v az >/dev/null 2>&1; then
                 curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash >/dev/null 2>&1 || { sys_warn "the Azure CLI could not be installed"; return 0; }
             fi
-            az extension show --name azure-devops >/dev/null 2>&1 \
-                || az extension add --name azure-devops --system --yes >/dev/null 2>&1 \
-                || sys_warn "the azure-devops extension could not be installed"
+            az extension add --name azure-devops --system --yes --upgrade >/dev/null 2>&1 \
+                || sys_warn "the azure-devops extension could not be installed or updated"
             az config set core.collect_telemetry=false >/dev/null 2>&1 || true ;;
         bitbucket)
             : # Larapilot talks to the Bitbucket REST API with curl; nothing to install
@@ -315,6 +317,75 @@ ensure_system() {
     return 0
 }
 
+# ---------------------------------------------------------- server upgrades
+
+# package_versions -> "name version" for every installed package and for what Studio
+# installs outside apt (Composer, Claude Code, the azure-devops extension)
+package_versions() {
+    local v
+    dpkg-query -W -f='${db:Status-Abbrev} ${binary:Package} ${Version}\n' 2>/dev/null | awk '$1 ~ /^ii/ {print $2, $3}'
+    v=$(COMPOSER_ALLOW_SUPERUSER=1 composer --version --no-ansi 2>/dev/null | awk '{print $3}') || true
+    [ -n "$v" ] && echo "composer-phar $v"
+    v=$(claude --version 2>/dev/null | awk '{print $1}') || true
+    [ -n "$v" ] && echo "claude-code $v"
+    v=$(az extension show --name azure-devops --query version -o tsv 2>/dev/null) || true
+    [ -n "$v" ] && echo "az-azure-devops $v"
+    return 0
+}
+
+# changed_versions BEFORE AFTER -> "name old → new", "name new (new)", "name old (removed)"
+changed_versions() {
+    awk 'NR == FNR { old[$1] = $2; next }
+        { seen[$1] = 1; if (!($1 in old)) print $1 " " $2 " (new)"; else if (old[$1] != $2) print $1 " " old[$1] " → " $2 }
+        END { for (p in old) if (!(p in seen)) print p " " old[p] " (removed)" }' "$1" "$2" | sort
+}
+
+# The packages apt upgrades suspend needrestart (NEEDRESTART_SUSPEND): after the upgrade it
+# runs once, restarting every service still on an old library, but never the updater that
+# is running nor a workspace bridge (a conversation may be in progress: the next start of
+# the workspace picks the new Node up).
+restart_outdated_services() {
+    command -v needrestart >/dev/null 2>&1 || return 0
+    mkdir -p /etc/needrestart/conf.d
+    cat > /etc/needrestart/conf.d/studio.conf <<'PERL'
+# Studio: needrestart never restarts the updater while it runs, nor a workspace bridge
+$nrconf{override_rc}{qr(^studio-(system-)?update)} = 0;
+$nrconf{override_rc}{qr(^studio-bridge-)} = 0;
+PERL
+    NEEDRESTART_MODE=a needrestart -r a -q >>"$STUDIO_APT_LOG" 2>&1 || sys_warn "needrestart could not restart every outdated service"
+}
+
+# upgrade_system RELEASE_DIR CHANGES_FILE — every package on the server to its newest
+# version: Ubuntu and the repositories Studio added (ppa:ondrej/php, Caddy, NodeSource,
+# the provider's CLI), then Composer, Claude Code, glab and the azure-devops extension
+# through the release's system step. CHANGES_FILE gets one line per package that changed.
+# It stays on what is installed: a new PHP version comes with requirements.env; a new
+# Ubuntu release, Node major or database major is a decision for a person.
+upgrade_system() {
+    local rel=$1 changes=$2 before after
+    before=$(mktemp); after=$(mktemp)
+    package_versions | sort > "$before"
+    sys_say "Server update: every package to its newest version"
+    sys_note "· apt: Ubuntu, PHP, Caddy, MariaDB, PostgreSQL, redis, Node, the git provider's CLI"
+    studio_apt update
+    APT_UPDATED=1
+    studio_apt full-upgrade
+    studio_apt autoremove
+    studio_apt autoclean
+    sys_note "· services still on old libraries"
+    restart_outdated_services
+    ensure_system "$rel"
+    package_versions | sort > "$after"
+    changed_versions "$before" "$after" > "$changes"
+    rm -f "$before" "$after"
+    if [ -s "$changes" ]; then
+        sys_note "$(wc -l < "$changes" | tr -d ' ') changed:"
+        sed 's/^/      /' "$changes"
+    else
+        sys_note "everything was already on its newest version"
+    fi
+}
+
 # ------------------------------------------------------------ release files
 
 render_tpl() { # render_tpl TEMPLATE OUT KEY=VALUE...
@@ -368,10 +439,15 @@ EOF
     done
     install_ssh_gateway "$rel"
     render_tpl "$rel/installer/templates/studio-ssh.service" /etc/systemd/system/studio-ssh.service STUDIO_DIR="$STUDIO_HOME/current" STUDIO_HOME="$STUDIO_HOME"
-    for unit in studio-update.service studio-update-force.service studio-update-auto.service studio-update-auto.timer; do
+    for unit in studio-update.service studio-update-force.service studio-update-auto.service studio-update-auto.timer \
+        studio-system-update.service studio-system-update-auto.service studio-system-update-auto.timer; do
         cp "$rel/installer/templates/$unit" "/etc/systemd/system/$unit"
     done
     systemctl daemon-reload
+    # the nightly server update is on unless an administrator turned it off (SYSTEM_UPDATE=0)
+    if [ "$(env_get "$STUDIO_ETC/studio.env" SYSTEM_UPDATE)" != 0 ]; then
+        systemctl enable --now studio-system-update-auto.timer >/dev/null 2>&1 || sys_warn "the nightly server update timer could not be enabled"
+    fi
 
     render_tpl "$rel/installer/templates/Caddyfile.tpl" /etc/caddy/Caddyfile.new DOMAIN="$domain" ACME_EMAIL="$acme" STUDIO_DIR="$STUDIO_HOME/current"
     touch /etc/caddy/sites/.keep

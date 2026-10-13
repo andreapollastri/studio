@@ -32,6 +32,7 @@ export class Session extends EventEmitter {
   #spawn;
   #log;
   #turn = null; // { permission_mode, model }
+  #stderr = ''; // the tail of what the current process said outside stream-json
 
   constructor(key, config, { spawn: spawnImpl = spawn, log = () => {} } = {}) {
     super();
@@ -67,6 +68,9 @@ export class Session extends EventEmitter {
     if (turn.effort && !['low', 'medium', 'high', 'max'].includes(turn.effort)) {
       throw new BridgeError(422, 'unknown effort');
     }
+    if (turn.auth != null && !['subscription', 'api_key'].includes(turn.auth)) {
+      throw new BridgeError(422, 'unknown auth');
+    }
     // One turn at a time: the CLI would queue a second message and Studio would lose
     // track of which answer belongs to what. Interrupt first.
     if (this.#process && this.state !== 'idle') {
@@ -81,12 +85,13 @@ export class Session extends EventEmitter {
       && this.#turn.permission_mode === (turn.permission_mode || 'default')
       && this.#turn.model === (turn.model || null)
       && this.#turn.effort === (turn.effort || null)
+      && this.#turn.auth === (turn.auth ?? undefined)
       && this.#turn.mcp === mcp.key;
 
     if (!this.#process || !sameTarget) {
       this.#stopProcess();
       if (turn.session_id && !this.sessionId) this.sessionId = turn.session_id;
-      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, mcp: mcp.key, mcpServers: mcp.servers };
+      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, mcp: mcp.key, mcpServers: mcp.servers };
       this.#poster = new CallbackPoster({
         url: turn.callback.url,
         token: turn.callback.token,
@@ -187,22 +192,33 @@ export class Session extends EventEmitter {
 
     const child = this.#spawn(this.#config.claudeBin, args, {
       cwd: this.#config.workspaceDir,
-      env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'studio-bridge' },
+      env: claudeEnv(process.env, this.#turn.auth),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     this.#process = child;
+    this.#stderr = '';
     this.#parser = new NdjsonParser(
       (line) => this.#onLine(line),
-      (text) => this.#log(`malformed line skipped (${text.length} bytes)`),
+      (text) => {
+        this.#log(`malformed line skipped (${text.length} bytes)`);
+        this.#keepStderr(text + '\n');
+      },
     );
 
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => this.#parser.push(chunk));
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk) => this.#log(`stderr: ${chunk.trim().slice(0, 500)}`));
-    child.on('error', (error) => this.#onExit(null, error));
-    child.on('close', (code) => this.#onExit(code, null));
+    child.stderr.on('data', (chunk) => {
+      this.#log(`stderr: ${chunk.trim().slice(0, 500)}`);
+      this.#keepStderr(chunk);
+    });
+    child.on('error', (error) => this.#onExit(null, null, error));
+    child.on('close', (code, signal) => this.#onExit(code, signal, null));
+  }
+
+  #keepStderr(text) {
+    this.#stderr = (this.#stderr + text).slice(-STDERR_TAIL);
   }
 
   #stopProcess() {
@@ -268,7 +284,7 @@ export class Session extends EventEmitter {
     }]);
   }
 
-  #onExit(code, error) {
+  #onExit(code, signal, error) {
     this.#process = null;
     this.#parser?.end();
     this.#parser = null;
@@ -279,8 +295,8 @@ export class Session extends EventEmitter {
     this.#clearIdleTimer();
 
     if (wasBusy) {
-      const message = error ? `claude could not start: ${error.message}` : `claude exited with code ${code} before finishing the turn`;
-      this.#log(message);
+      const message = explainExit({ code, signal, error, stderr: this.#stderr });
+      this.#log(`claude ended the turn early (code ${code}, signal ${signal}${error ? `, ${error.message}` : ''}): ${message}`);
       this.#emitEvents([
         { type: 'error', code: 'process_exit', message },
         { type: 'result', subtype: 'error_during_execution', is_error: true, result: message, session_id: this.sessionId },
@@ -306,6 +322,51 @@ export class Session extends EventEmitter {
     this.emit('events', events);
     this.#poster?.push(events);
   }
+}
+
+const STDERR_TAIL = 4000;
+
+/**
+ * What the CLI says when it gives up is meant for a terminal: the known cases
+ * become a sentence the person can act on, the rest keep the CLI's last words.
+ */
+const EXIT_REASONS = [
+  [/not logged in|please run \/login|invalid api key|authentication_error|oauth token (has )?(expired|revoked)|invalid bearer token/i,
+    'Claude is not signed in, or its credentials are no longer valid. Sign in again from Settings › Connections, then resend the message.'],
+  [/credit balance is too low/i,
+    'The Anthropic account has run out of credit. Top it up or switch to your Claude plan in Settings › Connections.'],
+  [/usage limit|limit reached|rate[ _]limit/i,
+    'The Claude usage limit has been reached. Try again once it resets.'],
+  [/overloaded/i,
+    'The Claude API is overloaded right now. Try again in a moment.'],
+  [/no conversation found with session id/i,
+    'The previous Claude session for this conversation no longer exists in the workspace, so it could not be resumed.'],
+  [/cannot be used with root\/sudo/i,
+    '"Bypass permissions" cannot be used while Claude runs as root. Pick another permission mode.'],
+  [/model.*(not found|not available|invalid|does not exist)|(invalid|unknown) model/i,
+    'The selected model is not available for this account. Pick another model and resend the message.'],
+  [/ENOSPC|no space left on device/i,
+    'The workspace disk is full, so Claude could not continue.'],
+];
+
+export function explainExit({ code = null, signal = null, error = null, stderr = '' } = {}) {
+  if (error) {
+    return error.code === 'ENOENT'
+      ? 'Claude Code is not installed in this workspace.'
+      : `Claude Code could not start: ${error.message}`;
+  }
+
+  const said = stripAnsi(stderr).trim();
+  for (const [pattern, sentence] of EXIT_REASONS) {
+    if (pattern.test(said)) return sentence;
+  }
+
+  if (signal === 'SIGKILL') return 'Claude Code was killed before finishing the turn, most likely because the workspace ran out of memory.';
+  if (signal) return `Claude Code was stopped (${signal}) before finishing the turn.`;
+
+  const lastWords = said.split('\n').map((l) => l.trim()).filter(Boolean).slice(-3).join(' ').slice(-500);
+  const base = `Claude Code stopped unexpectedly (exit code ${code}) before finishing the turn.`;
+  return lastWords ? `${base} It said: ${lastWords}` : base;
 }
 
 export class BridgeError extends Error {
@@ -339,4 +400,23 @@ export function normalizeMcpServers(input) {
   const names = Object.keys(servers).sort();
   if (names.length === 0) return { servers: null, key: '' };
   return { servers, key: JSON.stringify(names.map((n) => [n, servers[n]])) };
+}
+
+/**
+ * The environment of one Claude Code process. With an account chosen by Studio,
+ * "subscription" leaves no key around, so the CLI uses the person's own login in
+ * their home; "api_key" hands over the key Studio keeps as STUDIO_ANTHROPIC_API_KEY.
+ * The agent never sees STUDIO_ANTHROPIC_API_KEY itself. Without a choice (an older
+ * Studio, local development) the environment stays as it is.
+ */
+export function claudeEnv(base, auth) {
+  const env = { ...base, CLAUDE_CODE_ENTRYPOINT: 'studio-bridge' };
+  const key = env.STUDIO_ANTHROPIC_API_KEY;
+  delete env.STUDIO_ANTHROPIC_API_KEY;
+  if (auth === undefined) return env;
+
+  delete env.ANTHROPIC_API_KEY;
+  delete env.CLAUDE_CODE_OAUTH_TOKEN;
+  if (auth === 'api_key' && key) env.ANTHROPIC_API_KEY = key;
+  return env;
 }

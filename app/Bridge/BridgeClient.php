@@ -43,6 +43,8 @@ final class BridgeClient
             'permission_mode' => $conversation->permission_mode,
             'model' => $conversation->model,
             'effort' => $conversation->effort,
+            // which Claude account: the subscription signed in in the home, or the API key
+            'auth' => $conversation->user->claudeAccountFor($conversation->claude_auth),
             'mcp_servers' => $this->mcpServers($conversation),
             'callback' => [
                 'url' => $this->callbackUrl(),

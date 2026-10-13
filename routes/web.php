@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\SystemStatusController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
 use App\Livewire\Admin\Projects as AdminProjects;
@@ -33,6 +34,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('projects', AdminProjects::class)->name('projects');
         Route::get('users', AdminUsers::class)->name('users');
         Route::get('system', AdminSystem::class)->name('system');
+        Route::get('system/status', SystemStatusController::class)->name('system.status');
     });
 });
 

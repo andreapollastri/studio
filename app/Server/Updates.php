@@ -102,6 +102,35 @@ final class Updates
         $this->admin->run('update-auto', [$on ? 'on' : 'off']);
     }
 
+    /**
+     * The last update of the server itself (studio-update system): status, message,
+     * started_at, finished_at, changes, reboot_required, reboot_packages, auto, log…
+     *
+     * @return array<string, mixed>
+     */
+    public function systemState(): array
+    {
+        $system = $this->state()['system'] ?? [];
+
+        return is_array($system) ? $system : [];
+    }
+
+    public function systemRunning(): bool
+    {
+        return ($this->systemState()['status'] ?? null) === 'running';
+    }
+
+    /** Every package and tool on the server to its newest version, as its own unit. */
+    public function startSystem(): void
+    {
+        $this->admin->run('system-update-start');
+    }
+
+    public function setSystemAutomatic(bool $on): void
+    {
+        $this->admin->run('system-update-auto', [$on ? 'on' : 'off']);
+    }
+
     /** Where a build can be read: the release page of a tag, the commit of a main build. */
     public function releaseUrl(string $build): string
     {

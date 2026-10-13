@@ -41,6 +41,7 @@ stub chown ':'
 stub sleep ':'
 stub mariadb-dump 'echo "mariadb-dump $*" >> "$SANDBOX/calls.log"; echo "-- dump of studio"'
 stub mariadb 'if [ "${1:-}" = -e ]; then echo "mariadb $*" >> "$SANDBOX/calls.log"; else echo "mariadb < $(cat)" >> "$SANDBOX/calls.log"; fi'
+stub shutdown 'echo "shutdown $*" >> "$SANDBOX/calls.log"'
 stub curl 'if [ -f "$SANDBOX/fail-health" ]; then printf 500; else printf 200; fi'
 stub composer 'echo "composer $*" >> "$SANDBOX/calls.log"'
 stub npm 'echo "npm $*" >> "$SANDBOX/calls.log"; mkdir -p node_modules'
@@ -65,6 +66,12 @@ cat > "$REMOTE/installer/lib/system.sh" <<'EOF'
 ensure_system() { echo "ensure_system $(basename "$1")" >> "$SANDBOX/calls.log"; }
 install_release_files() { echo "install_release_files $(basename "$1")" >> "$SANDBOX/calls.log"; }
 restart_studio() { echo "restart_studio" >> "$SANDBOX/calls.log"; }
+# upgrade_system RELEASE_DIR CHANGES_FILE — the packages in $SANDBOX/system-changes changed
+upgrade_system() {
+    echo "upgrade_system $(basename "$1")" >> "$SANDBOX/calls.log"
+    [ ! -f "$SANDBOX/fail-upgrade" ] || return 1
+    cat "$SANDBOX/system-changes" > "$2" 2>/dev/null || : > "$2"
+}
 EOF
 printf 'STUDIO_PHP=8.4\nPHP_VERSIONS="8.4"\nNODE_MAJOR=22\n' > "$REMOTE/installer/requirements.env"
 echo '<?php' > "$REMOTE/artisan"; echo '{}' > "$REMOTE/composer.json"; echo '{}' > "$REMOTE/package.json"; touch "$REMOTE/storage/.keep"
@@ -262,5 +269,64 @@ update rollback >/dev/null || fail "rollback"
 calls | grep -q 'DROP DATABASE' || fail "rollback did not restore the database"
 [ "$(state .status)" = ok ] || fail "rollback status"
 ok "rollback: back to the previous release and its database"
+
+# ------------------------------------------------------------- the server ---
+
+reset_calls
+update system >/dev/null || fail "server update with nothing new"
+[ "$(state .system.status)" = up-to-date ] && [ "$(state '.system.changes | length')" = 0 ] || fail "system state $(state .system)"
+calls | grep -q '^upgrade_system ' || fail "upgrade_system did not run"
+if calls | grep -q restart_studio; then fail "Studio restarted though nothing changed"; fi
+[ "$(state .system.triggered_automatically)" = false ] || fail "a run by hand recorded as automatic"
+ok "server update with nothing new: nothing restarts"
+
+printf 'mariadb-server 1:10.11.13 → 1:10.11.14\nphp8.4-fpm 8.4.12-1 → 8.4.13-1\n' > "$SANDBOX/system-changes"
+touch "$SANDBOX/run/reboot-required"; printf 'linux-image-6.8.0-90\nlinux-image-6.8.0-90\n' > "$SANDBOX/run/reboot-required.pkgs"
+reset_calls
+update system --auto >/dev/null || fail "nightly server update"
+[ "$(state .system.status)" = ok ] && [ "$(state .system.message)" = "Updated 2 packages." ] || fail "system state $(state .system)"
+[ "$(state '.system.changes[1]')" = "php8.4-fpm 8.4.12-1 → 8.4.13-1" ] || fail "changes $(state .system.changes)"
+[ "$(state .system.reboot_required)" = true ] && [ "$(state '.system.reboot_packages | length')" = 1 ] || fail "reboot $(state .system)"
+[ "$(state .system.triggered_automatically)" = true ] || fail "the nightly run not recorded as automatic"
+calls | grep -q restart_studio || fail "Studio did not restart on the new packages"
+calls | grep -Eq '^artisan .* optimize' || fail "no artisan optimize after the server update"
+if calls | grep -q shutdown; then fail "rebooted without SYSTEM_REBOOT=1"; fi
+[ "$(state .status)" = ok ] || fail "the server update changed the state of Studio's own update: $(state .status)"
+ok "server update: the changes, the restart, the reboot it needs, apart from Studio's own update"
+
+echo SYSTEM_REBOOT=1 >> "$SANDBOX/etc/studio/studio.env"
+reset_calls
+update system >/dev/null || fail "server update by hand with SYSTEM_REBOOT=1"
+if calls | grep -q shutdown; then fail "a run by hand rebooted the server"; fi
+update system --auto >/dev/null || fail "nightly server update with SYSTEM_REBOOT=1"
+calls | grep -q 'shutdown -r +5' || fail "SYSTEM_REBOOT=1 did not schedule the reboot"
+rm -f "$SANDBOX/run/reboot-required" "$SANDBOX/run/reboot-required.pkgs"
+ok "SYSTEM_REBOOT=1: the nightly run reboots when a new kernel asks for it, a run by hand never"
+
+touch "$SANDBOX/fail-upgrade"
+reset_calls
+if update system >/dev/null 2>&1; then fail "a failed upgrade should fail"; fi
+rm -f "$SANDBOX/fail-upgrade"
+[ "$(state .system.status)" = failed ] && [ "$(state .system.reboot_required)" = false ] || fail "system state $(state .system)"
+calls | grep -q restart_studio || fail "Studio's services not restarted after a failed upgrade"
+ok "a failed server update says so and brings Studio's services back"
+
+touch "$SANDBOX/fail-health"
+if update system >/dev/null 2>&1; then fail "a server update after which Studio does not answer should fail"; fi
+rm -f "$SANDBOX/fail-health"
+grep -q 'health check' <<<"$(state .system.message)" || fail "message $(state .system.message)"
+ok "a server update after which Studio does not answer is reported as failed"
+
+reset_calls
+out=$(update system-auto off)
+[ "$(jq -r .auto <<<"$out")" = false ] && [ "$(state .system.auto)" = false ] || fail "system-auto off: $out"
+grep -q '^SYSTEM_UPDATE=0' "$SANDBOX/etc/studio/studio.env" || fail "SYSTEM_UPDATE not written"
+calls | grep -q 'systemctl disable --now studio-system-update-auto.timer' || fail "server timer not disabled"
+out=$(update system --auto)
+grep -q 'automatic server updates are off' <<<"$out" || fail "system --auto with SYSTEM_UPDATE=0: $out"
+update system >/dev/null || fail "a run by hand with SYSTEM_UPDATE=0"
+update system-auto on >/dev/null
+grep -q '^SYSTEM_UPDATE=1' "$SANDBOX/etc/studio/studio.env" && [ "$(state .system.auto)" = true ] || fail "system-auto on"
+ok "nightly server updates off: the timer stops, a run by hand still works"
 
 printf '\n%s checks passed\n' "$pass"

@@ -53,5 +53,13 @@ FAKE_PHP_VERSIONS=8.3,8.4 load_requirements "$T/rel"
 [ "$STUDIO_PHP" = 8.4 ] || fail "a PHP that is not installed falls back to the newest one that is, got $STUDIO_PHP"
 ok "a PHP the server does not have falls back to the newest it has"
 
+printf 'caddy 2.10.0\nlinux-image-6.8.0-85 6.8.0-85.85\nphp8.4-fpm 8.4.12-1\nredis-server 7.0.15\n' > "$T/before"
+printf 'caddy 2.10.2\nlinux-image-6.8.0-90 6.8.0-90.90\nphp8.4-fpm 8.4.13-1\nredis-server 7.0.15\n' > "$T/after"
+changes=$(changed_versions "$T/before" "$T/after")
+expected=$(printf 'caddy 2.10.0 → 2.10.2\nlinux-image-6.8.0-85 6.8.0-85.85 (removed)\nlinux-image-6.8.0-90 6.8.0-90.90 (new)\nphp8.4-fpm 8.4.12-1 → 8.4.13-1')
+[ "$changes" = "$expected" ] || fail "changed_versions: $changes"
+[ -z "$(changed_versions "$T/after" "$T/after")" ] || fail "changed_versions with nothing changed"
+ok "changed_versions lists what a server update upgraded, added and removed"
+
 [ "$(env_get "$HERE/../../installer/requirements.env" STUDIO_PHP)" != "" ] || fail "installer/requirements.env has no STUDIO_PHP"
 ok "installer/requirements.env is readable"

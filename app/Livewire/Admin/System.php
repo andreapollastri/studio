@@ -25,6 +25,9 @@ class System extends Component
     /** stable: release tags; beta: the head of main, for beta testers. */
     public string $channel = 'stable';
 
+    /** Every package on the server to its newest version, every night. */
+    public bool $serverAutomatic = true;
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
@@ -32,11 +35,34 @@ class System extends Component
         $updates = app(Updates::class);
         $this->automatic = (bool) ($updates->state()['auto'] ?? true);
         $this->channel = $updates->channel();
+        $this->serverAutomatic = (bool) ($updates->systemState()['auto'] ?? true);
     }
 
     public function updatedAutomatic(bool $on): void
     {
         $this->setAutomatic($on);
+    }
+
+    public function updatedServerAutomatic(bool $on): void
+    {
+        $updates = app(Updates::class);
+
+        $this->guard($updates, function () use ($updates, $on) {
+            $updates->setSystemAutomatic($on);
+            Flux::toast(text: $on ? __('The server updates its packages every night.') : __('Nightly server updates are off.'));
+        });
+    }
+
+    /** Every package and tool on the server to its newest version, now. */
+    public function updateServer(): void
+    {
+        $updates = app(Updates::class);
+
+        $this->guard($updates, function () use ($updates) {
+            $updates->startSystem();
+            $this->dispatch('system-update-started');
+            Flux::toast(variant: 'success', text: __('The server update started. Studio\'s services restart for a moment when it ends.'));
+        });
     }
 
     public function updatedChannel(string $channel): void
@@ -59,6 +85,7 @@ class System extends Component
 
         $this->guard($updates, function () use ($updates) {
             $updates->start(force: true);
+            $this->dispatch('system-update-started');
             Flux::toast(variant: 'success', text: __('Forced update started: the newest build of the channel is built and installed again.'));
         });
     }
@@ -82,6 +109,7 @@ class System extends Component
 
         $this->guard($updates, function () use ($updates) {
             $updates->start();
+            $this->dispatch('system-update-started');
             Flux::toast(variant: 'success', text: __('The update started. Studio goes into maintenance for a moment while it switches.'));
         });
     }
@@ -124,6 +152,8 @@ class System extends Component
             'version' => $updates->version(),
             'state' => $state,
             'running' => ($state['status'] ?? null) === 'running',
+            'server' => $updates->systemState(),
+            'serverRunning' => $updates->systemRunning(),
             'available' => $updates->available(),
             'waiting' => $updates->waiting(),
             'releaseUrl' => fn (string $tag) => $updates->releaseUrl($tag),

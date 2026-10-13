@@ -97,8 +97,8 @@ test('provisioning a native workspace hands the helper the project, the ports an
         ->and($sent['git_token'])->toBe('github_pat_secret')
         ->and($sent['git_username'])->toBe('x-access-token')
         ->and($sent['git_env'])->toBe(['GITHUB_TOKEN' => 'github_pat_secret', 'GH_TOKEN' => 'github_pat_secret'])
-        ->and($sent['claude_env'])->toBeNull()
-        ->and($sent['claude_token'])->toBeNull();
+        ->and($sent['claude_api_key'])->toBeNull()
+        ->and($sent)->not->toHaveKey('claude_token');
 });
 
 test('without a GitHub token the workspace fails with a readable reason', function () {
@@ -152,7 +152,7 @@ test('removing the git token in Settings clears it from the workspaces: the fiel
         ->and(array_key_exists('git_token', $sent))->toBeTrue()
         ->and($sent['git_token'])->toBeNull()
         ->and($sent['git_env'])->toBe([])
-        ->and($sent['claude_token'])->toBeNull();
+        ->and($sent['claude_api_key'])->toBeNull();
 });
 
 test('the periodic refresh asks the helper only for native workspaces that exist on the server', function () {
@@ -209,7 +209,7 @@ test('the creation jobs queued by repeated visits create the workspace once', fu
         ->and($workspace->refresh()->status)->toBe(WorkspaceStatus::Running);
 });
 
-test('an API key is the only Claude credential that travels to a workspace', function () {
+test('an API key is the only Claude credential that travels to a workspace, apart from Claude Code\'s own variable', function () {
     $user = connectedUser();
     $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::ApiKey, 'claude_token' => 'sk-ant-api03-key'])->save();
     $project = Project::factory()->create(['slug' => 'shop']);
@@ -220,5 +220,5 @@ test('an API key is the only Claude credential that travels to a workspace', fun
     $line = trim(file_get_contents($this->log));
     $sent = json_decode(substr($line, strpos($line, '{')), true);
 
-    expect($sent['claude_env'])->toBe('ANTHROPIC_API_KEY')->and($sent['claude_token'])->toBe('sk-ant-api03-key');
+    expect($sent['claude_api_key'])->toBe('sk-ant-api03-key')->and($sent)->not->toHaveKey('claude_env');
 });

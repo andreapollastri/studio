@@ -24,7 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // While an update migrates the database, Caddy still asks before issuing
         // certificates and before serving protected project hosts, and the bridges
         // keep reporting: those few endpoints stay up in maintenance mode.
-        $middleware->preventRequestsDuringMaintenance(except: ['api/tls/ask', 'api/site-auth', 'api/bridge/*']);
+        // admin/system/status: the System page follows an update through the maintenance of its switch
+        $middleware->preventRequestsDuringMaintenance(except: ['api/tls/ask', 'api/site-auth', 'api/bridge/*', 'admin/system/status']);
 
         // The bridge streams the agent's text in slices: a trailing space is a
         // word boundary, and an empty string is still a string.

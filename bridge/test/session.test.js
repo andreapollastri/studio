@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
-import { Session, normalizeMcpServers } from '../src/session.js';
+import { Session, claudeEnv, explainExit, normalizeMcpServers } from '../src/session.js';
 import { startCollector, spawnFake, testConfig, waitFor } from './helpers.js';
 
 const callback = (studio) => ({ url: studio.url, token: 'cb' });
@@ -102,8 +102,35 @@ test('a crash mid-turn becomes an error and a failed result', async () => {
   const result = studio.events().find((e) => e.type === 'result');
   assert.equal(result.is_error, true);
   assert.ok(studio.events().some((e) => e.type === 'error' && e.code === 'process_exit'));
+  assert.match(result.result, /stopped unexpectedly \(exit code 1\)/);
   assert.equal(session.state, 'idle');
   await studio.close();
+});
+
+test('a crash explains itself with what the CLI said on stderr', async () => {
+  const studio = await startCollector();
+  const session = new Session('16b', testConfig(), { spawn: spawnFake });
+  session.sendTurn({ text: 'crash Invalid API key · Please run /login', callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  await session.close();
+  const error = studio.events().find((e) => e.type === 'error');
+  assert.match(error.message, /not signed in/);
+  assert.equal(studio.events().find((e) => e.type === 'result').result, error.message);
+  await studio.close();
+});
+
+test('explainExit turns what the CLI said into something to act on', () => {
+  assert.match(explainExit({ code: 1, stderr: '\u001b[31mError: Not logged in · Please run /login\u001b[0m' }), /Sign in again/);
+  assert.match(explainExit({ code: 1, stderr: 'Credit balance is too low' }), /run out of credit/);
+  assert.match(explainExit({ code: 1, stderr: 'No conversation found with session ID: abc' }), /could not be resumed/);
+  assert.match(explainExit({ code: 1, stderr: '--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons' }), /Bypass permissions/);
+  assert.match(explainExit({ signal: 'SIGKILL' }), /ran out of memory/);
+  assert.match(explainExit({ error: Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' }) }), /not installed/);
+  assert.equal(
+    explainExit({ code: 2, stderr: 'warming up\n\nError: something odd\n' }),
+    'Claude Code stopped unexpectedly (exit code 2) before finishing the turn. It said: warming up Error: something odd',
+  );
+  assert.equal(explainExit({ code: 1 }), 'Claude Code stopped unexpectedly (exit code 1) before finishing the turn.');
 });
 
 test('model, effort and mode become flags and a change restarts the process', async () => {
@@ -196,4 +223,38 @@ test('allowing a question without answers is what makes the agent read "did not 
   await session.close();
   assert.equal(studio.events().find((e) => e.type === 'result').result, 'The user did not answer the questions.');
   await studio.close();
+});
+
+test('the Claude account Studio chooses decides the key the process sees, and a change restarts it', async () => {
+  const studio = await startCollector();
+  const envs = [];
+  const spy = (bin, args, options) => { envs.push(options.env); return spawnFake(bin, args, options); };
+  const session = new Session('19', testConfig(), { spawn: spy });
+  const saved = { ...process.env };
+  process.env.STUDIO_ANTHROPIC_API_KEY = 'sk-ant-api03-key';
+  process.env.ANTHROPIC_API_KEY = 'left-over';
+  try {
+    session.sendTurn({ text: 'ciao', auth: 'subscription', callback: callback(studio) });
+    await waitFor(() => studio.events().some((e) => e.type === 'result'));
+    session.sendTurn({ text: 'ancora', auth: 'api_key', callback: callback(studio) });
+    await waitFor(() => studio.events().filter((e) => e.type === 'result').length === 2);
+  } finally {
+    process.env = saved;
+  }
+  await session.close();
+
+  assert.equal(envs.length, 2, 'another account starts a new process');
+  assert.equal(envs[0].ANTHROPIC_API_KEY, undefined, 'the subscription runs on the login in the home');
+  assert.equal(envs[1].ANTHROPIC_API_KEY, 'sk-ant-api03-key');
+  assert.ok(envs.every((env) => env.STUDIO_ANTHROPIC_API_KEY === undefined), 'the agent never sees the kept key');
+  assert.throws(() => session.sendTurn({ text: 'x', auth: 'someone-else', callback: callback(studio) }), /auth/);
+  await studio.close();
+});
+
+test('without a choice from Studio the environment is left as it is, minus the kept key', () => {
+  const env = claudeEnv({ ANTHROPIC_API_KEY: 'mine', STUDIO_ANTHROPIC_API_KEY: 'kept', PATH: '/bin' }, undefined);
+  assert.equal(env.ANTHROPIC_API_KEY, 'mine');
+  assert.equal(env.STUDIO_ANTHROPIC_API_KEY, undefined);
+  assert.equal(claudeEnv({ STUDIO_ANTHROPIC_API_KEY: 'kept' }, 'api_key').ANTHROPIC_API_KEY, 'kept');
+  assert.equal(claudeEnv({ CLAUDE_CODE_OAUTH_TOKEN: 'old' }, 'subscription').CLAUDE_CODE_OAUTH_TOKEN, undefined);
 });

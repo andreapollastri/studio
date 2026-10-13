@@ -6,7 +6,8 @@
  *
  * Prompts it understands: anything (plain answer), "tool …" (asks to run a
  * tool first), "ask …" (asks the person questions with AskUserQuestion),
- * "exit …" (ends the process after the result), "crash" (dies without a result).
+ * "exit …" (ends the process after the result), "crash [stderr]" (dies without
+ * a result, saying what follows on stderr).
  */
 import { createInterface } from 'node:readline';
 
@@ -51,7 +52,12 @@ rl.on('line', (line) => {
   if (message.type !== 'user') return;
   const text = message.message?.content?.[0]?.text ?? '';
 
-  if (text.startsWith('crash')) process.exit(1);
+  if (text.startsWith('crash')) {
+    const said = text.slice('crash'.length).trim();
+    if (!said) process.exit(1);
+    process.stderr.write(said + '\n', () => process.exit(1));
+    return;
+  }
 
   const say = (sentence, id) => {
     const words = sentence.split(' ');

@@ -6,4 +6,4 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/studio-update apply --auto
-TimeoutStartSec=3600
+TimeoutStartSec=7200

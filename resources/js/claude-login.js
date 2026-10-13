@@ -18,9 +18,13 @@ function claudeLogin() {
     let fit = null;
     let ws = null;
     let screen = '';
+    let watchdog = null;
+    let runs = 0;
 
     return {
         state: 'idle', // idle, connecting, running, done, error
+        step: null, // ticket, terminal, socket, claude: where a start is
+        boxId: 'claude-login-terminal',
         error: null,
         link: null,
         code: '',
@@ -29,58 +33,100 @@ function claudeLogin() {
         async start() {
             this.reset();
             this.state = 'connecting';
-            const info = await this.$wire.claudeLoginTicket();
-            if (!info?.ticket) {
-                this.state = 'idle';
-                return;
+            this.step = 'ticket';
+            const run = ++runs;
+            // Every step either answers or says which one did not: no spinner for ever.
+            watchdog = setTimeout(() => {
+                if (run !== runs || this.state !== 'connecting') return;
+                this.fail({
+                    ticket: 'Studio did not answer: reload the page and try again.',
+                    terminal: 'The terminal could not be loaded: reload the page and try again.',
+                    socket: 'The sign-in service did not answer. Is the studio-ssh service running on the server?',
+                    claude: 'Claude Code did not start on the server. Check that it is installed (Administration → System).',
+                }[this.step] ?? 'The sign-in did not start.');
+            }, 20000);
+
+            try {
+                const info = await this.$wire.claudeLoginTicket();
+                if (run !== runs) return;
+                if (!info?.ticket) {
+                    this.state = 'idle';
+                    this.$flux?.modal('claude-login').close();
+                    return;
+                }
+
+                this.step = 'terminal';
+                const { Terminal, FitAddon, WebLinksAddon } = await loadXterm();
+                // The modal is a component of its own: its refs are not ours, find the box by id.
+                const box = document.getElementById(this.boxId);
+                if (!box) throw new Error('terminal box missing');
+                box.replaceChildren();
+                term = new Terminal({ cursorBlink: true, fontFamily: FONT, fontSize: 13, lineHeight: 1.15, scrollback: 2000, theme: THEME });
+                fit = new FitAddon();
+                term.loadAddon(fit);
+                term.loadAddon(new WebLinksAddon((event, uri) => window.open(uri, '_blank', 'noopener')));
+                term.parser.registerOscHandler(52, (data) => {
+                    const encoded = data.split(';').pop();
+                    try {
+                        const text = new TextDecoder().decode(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)));
+                        const found = text.match(LINK);
+                        if (found) this.link = found[0];
+                    } catch {}
+                    return true;
+                });
+                term.open(box);
+                // The modal may still be opening: size the terminal once it is laid out.
+                await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+                try { fit.fit(); } catch {}
+                term.onData((data) => this.send(data));
+
+                this.step = 'socket';
+                const url = `${info.url}?ticket=${encodeURIComponent(info.ticket)}&cols=${term.cols}&rows=${term.rows}`;
+                ws = new WebSocket(url);
+                ws.onopen = () => { if (run === runs) this.step = 'claude'; };
+                ws.onmessage = (event) => {
+                    let message;
+                    try { message = JSON.parse(event.data); } catch { return; }
+
+                    if (message.type === 'data') {
+                        term.write(message.data);
+                        this.spotLink(message.data);
+                        if (this.state === 'connecting') this.state = 'running';
+                    } else if (message.type === 'status') {
+                        this.state = 'running';
+                        clearTimeout(watchdog);
+                        term.focus();
+                    } else if (message.type === 'error') {
+                        this.fail(message.message);
+                    } else if (message.type === 'exit') {
+                        this.exitCode = message.code;
+                        if (message.code === 0) {
+                            this.state = 'done';
+                        } else {
+                            this.fail(this.error || 'The sign-in did not complete.');
+                        }
+                        this.$wire.refreshClaude();
+                    }
+                };
+                ws.onerror = () => {};
+                ws.onclose = (event) => {
+                    if (run !== runs) return;
+                    if (this.state === 'connecting' || this.state === 'running') {
+                        this.fail(this.error || (event.code === 1006
+                            ? 'The sign-in service cannot be reached. Is the studio-ssh service running on the server?'
+                            : (event.reason || 'The sign-in stopped.')));
+                    }
+                };
+            } catch (error) {
+                console.error('[claude-login]', error);
+                if (run === runs) this.fail('The sign-in could not start: ' + (error?.message ?? error));
             }
+        },
 
-            const { Terminal, FitAddon, WebLinksAddon } = await loadXterm();
-            term = new Terminal({ cursorBlink: true, fontFamily: FONT, fontSize: 13, lineHeight: 1.15, scrollback: 2000, theme: THEME, convertEol: false });
-            fit = new FitAddon();
-            term.loadAddon(fit);
-            term.loadAddon(new WebLinksAddon((event, uri) => window.open(uri, '_blank', 'noopener')));
-            term.parser.registerOscHandler(52, (data) => {
-                const encoded = data.split(';').pop();
-                try {
-                    const text = new TextDecoder().decode(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)));
-                    const found = text.match(LINK);
-                    if (found) this.link = found[0];
-                } catch {}
-                return true;
-            });
-            term.open(this.$refs.term);
-            fit.fit();
-            term.onData((data) => this.send(data));
-
-            const url = `${info.url}?ticket=${encodeURIComponent(info.ticket)}&cols=${term.cols}&rows=${term.rows}`;
-            ws = new WebSocket(url);
-            ws.onmessage = (event) => {
-                let message;
-                try { message = JSON.parse(event.data); } catch { return; }
-
-                if (message.type === 'data') {
-                    term.write(message.data);
-                    this.spotLink(message.data);
-                } else if (message.type === 'status') {
-                    this.state = 'running';
-                    term.focus();
-                } else if (message.type === 'error') {
-                    this.state = 'error';
-                    this.error = message.message;
-                } else if (message.type === 'exit') {
-                    this.exitCode = message.code;
-                    this.state = message.code === 0 ? 'done' : 'error';
-                    if (message.code !== 0 && !this.error) this.error = 'The sign-in did not complete.';
-                    this.$wire.refreshClaude();
-                }
-            };
-            ws.onclose = (event) => {
-                if (this.state === 'connecting' || this.state === 'running') {
-                    this.state = 'error';
-                    this.error ??= event.code === 1006 ? 'The sign-in service cannot be reached. Is the studio-ssh service running?' : 'The sign-in stopped.';
-                }
-            };
+        fail(message) {
+            clearTimeout(watchdog);
+            this.state = 'error';
+            this.error = message;
         },
 
         /** A link printed plainly (not wrapped by the CLI) works too. */
@@ -110,14 +156,22 @@ function claudeLogin() {
         },
 
         reset() {
+            clearTimeout(watchdog);
             try { ws?.close(1000); } catch {}
             try { term?.dispose(); } catch {}
             ws = null; term = null; fit = null; screen = '';
             this.error = null; this.link = null; this.code = ''; this.exitCode = null;
         },
 
-        destroy() {
+        /** Closing the modal ends the sign-in on the server too. */
+        stop() {
+            runs++;
             this.reset();
+            if (this.state !== 'done') this.state = 'idle';
+        },
+
+        destroy() {
+            this.stop();
         },
     };
 }

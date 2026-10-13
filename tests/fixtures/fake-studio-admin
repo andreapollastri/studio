@@ -38,8 +38,10 @@ case "$cmd" in
     printf '{"ok":true,"started":true,"unit":"%s"}\n' "$([ "${1:-}" = force ] && echo studio-update-force.service || echo studio-update.service)" ;;
   update-channel)
     printf '{"ok":true,"channel":"%s"}\n' "$1" ;;
-  update-auto)
+  update-auto|system-update-auto)
     printf '{"ok":true,"auto":%s}\n' "$([ "$1" = on ] && echo true || echo false)" ;;
+  system-update-start)
+    printf '{"ok":true,"started":true,"unit":"studio-system-update.service"}\n' ;;
   fail)
     printf '{"ok":false,"error":"boom"}\n'; exit 1 ;;
   fail-in-subshell)

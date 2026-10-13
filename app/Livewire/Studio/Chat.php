@@ -39,6 +39,9 @@ class Chat extends Component
 
     public string $mode = 'default';
 
+    /** The Claude account of this conversation: '' (the person's choice), subscription or api_key. */
+    public string $account = '';
+
     /**
      * Answers to Claude's questions (AskUserQuestion), by question index: a label, or labels for a multiple choice.
      *
@@ -60,11 +63,12 @@ class Chat extends Component
         $this->model = (string) $conversation->model;
         $this->effort = (string) $conversation->effort;
         $this->mode = $conversation->permission_mode;
+        $this->account = (string) $conversation->claude_auth;
     }
 
     /**
-     * Model, effort and permission mode apply from the next message on: the
-     * bridge restarts the agent with the new flags and resumes the session.
+     * Model, effort, permission mode and Claude account apply from the next message
+     * on: the bridge restarts the agent with the new flags and resumes the session.
      */
     public function saveSettings(): void
     {
@@ -77,6 +81,7 @@ class Chat extends Component
             'model' => ['nullable', Rule::in($models)],
             'effort' => ['nullable', Rule::in(array_keys((array) config('studio.efforts', [])))],
             'mode' => ['required', Rule::in($modes)],
+            'account' => ['nullable', Rule::in(['', ...$this->conversation->user->claudeAccounts()])],
         ], [
             'mode.in' => __('Your role cannot use this mode.'),
         ]);
@@ -85,6 +90,7 @@ class Chat extends Component
             'model' => $this->model !== '' ? $this->model : null,
             'effort' => $this->effort !== '' ? $this->effort : null,
             'permission_mode' => $this->mode,
+            'claude_auth' => $this->account !== '' ? $this->account : null,
         ])->save();
 
         Flux::modal('chat-settings')->close();

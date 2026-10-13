@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
+ * @property string|null $claude_auth subscription or api_key; null: the person's choice
  * @property string $uuid
  * @property int $id
  * @property string $uuid
@@ -29,7 +30,7 @@ use Illuminate\Support\Carbon;
  * @property-read Workspace $workspace
  * @property-read User $user
  */
-#[Fillable(['workspace_id', 'user_id', 'title', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'last_result', 'last_activity_at'])]
+#[Fillable(['workspace_id', 'user_id', 'title', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'claude_auth', 'last_result', 'last_activity_at'])]
 class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */

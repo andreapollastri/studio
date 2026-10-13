@@ -1,0 +1,10 @@
+[Unit]
+Description=Update every package on the server every night, before Studio's own update
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
