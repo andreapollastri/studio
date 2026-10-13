@@ -55,6 +55,7 @@ final class ProjectSites
                     'php_version' => $project->php_version,
                     'db_engine' => $project->db_engine,
                     'site_host' => $project->siteHost(),
+                    'site_aliases' => implode(' ', $project->siteAliases()),
                     ...$this->gitInput($git),
                     ...$project->serviceInput(),
                 ]);
@@ -123,6 +124,7 @@ final class ProjectSites
                 $this->admin->run('project-configure', [$project->slug], [
                     'php_version' => $project->php_version,
                     'site_host' => $project->siteHost(),
+                    'site_aliases' => implode(' ', $project->siteAliases()),
                     ...$project->serviceInput(),
                 ]);
                 $project->forceFill(['last_error' => null])->save();

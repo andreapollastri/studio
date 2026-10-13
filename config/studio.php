@@ -13,6 +13,10 @@ return [
     */
     'domain' => env('STUDIO_DOMAIN', 'localhost'),
 
+    // This server's public IPv4 addresses, which other domains must point at (Administration →
+    // Domains); empty = what studio.<domain> resolves to, right for every usual installation.
+    'server_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('STUDIO_SERVER_IPS', ''))))),
+
     // Any other <name>.<domain> shows Studio's welcome page. Its certificate is
     // issued on demand like the others, but only for so many new names a day:
     // Let's Encrypt allows 50 new certificates a week per registered domain.

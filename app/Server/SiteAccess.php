@@ -20,23 +20,22 @@ final class SiteAccess
     public const FORBIDDEN = 'forbidden';
 
     /**
-     * The project behind a host: `<slug>.<domain>` is the site, a workspace's
-     * `app_url` is a preview, and so is a sandboxed conversation's host (with
-     * the sandbox's branch, which the access rules may single out).
+     * The project behind a host, by the hosts Studio keeps: a project's site at its own address
+     * (`site_host`) or at `<slug>.<domain>`, a workspace's `app_url` (a preview), a sandboxed
+     * conversation's host (a preview too, with the sandbox's branch, which the access rules may
+     * single out). Whatever the domain: Studio's, or one of Administration → Domains.
      *
      * @return array{project: Project, kind: 'site'|'preview', workspace: Workspace|null, branch?: string|null}|null
      */
     public function resolveHost(string $host): ?array
     {
         $host = strtolower(trim($host));
-        $domain = strtolower((string) config('studio.domain'));
 
-        if ($domain === '' || ! str_ends_with($host, '.'.$domain)) {
+        if ($host === '') {
             return null;
         }
 
-        $label = substr($host, 0, -strlen('.'.$domain));
-        $project = Project::query()->where('slug', $label)->first();
+        $project = Project::query()->where('site_host', $host)->first() ?? $this->defaultSite($host);
 
         if ($project) {
             return ['project' => $project, 'kind' => 'site', 'workspace' => null];
@@ -55,6 +54,18 @@ final class SiteAccess
         }
 
         return null;
+    }
+
+    /** `<slug>.<domain>`, on Studio's own domain: every site's address, also when it has one of its own. */
+    private function defaultSite(string $host): ?Project
+    {
+        $domain = strtolower((string) config('studio.domain'));
+
+        if ($domain === '' || ! str_ends_with($host, '.'.$domain)) {
+            return null;
+        }
+
+        return Project::query()->where('slug', substr($host, 0, -strlen('.'.$domain)))->first();
     }
 
     /**

@@ -9,9 +9,11 @@ use App\Infrastructure\Git\Forges;
 use App\Jobs\ConfigureProjectSite;
 use App\Mcp\McpProbe;
 use App\Models\ConnectorAccount;
+use App\Models\Domain;
 use App\Models\Project;
 use App\Models\ProjectMcpServer;
 use App\Models\User;
+use App\Models\Workspace;
 use App\Server\IpMatcher;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
@@ -61,6 +63,15 @@ class Settings extends Component
     public array $roles = [];
 
     // ---- Server
+
+    /** uuid of the domain the site lives at; '' = `<key>.<domain>` only */
+    public string $site_domain = '';
+
+    /** the site's subdomain on a wildcard domain; '' = the domain itself */
+    public string $site_label = '';
+
+    /** uuid of the wildcard domain the previews live under; '' = Studio's */
+    public string $preview_domain = '';
 
     public bool $scheduler = true;
 
@@ -142,6 +153,10 @@ class Settings extends Component
                 : ''])
             ->all();
 
+        $this->site_domain = (string) $project->siteDomain?->uuid;
+        $this->site_label = $project->site_host && $project->siteDomain && $project->site_host !== $project->siteDomain->name
+            ? substr($project->site_host, 0, -strlen('.'.$project->siteDomain->name)) : '';
+        $this->preview_domain = (string) $project->previewDomain?->uuid;
         $this->scheduler = $features['scheduler'];
         $this->queues = implode(', ', $features['queues']);
         $this->reverb = $features['reverb'];
@@ -275,6 +290,12 @@ class Settings extends Component
             'branch_rules.*.ips.required' => __('List the addresses for this branch, or remove the rule.'),
         ]);
 
+        $addresses = $this->addresses($project);
+
+        if ($addresses === null) {
+            return;
+        }
+
         $lists = ['site_ips' => $this->site_ips, 'previews_ips' => $this->previews_ips];
 
         foreach ($this->branch_rules as $index => $rule) {
@@ -291,7 +312,7 @@ class Settings extends Component
             }
         }
 
-        $project->update(['settings' => array_merge($project->settings ?? [], [
+        $project->update([...$addresses, 'settings' => array_merge($project->settings ?? [], [
             'features' => ['scheduler' => $this->scheduler, 'queues' => $this->queueList(), 'reverb' => $this->reverb, 'horizon' => $this->horizon, 'pulse' => $this->pulse],
             'timezone' => $this->timezone,
             'agent' => ['browser' => $this->agent_browser, 'sandboxes' => $this->agent_sandboxes, 'sandbox_limit' => $this->agent_sandbox_limit],
@@ -307,6 +328,69 @@ class Settings extends Component
         }
 
         Flux::toast(variant: 'success', text: __('Settings saved. They are being applied to the site and the workspaces.'));
+    }
+
+    /** Another domain for the site: no subdomain, or the project's key when only the wildcard points here. */
+    public function updatedSiteDomain(): void
+    {
+        $domain = $this->site_domain === '' ? null : Domain::query()->where('uuid', $this->site_domain)->first();
+        $this->site_label = $domain && $domain->wildcardPointsHere() && ! $domain->namePointsHere() ? $this->project->slug : '';
+        $this->resetValidation(['site_domain', 'site_label']);
+    }
+
+    /**
+     * The site's address and the previews' domain, checked: a domain that points here for that
+     * use (the one already in use may keep its place while its DNS is lost), a host no other
+     * site has. Null, with the error on the field, when it is not right.
+     *
+     * @return array{site_host: string|null, site_domain_id: int|null, preview_domain_id: int|null}|null
+     */
+    private function addresses(Project $project): ?array
+    {
+        $site = $this->site_domain === '' ? null : Domain::query()->where('uuid', $this->site_domain)->first();
+        $previews = $this->preview_domain === '' ? null : Domain::query()->where('uuid', $this->preview_domain)->first();
+        $label = $site?->wildcard ? strtolower(trim($this->site_label)) : '';
+        $host = null;
+
+        if ($site !== null) {
+            $host = $label === '' ? $site->name : $label.'.'.$site->name;
+            $kept = $host === $project->site_host;
+
+            if ($label !== '' && preg_match(Domain::LABEL, $label) !== 1) {
+                $this->addError('site_label', __('One subdomain: letters, digits and dashes.'));
+
+                return null;
+            }
+
+            if (! $kept && ! $site->isVerified()) {
+                $this->addError('site_domain', __(':name does not point at this server: check it in Administration → Domains.', ['name' => $site->name]));
+
+                return null;
+            }
+
+            if (! $kept && ($label === '' ? ! $site->namePointsHere() : ! $site->wildcardPointsHere())) {
+                $this->addError($label === '' ? 'site_domain' : 'site_label', $label === ''
+                    ? __(':name itself does not point here: give the site a subdomain of it.', ['name' => $site->name])
+                    : __('*.:name does not point here: the site can only be at :name itself.', ['name' => $site->name]));
+
+                return null;
+            }
+
+            if (Project::query()->whereKeyNot($project->id)->where('site_host', $host)->exists()
+                || Workspace::query()->where('app_url', 'https://'.$host)->exists()) {
+                $this->addError('site_label', __(':host is already the address of another site or of a preview.', ['host' => $host]));
+
+                return null;
+            }
+        }
+
+        if ($previews !== null && $previews->id !== $project->preview_domain_id && ! $previews->wildcardPointsHere()) {
+            $this->addError('preview_domain', __('*.:name does not point at this server: previews cannot live there.', ['name' => $previews->name]));
+
+            return null;
+        }
+
+        return ['site_host' => $host, 'site_domain_id' => $site?->id, 'preview_domain_id' => $previews?->id];
     }
 
     /* ---------------------------------------------------------------- MCP */
@@ -436,6 +520,9 @@ class Settings extends Component
             'deployAccounts' => $accounts,
             'phpVersions' => (array) config('studio.php_versions'),
             'timezones' => $this->tab === 'server' ? timezone_identifiers_list() : [],
+            // the verified domains, and the ones this project uses whatever their state
+            'domains' => $this->tab === 'server' ? Domain::query()->where(fn ($q) => $q->where('status', 'verified')
+                ->orWhereKey(array_filter([$this->project->site_domain_id, $this->project->preview_domain_id])))->orderBy('name')->get() : collect(),
             'mcpServers' => $this->tab === 'mcp' ? $this->project->mcpServers()->orderBy('name')->get() : collect(),
         ]);
     }

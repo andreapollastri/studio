@@ -41,6 +41,11 @@ app=$(rehost_site "$T/ws-andrea--shop.caddy" dev.example.test agency.test)
 grep -q '        env APP_ENV local' "$T/ws-andrea--shop.caddy" || fail "rehost_site leaves the other lines as they are"
 ok "rehost_site moves the host of a site file and says where its app is"
 
+printf '@prj_shop host staging.client.test shop.dev.example.test\nhandle @prj_shop {\n    root * /srv/studio/projects/shop/app/public\n}\n' > "$T/prj-shop.caddy"
+rehost_site "$T/prj-shop.caddy" dev.example.test agency.test >/dev/null
+[ "$(head -n1 "$T/prj-shop.caddy")" = '@prj_shop host staging.client.test shop.agency.test' ] || fail "rehost_site with an address of its own: $(head -n1 "$T/prj-shop.caddy")"
+ok "a site on a client's domain keeps that address; only its alias on Studio's domain moves"
+
 printf 'APP_NAME=Shop\nAPP_URL=https://shop.dev.example.test\nMAIL_FROM_ADDRESS=hello@dev.example.test\nREVERB_HOST=shop.dev.example.test\nSESSION_DOMAIN=\nVITE_REVERB_HOST="${REVERB_HOST}"\n' > "$T/.env"
 rehost_env "$T/.env" dev.example.test agency.test
 [ "$(env_get "$T/.env" APP_URL)" = https://shop.agency.test ] || fail "rehost_env APP_URL"

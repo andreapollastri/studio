@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\PermissionRequest;
 use App\Models\ProjectMcpServer;
 use App\Models\Workspace;
+use App\Server\SiteAccess;
 use App\Server\SitePass;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
@@ -101,11 +102,10 @@ final class BridgeClient
         }
 
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $domain = strtolower((string) config('studio.domain'));
         $passes = app(SitePass::class);
 
         // Only a host behind Studio's gatekeeper wants the pass; a local preview opens as it is.
-        $cookies = $domain !== '' && str_ends_with($host, '.'.$domain) ? [[
+        $cookies = app(SiteAccess::class)->resolveHost($host) !== null ? [[
             'name' => SitePass::COOKIE,
             'value' => $passes->passFor($conversation->user, $host),
             'expires' => now()->addMinutes($passes->passLifetimeMinutes())->getTimestamp(),

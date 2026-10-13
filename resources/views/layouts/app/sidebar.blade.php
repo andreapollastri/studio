@@ -59,6 +59,9 @@
                         <flux:sidebar.item icon="puzzle-piece" :href="route('admin.connectors')" :current="request()->routeIs('admin.connectors')" wire:navigate>
                             {{ __('Connectors') }}
                         </flux:sidebar.item>
+                        <flux:sidebar.item icon="globe-alt" :href="route('admin.domains')" :current="request()->routeIs('admin.domains')" wire:navigate>
+                            {{ __('Domains') }}
+                        </flux:sidebar.item>
                         <flux:sidebar.item icon="server-stack" :href="route('admin.system')" :current="request()->routeIs('admin.system')" wire:navigate>
                             {{ __('System') }}
                         </flux:sidebar.item>

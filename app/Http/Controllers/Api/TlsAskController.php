@@ -3,9 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Conversation;
-use App\Models\Project;
-use App\Models\Workspace;
+use App\Models\Domain;
+use App\Server\SiteAccess;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
@@ -13,30 +12,31 @@ use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Caddy asks before issuing a certificate on demand: is this host one of
- * ours? Studio itself, a project site, a workspace preview or a sandbox's. Any other
+ * ours? Studio itself, a project site, a workspace preview or a sandbox's, on Studio's
+ * domain or on a verified one of Administration → Domains. Any other
  * name under the domain gets Studio's welcome page, so it may have one too,
  * within a daily budget: a stranger typing random names must not use up the
  * CA's weekly limit that the real hosts need.
  */
 class TlsAskController extends Controller
 {
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request, SiteAccess $access): Response
     {
         $host = strtolower(trim((string) $request->query('domain', '')));
         $domain = strtolower((string) config('studio.domain'));
 
-        if ($host === '' || ! str_ends_with($host, '.'.$domain)) {
-            return response('', 404);
+        if ($host === '' || $host === 'studio.'.$domain) {
+            return response('', $host === '' ? 404 : 200);
         }
 
-        $label = substr($host, 0, -strlen('.'.$domain));
+        $ours = str_ends_with($host, '.'.$domain);
 
-        $known = $label === 'studio'
-            || Project::query()->where('slug', $label)->exists()
-            || Workspace::query()->where('app_url', 'https://'.$host)->exists()
-            || Conversation::query()->where('sandbox_host', $host)->exists();
+        if ($access->resolveHost($host) !== null) {
+            // A host on another domain: only while that domain still points here
+            return response('', $ours || Domain::covering($host)?->isVerified() ? 200 : 404);
+        }
 
-        return response('', $known || $this->welcomes($label) ? 200 : 404);
+        return response('', $ours && $this->welcomes(substr($host, 0, -strlen('.'.$domain))) ? 200 : 404);
     }
 
     /** One DNS label, once per host (Caddy asks again on a retry or a renewal), at most so many new ones a day. */

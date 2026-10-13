@@ -30,7 +30,7 @@ extract() {
         on { print; if (match($0, /<<.?[A-Z]+/)) { doc = substr($0, RSTART + 2, RLENGTH - 2); gsub(/[^A-Z]/, "", doc) } else if ($0 == "}") exit }
     ' "$ADMIN"
 }
-for fn in valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir ensure_claude_policy field has_field git_identity cmd_git_cli set_env unset_env write_workspace_env workspace_agent_env; do
+for fn in valid_host site_hosts valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir ensure_claude_policy field has_field git_identity cmd_git_cli set_env unset_env write_workspace_env workspace_agent_env; do
     def=$(extract "$fn"); [ -n "$def" ] || fail "no function $fn in studio-admin"
     eval "$def"
 done
@@ -184,5 +184,23 @@ grep -q '^STUDIO_ANTHROPIC_API_KEY=sk-ant-x$' "$W_ENV" || fail "a key sent is wr
 ( set -euo pipefail; INPUT='{"claude_api_key":null}'; write_workspace_env ) || fail "write_workspace_env dropping a key"
 if grep -q STUDIO_ANTHROPIC_API_KEY "$W_ENV"; then fail "a key sent empty is removed"; fi
 ok "the workspace's environment is written under set -e whether a Claude key is sent, sent empty or not sent"
+
+# ---------------------------------------------------------------- hosts
+
+for h in shop.dev.example.test maria-shop--c7.client.test client.co.uk xn--bcher-kva.example; do
+    ( fail() { admin_fail "$@"; }; valid_host "$h" ) >/dev/null || fail "valid_host refused $h"
+done
+for h in "" localhost Shop.example.test "a b.test" "a.test;reload" "-a.test" "a-.test" "a..test" "*.client.test" "a.test/x" "$(printf 'a%.0s' $(seq 64)).test"; do
+    if ( fail() { admin_fail "$@"; }; valid_host "$h" ) >/dev/null 2>&1; then fail "valid_host accepted '$h'"; fi
+done
+ok "a host is a plain lowercase DNS name, nothing a Caddy file or a shell would read otherwise"
+
+[ "$( fail() { admin_fail "$@"; }; INPUT='{"site_aliases":"shop.dev.example.test"}'; site_hosts staging.client.test)" = 'staging.client.test shop.dev.example.test' ] || fail "site_hosts with an alias"
+[ "$( fail() { admin_fail "$@"; }; INPUT='{}'; site_hosts shop.dev.example.test)" = shop.dev.example.test ] || fail "site_hosts without aliases"
+[ "$( fail() { admin_fail "$@"; }; INPUT='{"site_aliases":"a.test a.test"}'; site_hosts a.test)" = a.test ] || fail "site_hosts drops the host itself from its aliases"
+if ( fail() { admin_fail "$@"; }; INPUT='{"site_aliases":"ok.test bad;host"}'; site_hosts a.test ) >/dev/null 2>&1; then fail "site_hosts accepted a bad alias"; fi
+touch "$T/x.test"
+if ( cd "$T" && fail() { admin_fail "$@"; }; INPUT='{"site_aliases":"*.test"}'; site_hosts a.test ) >/dev/null 2>&1; then fail "site_hosts globbed an alias"; fi
+ok "site_hosts: the site's host, then its aliases, each one checked"
 
 printf '\nall studio-admin tests passed\n'

@@ -118,11 +118,14 @@ final class NativeDriver implements WorkspaceDriver
         $project = $workspace->project;
 
         try {
+            $host = $project->previewHostFor($workspace->user);
             $this->admin->run('workspace-configure', [$this->handle($workspace), $project->slug], [
                 'php_version' => $project->php_version,
-                'preview_host' => $project->previewHostFor($workspace->user),
+                'preview_host' => $host,
                 ...$workspace->serviceInput(),
             ]);
+            // The previews may have moved to another domain: the gatekeeper finds the workspace there now
+            $workspace->forceFill(['app_url' => 'https://'.$host])->save();
         } catch (ServerException $e) {
             $workspace->markFailed($e->getMessage());
         }

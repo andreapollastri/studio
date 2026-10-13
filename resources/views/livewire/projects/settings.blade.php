@@ -25,7 +25,7 @@
             </nav>
             <div class="mt-6 space-y-1 text-xs text-zinc-500 max-md:hidden">
                 <div>{{ __('Site') }}: <span class="font-mono">{{ $project->siteHost() }}</span></div>
-                <div>{{ __('Previews') }}: <span class="font-mono">&lt;person&gt;-{{ $project->slug }}</span></div>
+                <div>{{ __('Previews') }}: <span class="font-mono">&lt;person&gt;-{{ $project->slug }}.{{ $project->previewDomainName() }}</span></div>
                 <flux:link :href="route('admin.projects')" wire:navigate class="text-xs">{{ __('All projects') }}</flux:link>
             </div>
         </aside>
@@ -117,6 +117,49 @@
                         <div>
                             <flux:heading size="lg">{{ __('Server') }}</flux:heading>
                             <flux:text class="mt-1">{{ __('Applied on the server to the project site and to every workspace preview of the project.') }}</flux:text>
+                        </div>
+                        {{-- Where the site and the previews live --}}
+                        @php($siteChoice = $domains->firstWhere('uuid', $site_domain))
+                        @php($previewChoice = $domains->firstWhere('uuid', $preview_domain))
+                        <div class="space-y-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                            <div>
+                                <flux:heading>{{ __('Addresses') }}</flux:heading>
+                                <flux:text class="mt-1 text-sm">{{ __('Under Studio\'s domain by default. A domain of Administration → Domains gives the site and the previews the client\'s own address; the usual :host keeps working for the team.', ['host' => $project->defaultSiteHost()]) }}</flux:text>
+                            </div>
+                            <div class="grid gap-3 sm:grid-cols-[1fr_1fr]">
+                                <flux:select wire:model.live="site_domain" :label="__('Site')">
+                                    <flux:select.option value="">{{ $project->defaultSiteHost() }}</flux:select.option>
+                                    @foreach ($domains as $domain)
+                                        @if ($domain->namePointsHere() || $domain->wildcardPointsHere() || $domain->id === $project->site_domain_id)
+                                            <flux:select.option value="{{ $domain->uuid }}">{{ $domain->name }}{{ $domain->isVerified() ? '' : ' · '.$domain->status->label() }}</flux:select.option>
+                                        @endif
+                                    @endforeach
+                                </flux:select>
+                                @if ($siteChoice && $siteChoice->wildcard)
+                                    <flux:input wire:model.live.debounce.400ms="site_label" :label="__('Subdomain')" :placeholder="$siteChoice->namePointsHere() ? __('empty: :name itself', ['name' => $siteChoice->name]) : $project->slug" class="font-mono" />
+                                @endif
+                            </div>
+                            @error('site_domain')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
+                            @error('site_label')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
+                            @if ($siteChoice)
+                                <flux:text class="text-xs">{{ __('The site at :host, and at :default for the team.', ['host' => (trim($site_label) !== '' ? strtolower(trim($site_label)).'.' : '').$siteChoice->name, 'default' => $project->defaultSiteHost()]) }}</flux:text>
+                            @endif
+
+                            <flux:select wire:model.live="preview_domain" :label="__('Previews and sandboxes')">
+                                <flux:select.option value="">&lt;person&gt;-{{ $project->slug }}.{{ config('studio.domain') }}</flux:select.option>
+                                @foreach ($domains as $domain)
+                                    @if ($domain->wildcardPointsHere() || $domain->id === $project->preview_domain_id)
+                                        <flux:select.option value="{{ $domain->uuid }}">&lt;person&gt;-{{ $project->slug }}.{{ $domain->name }}{{ $domain->isVerified() ? '' : ' · '.$domain->status->label() }}</flux:select.option>
+                                    @endif
+                                @endforeach
+                            </flux:select>
+                            @error('preview_domain')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
+                            @if (($previewChoice?->id) !== $project->preview_domain_id)
+                                <flux:text class="text-xs">{{ __('Every workspace moves there when you save; sandboxes already open keep their address until they are removed.') }}</flux:text>
+                            @endif
+                            @if ($domains->isEmpty())
+                                <flux:text class="text-xs">{{ __('No domain points here yet:') }} <flux:link :href="route('admin.domains')" wire:navigate>{{ __('add one in Administration → Domains') }}</flux:link>.</flux:text>
+                            @endif
                         </div>
                         <div class="space-y-3">
                             <flux:checkbox wire:model="scheduler" :label="__('Scheduler')" :description="__('php artisan schedule:run every minute, from cron. On by default.')" />

@@ -24,7 +24,7 @@ done
 export DB_CONNECTION=sqlite DB_DATABASE="$DB" STUDIO_DOMAIN=dev.agency.test STUDIO_WORKSPACE_DRIVER=local \
   STUDIO_LOCAL_BRIDGE_URL=http://127.0.0.1:4455 STUDIO_LOCAL_BRIDGE_TOKEN=local-bridge-token \
   STUDIO_LOCAL_APP_URL=http://127.0.0.1:8766/preview/ DEMO_STAGING_URL=http://127.0.0.1:8766 DEMO_PREVIEW_URL=http://127.0.0.1:8766/preview/ \
-  APP_URL=http://127.0.0.1:8767 QUEUE_CONNECTION=sync BROADCAST_CONNECTION=log CACHE_STORE=array SESSION_DRIVER=file
+  STUDIO_SERVER_IPS=203.0.113.10 APP_URL=http://127.0.0.1:8767 QUEUE_CONNECTION=sync BROADCAST_CONNECTION=log CACHE_STORE=array SESSION_DRIVER=file
 
 rm -f "$DB"; touch "$DB"
 (cd "$ROOT" && php artisan migrate --force --seed --seeder=DemoSeeder >"$LOGS/seed.log")

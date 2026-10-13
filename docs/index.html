@@ -1823,6 +1823,7 @@
       <a href="#setup-email">Email</a>
       <a href="#setup-updates">Updates</a>
       <a class="sub" href="#setup-domain">Domain &amp; visibility</a>
+      <a class="sub" href="#setup-domains">Clients' domains</a>
 
       <div class="docs-nav-label">Work</div>
       <a href="#work-home">Home &amp; the menu</a>
@@ -2695,11 +2696,13 @@
           a click there opens this section.</p>
         <h3 id="setup-settings-server">Server</h3>
         <figure class="shot">
-          <img src="img/project-settings-server.png" alt="The Server section: scheduler, queues, Horizon, Reverb, Pulse and the timezone" loading="lazy" width="2880" height="2000" />
+          <img src="img/project-settings-server.png" alt="The Server section: the addresses of the site and the previews, scheduler, queues, Horizon, Reverb, Pulse and the timezone" loading="lazy" width="2880" height="2000" />
           <figcaption><strong>Settings → Server.</strong> What runs next to the app, on the site and on every
             preview.</figcaption>
         </figure>
         <div class="walkthrough-grid">
+          <dl><dt>Addresses</dt><dd>Where the site and the previews live: under Studio's domain, or on a
+            <a href="#setup-domains">client's domain</a> that points here, the usual address kept for the team.</dd></dl>
           <dl><dt>Scheduler</dt><dd>A cron line runs <code>php artisan schedule:run</code> every minute as the host's own
             Linux user. On by default, for the site and for every preview.</dd></dl>
           <dl><dt>Queues</dt><dd>One <code>queue:work</code> worker per queue name, as a systemd unit that restarts on
@@ -3072,6 +3075,27 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <code>renew &lt;host&gt;</code> throws that host's certificate away and gets a new one, <code>renew all</code> every host's.
           Caddy restarts for it, so open terminals reconnect. Let's Encrypt allows 50 new certificates a week per registered
           domain and 5 for the same host: renewing everything is for when something is really wrong.</p>
+        <h3 id="setup-domains">Clients' domains</h3>
+        <p><em>Administration → Domains</em> takes a domain other than Studio's (<code>client.com</code>), with its subdomains
+          or not, and shows the records to create at its DNS provider: <code>client.com  A  &lt;this server&gt;</code> and, for the
+          subdomains, <code>*.client.com</code> (a CNAME to <code>studio.&lt;domain&gt;</code> works too). Studio accepts it once it
+          points here, which is also the proof that it is yours: Caddy gets a certificate only for a name that sends the CA to
+          this server. It asks the DNS again every day; a domain that stops pointing here is marked <em>DNS lost</em> and gets no
+          new certificate, one still waiting is accepted the day its records arrive. A domain a project uses cannot be removed.</p>
+        <figure class="shot">
+          <img src="img/admin-domains.png" alt="Administration → Domains: a verified domain used by a project, one waiting for its DNS" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Administration → Domains.</strong> The records to create, what the DNS answered, the projects
+            that use each domain.</figcaption>
+        </figure>
+        <p>Then, in a project's <a href="#setup-settings-server">Settings → Server → Addresses</a>: the <strong>site</strong> at
+          the domain itself or at a subdomain of it (<code>staging.client.com</code>), with <code>&lt;key&gt;.&lt;domain&gt;</code>
+          kept as a second address for the team; the <strong>previews and sandboxes</strong> under a domain with its subdomains
+          (<code>&lt;person&gt;-&lt;key&gt;.client.com</code>). Saving moves the site and every workspace on the server, their
+          <code>APP_URL</code> included; sandboxes already open keep their address until they are removed. The login in front of
+          every host, the access rules and the agent's browser work the same on any domain. A name on a client's domain that no
+          project uses gets no certificate and no welcome page. When Studio's own domain changes (<code>studio-domain change</code>),
+          the clients' domains stay as they are.</p>
+
         <p><strong>Hiding the dashboard</strong>: <em>Administration → System → Domain &amp; visibility</em> switches
           <code>studio.&lt;domain&gt;</code> from public (its sign-in page to anyone, as any app) to hidden. Hidden, whoever is not
           signed in gets the page of an address nobody configured, on every path, and the welcome page of unknown names no

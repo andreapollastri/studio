@@ -166,6 +166,13 @@ server is in `installer/upgrades/<version>.sh`.
   with a new account's password, and to root by `studio-recover door`), once per browser; a signed-in session
   and a good password reset link are enough too. `studio-recover public|hidden` switches it from the server.
 
+- **Clients' domains**: *Administration → Domains* takes any other domain (with its subdomains or not), shows the
+  records to create, and accepts it once its DNS points at this server; checked again every day, one that stops
+  pointing here gets no new certificate. In a project's *Settings → Server → Addresses*, the site goes at such a
+  domain or a subdomain of it (`staging.client.com`), with `<key>.<domain>` kept for the team, and the previews and
+  sandboxes under it (`<person>-<key>.client.com`); the server moves the site, every workspace and their `APP_URL`.
+  Studio now finds a host by the addresses it keeps, on whatever domain, and the helper checks every host it is given.
+
 ### Fixed
 - Creating a workspace stopped on the server with `studio-admin stopped (exit 1) at: [ -n "$claude_api_key" ]`
   for everyone without an API key: Studio sends the key empty since it goes with each turn, and the empty test

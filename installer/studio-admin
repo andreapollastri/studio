@@ -13,9 +13,10 @@
 #
 #   project-bootstrap <slug>           {repo_url, branch, php_version, git_token, git_username, git_provider, git_name, git_email}
 #                                      a repository Studio just created: fresh Laravel + Boost + Larapilot, pushed
-#   project-create   <slug>            {repo_url, branch, php_version, db_engine, site_host, git_token, git_username}
+#   project-create   <slug>            {repo_url, branch, php_version, db_engine, site_host, site_aliases, git_token, git_username}
 #   project-deploy   <slug>            {branch, php_version, git_token, git_username}
-#   project-configure <slug>           {php_version, site_host, scheduler, queues, reverb, reverb_port, horizon, pulse, timezone}
+#   project-configure <slug>           {php_version, site_host, site_aliases, scheduler, queues, reverb, reverb_port, horizon, pulse, timezone}
+#                                      site_host: where the site answers (APP_URL); site_aliases: its other names
 #   project-delete   <slug>
 #   workspace-create <handle> <slug>   {repo_url, branch, php_version, db_engine, preview_host, bridge_port,
 #                                       bridge_token, git_token, git_username, git_env, claude_api_key, git_name, git_email}
@@ -96,6 +97,17 @@ require_field() { local v; v=$(field "$1"); [ -n "$v" ] || fail "missing input f
 valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,27}$ ]] || fail "invalid name: $1"; }
 # A branch is passed to git as a positional argument: it must never look like an option.
 valid_branch() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$1" != *..* ]] && [[ "$1" != *.lock ]] || fail "invalid branch name: $1"; }
+# A host goes into a Caddy file and an .env: a plain DNS name, nothing Caddy or a shell could read otherwise.
+valid_host() { [ "${#1}" -le 253 ] && [[ "$1" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]] || fail "invalid host: $1"; }
+# site_hosts HOST — the site's host and its aliases (site_aliases: the site's other names, space-separated),
+# for the Caddy file; the site itself answers at HOST (APP_URL, Reverb)
+site_hosts() {
+    local h out=$1 aliases=(); valid_host "$1"
+    # split on spaces, never globbed: "*.x" stays a word, and valid_host refuses it
+    read -ra aliases <<< "$(field site_aliases)"
+    for h in "${aliases[@]+"${aliases[@]}"}"; do valid_host "$h"; [ "$h" = "$1" ] || out="$out $h"; done
+    printf '%s' "$out"
+}
 valid_php()  { [[ "$1" =~ ^[0-9]+\.[0-9]+$ ]] && [ -x "/usr/bin/php$1" ] || fail "PHP $1 is not installed"; }
 # project_timezone — the timezone field (an IANA name, UTC when absent), checked against the zoneinfo database
 project_timezone() {
@@ -472,7 +484,7 @@ cmd_project_create() {
     local repo branch php engine host token
     repo=$(require_field repo_url); branch=$(require_field branch); php=$(require_field php_version); engine=$(require_field db_engine)
     host=$(require_field site_host); token=$(require_field git_token)
-    valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"
+    valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"; valid_host "$host"
 
     id "$P_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$P_HOME" --shell /usr/sbin/nologin "$P_USER"
     mkdir -p "$P_HOME"; chown "$P_USER:$P_USER" "$P_HOME"; chmod 751 "$P_HOME"
@@ -503,7 +515,7 @@ cmd_project_create() {
 
     render "$TPL/fpm-pool.conf.tpl" "/etc/php/$php/fpm/pool.d/$P_POOL.conf" NAME="$P_POOL" USER="$P_USER" GROUP="$P_USER" MAX=8 LOG="$P_HOME/php.log"
     reload_fpm "$php"
-    render_site "$P_SITE" "prj_$(dbname "$slug")" "$host" "$P_APP" "$P_POOL" staging "$(reverb_port_if_on)"
+    render_site "$P_SITE" "prj_$(dbname "$slug")" "$(site_hosts "$host")" "$P_APP" "$P_POOL" staging "$(reverb_port_if_on)"
     apply_services "$P_BASE" "$P_USER" "$P_APP" "$php" "$P_HOME" "$host"
 
     # git as the owner: run by root on a repository another user owns, git refuses ("dubious ownership")
@@ -596,7 +608,9 @@ cmd_project_configure() {
     local slug=$1; valid_name "$slug"; project_paths "$slug"
     [ -d "$P_APP/.git" ] || fail "project $slug has no site yet"
     local php host; php=$(require_field php_version); host=$(require_field site_host); valid_php "$php"
-    render_site "$P_SITE" "prj_$(dbname "$slug")" "$host" "$P_APP" "$P_POOL" staging "$(reverb_port_if_on)"
+    render_site "$P_SITE" "prj_$(dbname "$slug")" "$(site_hosts "$host")" "$P_APP" "$P_POOL" staging "$(reverb_port_if_on)"
+    # the site may have moved to an address of its own (or back): its URL follows, apply_services re-caches it
+    set_env "$P_APP/.env" APP_URL "https://$host"
     apply_services "$P_BASE" "$P_USER" "$P_APP" "$php" "$P_HOME" "$host"
     echo '{"ok":true}'
 }
@@ -859,7 +873,7 @@ cmd_workspace_create() {
     local repo branch php engine host port name email
     repo=$(require_field repo_url); branch=$(require_field branch); php=$(require_field php_version); engine=$(require_field db_engine)
     host=$(require_field preview_host); port=$(require_field bridge_port); name=$(field git_name); email=$(field git_email)
-    valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"; [[ "$port" =~ ^[0-9]{4,5}$ ]] || fail "invalid bridge port"
+    valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"; valid_host "$host"; [[ "$port" =~ ^[0-9]{4,5}$ ]] || fail "invalid bridge port"
     [ -n "$(field git_token)" ] || fail "a git provider token is required to clone the repository"
 
     ensure_person "$handle"
@@ -968,8 +982,10 @@ cmd_workspace_status() {
 cmd_workspace_configure() {
     local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
     [ -d "$W_DIR/.git" ] || fail "workspace $handle/$slug does not exist"
-    local php host; php=$(require_field php_version); host=$(require_field preview_host); valid_php "$php"
+    local php host; php=$(require_field php_version); host=$(require_field preview_host); valid_php "$php"; valid_host "$host"
     render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"
+    # the previews may have moved to another domain: the app's URL follows
+    set_env "$W_DIR/.env" APP_URL "https://$host"
     apply_services "$W_BASE" "$W_USER" "$W_DIR" "$php" "$W_HOME" "$host"
     # Claude and the terminal: from the next start of the workspace, a running chat is not cut off
     local tz; tz=$(project_timezone); [ -f "$W_ENV" ] && set_env "$W_ENV" TZ "$tz"
@@ -1023,7 +1039,7 @@ cmd_sandbox_create() {
     workspace_paths "$handle" "$slug"; sandbox_paths "$handle" "$slug" "$id"
     local php engine host branch; php=$(require_field php_version); engine=$(require_field db_engine); host=$(require_field preview_host); branch=$(require_field branch)
     valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"
-    [[ "$host" =~ ^[a-z0-9][a-z0-9.-]{0,252}$ ]] || fail "invalid preview host"
+    valid_host "$host"
     [ -f "$S_DIR/.git" ] || fail "sandbox c$id of $handle/$slug has no worktree: the bridge creates it first"
     [ "$(stat -c %U "$S_DIR")" = "$W_USER" ] || fail "sandbox c$id is not owned by $W_USER"
 

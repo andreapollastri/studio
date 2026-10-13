@@ -27,6 +27,9 @@ use Throwable;
  * @property string $uuid
  * @property string $name
  * @property string $slug
+ * @property string|null $site_host the site's own address on a domain of Administration → Domains; null = `<slug>.<domain>`
+ * @property int|null $site_domain_id
+ * @property int|null $preview_domain_id the wildcard domain the previews live under; null = Studio's
  * @property string $repo_url
  * @property string $default_branch
  * @property string $php_version
@@ -42,12 +45,14 @@ use Throwable;
  * @property string|null $last_error
  * @property array<string, mixed>|null $settings
  * @property-read User|null $deployUser
+ * @property-read Domain|null $siteDomain
+ * @property-read Domain|null $previewDomain
  * @property-read ConnectorAccount|null $repositoryAccount
  * @property-read Collection<int, ProjectMcpServer> $mcpServers
  * @property-read ProjectMember|null $membership the person's membership, when read through User::projects()
  */
 #[Fillable([
-    'name', 'slug', 'repo_url', 'default_branch', 'php_version', 'db_engine', 'deploy_user_id', 'git_account_id',
+    'name', 'slug', 'site_host', 'site_domain_id', 'preview_domain_id', 'repo_url', 'default_branch', 'php_version', 'db_engine', 'deploy_user_id', 'git_account_id',
     'site_status', 'larapilot_api_token', 'webhook_secret', 'webhook_id', 'deployed_sha', 'deployed_at', 'last_error', 'settings',
 ])]
 class Project extends Model
@@ -221,10 +226,45 @@ class Project extends Model
         return $this->workspaces()->where('user_id', $user->id)->first();
     }
 
-    /** `<slug>.<domain>`: where the deploy branch runs on this server. */
-    public function siteHost(): string
+    /** @return BelongsTo<Domain, $this> */
+    public function siteDomain(): BelongsTo
+    {
+        return $this->belongsTo(Domain::class, 'site_domain_id');
+    }
+
+    /** @return BelongsTo<Domain, $this> */
+    public function previewDomain(): BelongsTo
+    {
+        return $this->belongsTo(Domain::class, 'preview_domain_id');
+    }
+
+    /** `<slug>.<domain>`: the address every site has on Studio's own domain. */
+    public function defaultSiteHost(): string
     {
         return $this->slug.'.'.config('studio.domain');
+    }
+
+    /** Where the deploy branch runs on this server: its own address when it has one, `<slug>.<domain>` otherwise. */
+    public function siteHost(): string
+    {
+        return $this->site_host ?: $this->defaultSiteHost();
+    }
+
+    /**
+     * The site's other addresses: `<slug>.<domain>` stays when the site moves to a domain of its
+     * own, so that the team's links keep working.
+     *
+     * @return list<string>
+     */
+    public function siteAliases(): array
+    {
+        return $this->site_host ? [$this->defaultSiteHost()] : [];
+    }
+
+    /** The domain the previews and sandboxes live under: the project's wildcard domain, or Studio's. */
+    public function previewDomainName(): string
+    {
+        return $this->previewDomain->name ?? (string) config('studio.domain');
     }
 
     public function siteUrl(): string
@@ -232,10 +272,10 @@ class Project extends Model
         return (string) ($this->settings['site_url'] ?? 'https://'.$this->siteHost());
     }
 
-    /** `<handle>-<slug>.<domain>`: one person's workspace on this project. */
+    /** `<handle>-<slug>.<domain>`: one person's workspace on this project, under its preview domain. */
     public function previewHostFor(User $user): string
     {
-        return ($user->handle ?: 'user').'-'.$this->slug.'.'.config('studio.domain');
+        return ($user->handle ?: 'user').'-'.$this->slug.'.'.$this->previewDomainName();
     }
 
     /** A repository Studio created on the git provider that still has to receive its first commit. */
@@ -260,7 +300,7 @@ class Project extends Model
         $suffix = '--c'.$conversationId;
         $base = rtrim(substr(($user->handle ?: 'user').'-'.$this->slug, 0, 63 - strlen($suffix)), '-');
 
-        return $base.$suffix.'.'.config('studio.domain');
+        return $base.$suffix.'.'.$this->previewDomainName();
     }
 
     /** @var array{browser: bool, sandboxes: bool, sandbox_limit: int} */

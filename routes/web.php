@@ -7,6 +7,7 @@ use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
 use App\Infrastructure\Git\Forges;
 use App\Livewire\Admin\Connectors as AdminConnectors;
+use App\Livewire\Admin\Domains as AdminDomains;
 use App\Livewire\Admin\Projects as AdminProjects;
 use App\Livewire\Admin\System as AdminSystem;
 use App\Livewire\Admin\Users as AdminUsers;
@@ -62,6 +63,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('projects', AdminProjects::class)->name('projects');
         Route::get('users', AdminUsers::class)->name('users');
         Route::get('connectors', AdminConnectors::class)->name('connectors');
+        Route::get('domains', AdminDomains::class)->name('domains');
         Route::get('system', AdminSystem::class)->name('system');
         Route::get('system/status', SystemStatusController::class)->name('system.status');
     });

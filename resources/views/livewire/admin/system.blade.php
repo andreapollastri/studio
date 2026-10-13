@@ -248,6 +248,7 @@
                 <flux:text class="text-xs uppercase tracking-wide">{{ __('Domain') }}</flux:text>
                 <div class="mt-1 break-all font-mono text-lg">{{ $domain }}</div>
                 <flux:text class="text-xs">{{ __('studio.:domain, <project>.:domain, <person>-<project>.:domain', ['domain' => $domain]) }}</flux:text>
+                <flux:link :href="route('admin.domains')" wire:navigate class="mt-1 block text-xs">{{ __('Clients\' domains for the projects') }}</flux:link>
             </div>
             <div class="rounded-xl border border-zinc-200 p-4 sm:col-span-2 dark:border-zinc-700">
                 <flux:text class="text-xs uppercase tracking-wide">{{ __('Change it, or its certificates') }}</flux:text>

@@ -352,6 +352,11 @@
     "wait": 2000
   },
   {
+    "name": "admin-domains",
+    "url": "${BASE}/admin/domains",
+    "wait": 1000
+  },
+  {
     "name": "admin-system",
     "url": "${BASE2}/admin/system",
     "height": 960,

@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Enums\ClaudeAuthMode;
 use App\Enums\ConversationStatus;
+use App\Enums\DomainStatus;
 use App\Enums\PermissionStatus;
 use App\Enums\SiteStatus;
 use App\Enums\UserRole;
@@ -12,6 +13,7 @@ use App\Models\ClaudeAccount;
 use App\Models\ConnectorAccount;
 use App\Models\ConnectorSetting;
 use App\Models\Conversation;
+use App\Models\Domain;
 use App\Models\Message;
 use App\Models\Project;
 use App\Models\ProjectGroup;
@@ -107,6 +109,18 @@ class DemoSeeder extends Seeder
         $otherApi = Project::query()->firstOrCreate(['name' => 'API', 'repo_url' => 'https://dev.azure.com/agency/Globex/_git/api'], [
             'slug' => Project::newKey('API'), 'default_branch' => 'develop', 'php_version' => '8.4', 'db_engine' => 'mariadb', 'deploy_user_id' => $andrea->id,
         ]);
+
+        // Acme's own domain: the shop's site at staging.acme.test and its previews under it; Globex's is on its way
+        $ip = ['expected' => ['203.0.113.10']];
+        $acme = Domain::query()->updateOrCreate(['name' => 'acme.test'], [
+            'wildcard' => true, 'status' => DomainStatus::Verified, 'records' => [...$ip, 'name' => ['203.0.113.10'], 'wildcard' => ['203.0.113.10']],
+            'checked_at' => now()->subHours(3), 'verified_at' => now()->subDays(12), 'user_id' => $andrea->id,
+        ]);
+        Domain::query()->updateOrCreate(['name' => 'globex.test'], [
+            'wildcard' => true, 'status' => DomainStatus::Pending, 'records' => [...$ip, 'name' => ['198.51.100.7'], 'wildcard' => []],
+            'last_error' => 'globex.test points at 198.51.100.7, not at this server (203.0.113.10).', 'checked_at' => now()->subMinutes(20), 'user_id' => $andrea->id,
+        ]);
+        $shop->update(['site_host' => 'staging.acme.test', 'site_domain_id' => $acme->id, 'preview_domain_id' => $acme->id]);
 
         // the role is each project's: Luca develops the shop and is the PM of the loyalty app; Giulia is the client of the shop
         $shop->syncMembers([$maria->id => 'pm', $luca->id => 'dev', $giulia->id => 'client']);
