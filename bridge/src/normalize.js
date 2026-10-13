@@ -44,6 +44,8 @@ function normalizeSystem(line) {
         cwd: line.cwd ?? null,
         permission_mode: line.permissionMode ?? null,
         tools: Array.isArray(line.tools) ? line.tools.length : null,
+        // which credential the CLI really runs on: ANTHROPIC_API_KEY, apiKeyHelper, "/login managed key", or none (a claude.ai login)
+        api_key_source: line.apiKeySource ?? null,
       }];
     case 'status':
       return [{ type: 'status', status: line.status ?? 'unknown' }];

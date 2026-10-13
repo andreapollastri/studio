@@ -36,6 +36,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property ClaudeAuthMode $claude_auth_mode
  * @property string|null $claude_token only an API key: a subscription is the login in the person's home
  * @property Carbon|null $claude_checked_at
+ * @property array{status?: string|null, percent?: int|null, resets_at?: string|null, at?: string}|null $claude_usage the CLI's last word on the subscription's limits
  * @property bool $claude_signed_in signed in to Claude Code in their home with a subscription, as last checked
  * @property Carbon|null $email_verified_at
  * @property string $password
@@ -89,6 +90,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'claude_token' => 'encrypted',
             'claude_checked_at' => 'datetime',
             'claude_signed_in' => 'boolean',
+            'claude_usage' => 'array',
             'claude_auth_mode' => ClaudeAuthMode::class,
         ];
     }
@@ -173,40 +175,23 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     /** A Claude credential was saved: the person's workspace can run Claude Code. */
     public function hasClaude(): bool
     {
-        return $this->claudeAccounts() !== [];
+        return $this->claudeAccount() !== null;
     }
 
     /**
-     * The Claude accounts this person can use: their subscription (signed in to
-     * Claude Code in their home; Studio holds nothing for it) and their API key.
-     *
-     * @return list<'subscription'|'api_key'>
-     */
-    public function claudeAccounts(): array
-    {
-        return array_values(array_filter([
-            $this->claude_signed_in ? ClaudeAuthMode::Subscription->value : null,
-            filled($this->claude_token) ? ClaudeAuthMode::ApiKey->value : null,
-        ]));
-    }
-
-    /**
-     * Which account a conversation runs on: the one it asks for, else the one the
-     * person chose, else whichever they have; null when they have none.
+     * The one Claude account this person uses, as chosen in Settings → Connections:
+     * their subscription (signed in to Claude Code in their home; Studio holds nothing
+     * for it) or their API key; null while the chosen one is not connected.
      *
      * @return 'subscription'|'api_key'|null
      */
-    public function claudeAccountFor(?string $wanted = null): ?string
+    public function claudeAccount(): ?string
     {
-        $accounts = $this->claudeAccounts();
-
-        foreach ([$wanted, $this->claude_auth_mode->value] as $choice) {
-            if ($choice !== null && in_array($choice, $accounts, true)) {
-                return $choice;
-            }
-        }
-
-        return $accounts[0] ?? null;
+        return match ($this->claude_auth_mode) {
+            ClaudeAuthMode::Subscription => $this->claude_signed_in ? ClaudeAuthMode::Subscription->value : null,
+            ClaudeAuthMode::ApiKey => filled($this->claude_token) ? ClaudeAuthMode::ApiKey->value : null,
+            ClaudeAuthMode::None => null,
+        };
     }
 
     /**

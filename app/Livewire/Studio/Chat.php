@@ -14,9 +14,11 @@ use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -39,9 +41,6 @@ class Chat extends Component
 
     public string $mode = 'default';
 
-    /** The Claude account of this conversation: '' (the person's choice), subscription or api_key. */
-    public string $account = '';
-
     /**
      * Answers to Claude's questions (AskUserQuestion), by question index: a label, or labels for a multiple choice.
      *
@@ -56,6 +55,10 @@ class Chat extends Component
      */
     public array $others = [];
 
+    /** The dot this conversation showed last: when it changes, the list on the left is told. */
+    #[Locked]
+    public string $signal = '';
+
     public function mount(Conversation $conversation): void
     {
         $this->authorize('view', $conversation);
@@ -63,12 +66,12 @@ class Chat extends Component
         $this->model = (string) $conversation->model;
         $this->effort = (string) $conversation->effort;
         $this->mode = $conversation->permission_mode;
-        $this->account = (string) $conversation->claude_auth;
+        $this->signal = $conversation->signal();
     }
 
     /**
-     * Model, effort, permission mode and Claude account apply from the next message
-     * on: the bridge restarts the agent with the new flags and resumes the session.
+     * Model, effort and permission mode apply from the next message on: the
+     * bridge restarts the agent with the new flags and resumes the session.
      */
     public function saveSettings(): void
     {
@@ -81,7 +84,6 @@ class Chat extends Component
             'model' => ['nullable', Rule::in($models)],
             'effort' => ['nullable', Rule::in(array_keys((array) config('studio.efforts', [])))],
             'mode' => ['required', Rule::in($modes)],
-            'account' => ['nullable', Rule::in(['', ...$this->conversation->user->claudeAccounts()])],
         ], [
             'mode.in' => __('Your role cannot use this mode.'),
         ]);
@@ -90,7 +92,6 @@ class Chat extends Component
             'model' => $this->model !== '' ? $this->model : null,
             'effort' => $this->effort !== '' ? $this->effort : null,
             'permission_mode' => $this->mode,
-            'claude_auth' => $this->account !== '' ? $this->account : null,
         ])->save();
 
         Flux::modal('chat-settings')->close();
@@ -198,6 +199,10 @@ class Chat extends Component
         }
 
         if ($this->getErrorBag()->isNotEmpty()) {
+            // the questions show one at a time: open the first one still without an answer
+            $missing = (int) Str::after((string) array_key_first($this->getErrorBag()->messages()), 'choices.');
+            $this->dispatch('question-step', step: $missing);
+
             return;
         }
 
@@ -300,6 +305,11 @@ class Chat extends Component
         $this->conversation->refresh();
         unset($this->messages, $this->toolResults, $this->pending);
         $this->dispatch('chat-updated');
+
+        if ($this->signal !== $this->conversation->signal()) {
+            $this->signal = $this->conversation->signal();
+            $this->dispatch('conversation-signal');
+        }
     }
 
     public function render(): View

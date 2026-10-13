@@ -10,9 +10,7 @@ use App\Models\Project;
 use App\Models\Workspace;
 use App\Workspaces\WorkspaceManager;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -47,6 +45,10 @@ class Shell extends Component
         }
 
         $this->conversation = $conversation;
+
+        if ($conversation?->user_id === auth()->id()) {
+            $conversation->markSeen();
+        }
 
         if ($this->workspace->status === WorkspaceStatus::New && auth()->user()->canChat() && $this->missingConnections() === []) {
             $this->provision();
@@ -97,17 +99,6 @@ class Shell extends Component
         $conversation = $start->handle($this->workspace, auth()->user());
 
         $this->redirectRoute('studio.conversation', ['project' => $this->project, 'conversation' => $conversation], navigate: true);
-    }
-
-    /** @return Collection<int, Conversation> */
-    #[Computed]
-    public function conversations(): Collection
-    {
-        return $this->workspace->conversations()
-            ->where('user_id', auth()->id())
-            ->latest('updated_at')
-            ->limit(50)
-            ->get();
     }
 
     public function render(): View

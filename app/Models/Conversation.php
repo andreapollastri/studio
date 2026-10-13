@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
- * @property string|null $claude_auth subscription or api_key; null: the person's choice
+ * @property array{model?: string|null, auth?: string|null, started_at?: string}|null $runtime what Claude Code said it runs on, at the start of the last turn
  * @property string $uuid
  * @property int $id
  * @property string $uuid
@@ -27,10 +27,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $effort
  * @property array<string, mixed>|null $last_result
  * @property Carbon|null $last_activity_at
+ * @property Carbon|null $seen_at when the person last opened it
  * @property-read Workspace $workspace
  * @property-read User $user
  */
-#[Fillable(['workspace_id', 'user_id', 'title', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'claude_auth', 'last_result', 'last_activity_at'])]
+#[Fillable(['workspace_id', 'user_id', 'title', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'runtime', 'last_result', 'last_activity_at'])]
 class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */
@@ -44,9 +45,11 @@ class Conversation extends Model
     protected function casts(): array
     {
         return [
+            'runtime' => 'array',
             'status' => ConversationStatus::class,
             'last_result' => 'array',
             'last_activity_at' => 'datetime',
+            'seen_at' => 'datetime',
         ];
     }
 
@@ -87,6 +90,39 @@ class Conversation extends Model
     public function setStatus(ConversationStatus $status): void
     {
         $this->forceFill(['status' => $status, 'last_activity_at' => now()])->save();
+    }
+
+    /**
+     * What the dot next to it says: working, asking (a question or a permission
+     * waits for the person), failed, done (a turn finished since the person last
+     * opened it) or quiet.
+     */
+    public function signal(): string
+    {
+        return match ($this->status) {
+            ConversationStatus::Running => 'working',
+            ConversationStatus::WaitingPermission => 'asking',
+            ConversationStatus::Failed => 'failed',
+            ConversationStatus::Idle => $this->last_result !== null && $this->last_activity_at !== null
+                && ($this->seen_at === null || $this->last_activity_at->gt($this->seen_at)) ? 'done' : 'quiet',
+        };
+    }
+
+    public function signalLabel(): string
+    {
+        return match ($this->signal()) {
+            'working' => __('working'),
+            'asking' => __('waiting for you'),
+            'failed' => __('failed'),
+            'done' => __('finished, not opened yet'),
+            default => __('nothing new'),
+        };
+    }
+
+    /** Opened by the person: its green dot goes grey. Not an update, so the list keeps its order. */
+    public function markSeen(): void
+    {
+        static::withoutTimestamps(fn () => $this->forceFill(['seen_at' => now()])->save());
     }
 
     /** The label of the permission mode as the chat shows it. */

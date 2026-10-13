@@ -71,3 +71,8 @@ select:focus[data-flux-control] {
 .prose :where(code)::after {
     content: none;
 }
+
+/* Alpine: hidden until it has started. */
+[x-cloak] {
+    display: none !important;
+}

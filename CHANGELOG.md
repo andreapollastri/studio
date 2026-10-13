@@ -27,9 +27,10 @@ server is in `installer/upgrades/<version>.sh`.
   unmodified Claude Code, in their own home on the server (`/home/ws-<handle>`, shared by all their
   workspaces). Studio never sees, stores or forwards it, as Anthropic's terms require of a platform
   that hosts Claude Code. Stored `setup-token`s are dropped: people sign in again once.
-- A person may have **both a subscription and an API key** and choose which one their conversations
-  use; a conversation may use the other one (*Model & mode*). The API key reaches only the
-  conversations that run on it.
+- **One account or the other**, chosen in *Settings → Connections*: the subscription or an API key.
+  Signing in replaces a key, saving a key signs the subscription out on the server. An API key is kept
+  apart from Claude Code's own variable and handed over by the bridge; with the subscription no key
+  is left in the workspace.
 
 ### Everywhere
 - **Public uuids**: links, buttons, pickers and broadcast channels carry uuids, never sequential ids.
@@ -38,6 +39,14 @@ server is in `installer/upgrades/<version>.sh`.
   chat gets its messages live (the Echo event name was wrong: it only polled); the projects list,
   *Administration → Projects* and *Administration → System* refresh on their own; System follows an
   update through the maintenance of its switch and reloads onto the new release.
+- **Chat status bar**: compact chips for the state, the Claude account (an API key stands out, with
+  the estimated cost of the last turn; a subscription shows the plan's usage and when it resets, from
+  Claude Code's own rate-limit events, never a cost), the model as people say it (*Default · Haiku 4.5*),
+  the effort and the mode; a click opens *Model & mode*. The model a conversation chose is no longer
+  overwritten by the one Claude Code reports.
+- **Conversation dots** follow the conversations: the list on the left was drawn once and never
+  moved. Amber and pulsing while Claude works, blue with a ring when it asks a question or a
+  permission, red when it failed, green when it finished since you last opened it, grey otherwise.
 - **Terminal tab**: colours (ANSI) instead of escape codes; git, Composer, artisan and the test tools
   are asked for colour; characters split across chunks arrive whole.
 

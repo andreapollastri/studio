@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\PermissionRequest;
 use App\Models\Workspace;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
@@ -47,7 +48,7 @@ final class IngestBridgeEvents
                 'result' => $this->result($conversation, $event),
                 'error' => $this->error($conversation, $event),
                 'text_delta' => ConversationUpdated::dispatch($conversation->uuid, 'text_delta', ['text' => (string) ($event['text'] ?? '')]),
-                'status' => ConversationUpdated::dispatch($conversation->uuid, 'status', ['status' => (string) ($event['status'] ?? '')]),
+                'status' => $this->status($conversation, $event),
                 default => $this->raw($conversation, $event),
             };
 
@@ -68,12 +69,51 @@ final class IngestBridgeEvents
      */
     private function init(Conversation $conversation, array $event): void
     {
+        $source = $event['api_key_source'] ?? null;
+
         $conversation->forceFill([
             'agent_session_id' => $event['session_id'] ?? $conversation->agent_session_id,
-            'model' => $event['model'] ?? $conversation->model,
+            // What it really runs on; the model the person chose (or "default") stays as chosen.
+            'runtime' => [
+                'model' => $event['model'] ?? null,
+                'auth' => match (true) {
+                    ! is_string($source) => null,
+                    $source === 'none' => 'subscription',
+                    default => 'api_key',
+                },
+                'started_at' => now()->toIso8601String(),
+            ],
             'status' => ConversationStatus::Running,
             'last_activity_at' => now(),
         ])->save();
+    }
+
+    /**
+     * A status for the chat; a rate_limit one is also the CLI's word on the person's
+     * plan (their subscription's limits), kept on them for the status bar.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private function status(Conversation $conversation, array $event): void
+    {
+        $status = (string) ($event['status'] ?? '');
+
+        if ($status === 'rate_limit' && is_array($event['info'] ?? null)) {
+            $info = $event['info'];
+            $resets = is_numeric($info['resetsAt'] ?? null) ? (int) $info['resetsAt'] : null;
+            $utilization = is_numeric($info['utilization'] ?? null) ? (float) $info['utilization'] : null;
+
+            $conversation->user->forceFill(['claude_usage' => [
+                'status' => is_string($info['status'] ?? null) ? $info['status'] : null,
+                // a fraction or a percentage, depending on the CLI: a percentage here
+                'percent' => $utilization === null ? null : (int) round(max(0, min(100, $utilization <= 1 ? $utilization * 100 : $utilization))),
+                // seconds or milliseconds since the epoch
+                'resets_at' => $resets === null ? null : Carbon::createFromTimestamp($resets > 100_000_000_000 ? intdiv($resets, 1000) : $resets)->toIso8601String(),
+                'at' => now()->toIso8601String(),
+            ]])->save();
+        }
+
+        ConversationUpdated::dispatch($conversation->uuid, 'status', ['status' => $status]);
     }
 
     /**

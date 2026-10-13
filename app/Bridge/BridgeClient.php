@@ -2,6 +2,7 @@
 
 namespace App\Bridge;
 
+use App\Enums\ClaudeAuthMode;
 use App\Models\Conversation;
 use App\Models\PermissionRequest;
 use App\Models\ProjectMcpServer;
@@ -43,8 +44,9 @@ final class BridgeClient
             'permission_mode' => $conversation->permission_mode,
             'model' => $conversation->model,
             'effort' => $conversation->effort,
-            // which Claude account: the subscription signed in in the home, or the API key
-            'auth' => $conversation->user->claudeAccountFor($conversation->claude_auth),
+            // always the account chosen in Settings → Connections, for every project and conversation:
+            // even while it looks disconnected, so the CLI never falls back to another login or key
+            'auth' => $conversation->user->claude_auth_mode === ClaudeAuthMode::None ? null : $conversation->user->claude_auth_mode->value,
             'mcp_servers' => $this->mcpServers($conversation),
             'callback' => [
                 'url' => $this->callbackUrl(),

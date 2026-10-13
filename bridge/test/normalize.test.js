@@ -8,6 +8,13 @@ test('init carries the session id and the model', () => {
   assert.equal(event.session_id, 's1');
   assert.equal(event.model, 'claude-sonnet-5');
   assert.equal(event.tools, 1);
+  assert.equal(event.api_key_source, null);
+  assert.equal(normalize({ type: 'system', subtype: 'init', apiKeySource: 'ANTHROPIC_API_KEY' })[0].api_key_source, 'ANTHROPIC_API_KEY');
+});
+
+test('a rate limit event keeps what the CLI says about the plan', () => {
+  const info = { status: 'allowed_warning', utilization: 0.82, resetsAt: 1792000000 };
+  assert.deepEqual(normalize({ type: 'rate_limit_event', rate_limit_info: info }), [{ type: 'status', status: 'rate_limit', info }]);
 });
 
 test('only text deltas become text_delta events', () => {

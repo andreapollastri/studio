@@ -23,33 +23,7 @@
                 <flux:button size="xs" icon="plus" variant="subtle" wire:click="newConversation">{{ __('New') }}</flux:button>
             @endcan
         </div>
-        <nav class="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-            @forelse ($this->conversations as $item)
-                <a
-                    href="{{ route('studio.conversation', [$project, $item]) }}"
-                    wire:navigate
-                    @class([
-                        'block rounded-lg px-3 py-2 text-sm transition',
-                        'bg-white shadow-sm dark:bg-zinc-800' => $conversation?->is($item),
-                        'hover:bg-white/60 dark:hover:bg-zinc-800/60' => ! $conversation?->is($item),
-                    ])
-                >
-                    <div class="flex items-center gap-2">
-                        <span @class([
-                            'size-2 shrink-0 rounded-full',
-                            'bg-green-500 animate-pulse' => $item->status === \App\Enums\ConversationStatus::Running,
-                            'bg-amber-500' => $item->status === \App\Enums\ConversationStatus::WaitingPermission,
-                            'bg-red-500' => $item->status === \App\Enums\ConversationStatus::Failed,
-                            'bg-zinc-300 dark:bg-zinc-600' => $item->status === \App\Enums\ConversationStatus::Idle,
-                        ])></span>
-                        <span class="truncate">{{ $item->displayTitle() }}</span>
-                    </div>
-                    <div class="mt-0.5 truncate ps-4 text-xs text-zinc-500">{{ $item->updated_at?->diffForHumans() }}</div>
-                </a>
-            @empty
-                <flux:text class="px-3 py-2 text-xs">{{ auth()->user()->canChat() ? __('No conversations. Open one to talk to Claude about this project.') : __('Conversations are for the team.') }}</flux:text>
-            @endforelse
-        </nav>
+        <livewire:studio.conversation-list :project="$project" :workspace="$workspace" :current="$conversation?->uuid" :key="'conversations-'.$workspace->uuid.'-'.$conversation?->uuid" />
         <div class="border-t border-zinc-200 p-3 text-xs text-zinc-500 dark:border-zinc-700">
             @if ($project->dashboardUrl())
                 <flux:link :href="$project->dashboardUrl()" target="_blank" class="text-xs">{{ __('Larapilot dashboard on :host', ['host' => $project->siteHost()]) }}</flux:link>

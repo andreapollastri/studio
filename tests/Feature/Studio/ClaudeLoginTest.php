@@ -4,7 +4,6 @@ use App\Bridge\BridgeClient;
 use App\Enums\ClaudeAuthMode;
 use App\Jobs\SyncWorkspaceCredentials;
 use App\Livewire\Settings\Connections;
-use App\Livewire\Studio\Chat;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Models\Workspace;
@@ -108,45 +107,56 @@ test('a setup-token pasted as an API key is refused: subscriptions sign in', fun
     expect($user->fresh()->claude_token)->toBeNull();
 });
 
-test('with a subscription and an API key the person chooses, a conversation may choose otherwise, and the bridge is told', function () {
+test('one account or the other: saving a key signs the subscription out, signing in removes the key', function () {
     Queue::fake();
     $user = User::factory()->create(['handle' => 'maria', 'claude_signed_in' => true, 'claude_auth_mode' => ClaudeAuthMode::Subscription]);
+    Workspace::factory()->create(['user_id' => $user->id, 'driver' => 'native', 'path' => '/srv/x']);
 
-    $page = Livewire::actingAs($user)->test(Connections::class)
-        ->assertDontSee('Your conversations use')
+    Livewire::actingAs($user)->test(Connections::class)
+        ->assertSet('claude_auth_mode', 'subscription')
+        ->set('claude_auth_mode', 'api_key')
         ->set('claude_token', 'sk-ant-api03-0123456789abcdefghijklmnop')
         ->call('saveClaude')
-        ->assertSee('Your conversations use');
+        ->assertHasNoErrors();
 
-    expect($user->fresh()->claude_auth_mode)->toBe(ClaudeAuthMode::Subscription)
-        ->and($user->fresh()->claudeAccounts())->toBe(['subscription', 'api_key']);
+    $fresh = $user->fresh();
+    expect($fresh->claude_auth_mode)->toBe(ClaudeAuthMode::ApiKey)
+        ->and($fresh->claude_signed_in)->toBeFalse()
+        ->and($fresh->claudeAccount())->toBe('api_key')
+        ->and(file_get_contents($this->log))->toContain('claude-logout maria');
 
-    $page->set('claude_auth_mode', 'api_key');
-    expect($user->fresh()->claudeAccountFor())->toBe('api_key')
-        ->and($user->fresh()->claudeAccountFor('subscription'))->toBe('subscription');
+    // A quiet check on page load changes nothing; signing in does.
+    signInAs('claude.ai');
+    Livewire::actingAs($user)->test(Connections::class)->call('refreshClaude', true);
+    expect($user->fresh()->claude_auth_mode)->toBe(ClaudeAuthMode::ApiKey)->and($user->fresh()->claude_token)->not->toBeNull();
 
-    // Not signed in any more: whatever was chosen, the API key it is.
-    $user->forceFill(['claude_signed_in' => false, 'claude_auth_mode' => ClaudeAuthMode::Subscription])->save();
-    expect($user->fresh()->claudeAccountFor('subscription'))->toBe('api_key');
-
-    // Removing the key with nothing else left: no Claude.
-    Livewire::actingAs($user)->test(Connections::class)->call('forgetClaude');
-    expect($user->fresh()->claudeAccountFor())->toBeNull()->and($user->fresh()->hasClaude())->toBeFalse();
+    Livewire::actingAs($user)->test(Connections::class)->call('refreshClaude');
+    $fresh = $user->fresh();
+    expect($fresh->claude_auth_mode)->toBe(ClaudeAuthMode::Subscription)
+        ->and($fresh->claude_token)->toBeNull()
+        ->and($fresh->claudeAccount())->toBe('subscription');
+    Queue::assertPushed(SyncWorkspaceCredentials::class);
 });
 
-test('a conversation\'s account travels with the turn', function () {
+test('the chosen account travels with every turn, and only an API key in use reaches the workspace', function () {
     config(['studio.driver' => 'local']);
-    $user = User::factory()->create(['claude_signed_in' => true, 'claude_token' => 'sk-ant-api03-key', 'claude_auth_mode' => ClaudeAuthMode::Subscription]);
+    $user = User::factory()->create(['claude_signed_in' => true, 'claude_auth_mode' => ClaudeAuthMode::Subscription]);
     $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
     $conversation = Conversation::factory()->create(['workspace_id' => $workspace->id, 'user_id' => $user->id]);
 
-    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])
-        ->set('account', 'api_key')
-        ->call('saveSettings')
-        ->assertHasNoErrors();
-    expect($conversation->fresh()->claude_auth)->toBe('api_key');
-
     Http::fake(['*' => Http::response(['accepted' => true], 202)]);
-    (new BridgeClient($workspace))->sendTurn($conversation->fresh(), 'ciao');
-    Http::assertSent(fn ($request) => $request['auth'] === 'api_key');
+    (new BridgeClient($workspace))->sendTurn($conversation, 'ciao');
+    Http::assertSent(fn ($request) => $request['auth'] === 'subscription');
+
+    // Not signed in any more: no account to show, but the turn still runs on the mode chosen in
+    // Settings (and fails saying so) rather than on whatever else the workspace could find.
+    $user->forceFill(['claude_signed_in' => false])->save();
+    expect($user->fresh()->hasClaude())->toBeFalse()->and($user->fresh()->claudeAccount())->toBeNull();
+    (new BridgeClient($workspace))->sendTurn($conversation->fresh(), 'ancora');
+    Http::assertSent(fn ($request) => $request['text'] === 'ancora' && $request['auth'] === 'subscription');
+
+    // The API key chosen in Settings goes for this conversation too: there is no per-project choice.
+    $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::ApiKey, 'claude_token' => 'sk-ant-test'])->save();
+    (new BridgeClient($workspace))->sendTurn($conversation->fresh(), 'con la chiave');
+    Http::assertSent(fn ($request) => $request['text'] === 'con la chiave' && $request['auth'] === 'api_key');
 });

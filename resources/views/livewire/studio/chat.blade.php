@@ -5,14 +5,7 @@
     <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-2 dark:border-zinc-700">
         <div class="min-w-0">
             <div class="truncate text-sm font-medium">{{ $conversation->displayTitle() }}</div>
-            <div class="text-xs text-zinc-500">
-                {{ $conversation->status->label() }}
-                · {{ $conversation->modeLabel() }}
-                @if ($conversation->model) · {{ $conversation->model }} @endif
-                @if ($conversation->effort) · {{ __('effort') }} {{ $conversation->effort }} @endif
-                @if (count($conversation->user->claudeAccounts()) === 2) · {{ \App\Enums\ClaudeAuthMode::from($conversation->user->claudeAccountFor($conversation->claude_auth) ?? 'none')->label() }} @endif
-                @if ($conversation->last_result['total_cost_usd'] ?? null) · {{ number_format((float) $conversation->last_result['total_cost_usd'], 2) }} $ {{ __('last turn') }} @endif
-            </div>
+            <x-studio.status-bar :conversation="$conversation" :can-chat="$canChat" class="mt-1" />
         </div>
         <div class="flex items-center gap-2">
             @if ($canChat)
@@ -50,14 +43,51 @@
         @endif
 
         @if ($this->pending?->isQuestion())
-            <div class="max-w-3xl rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-700/60 dark:bg-sky-900/20">
+            @php($questions = $this->pending->questions())
+            @php($total = count($questions))
+            {{-- One question at a time: the tabs step through them, the answers stay in one form. --}}
+            <div wire:key="questions-{{ $this->pending->uuid }}" class="max-w-3xl rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-700/60 dark:bg-sky-900/20"
+                x-data="{
+                    step: 0,
+                    total: {{ $total }},
+                    answered(i) {
+                        const choice = $wire.choices?.[i];
+                        const own = $wire.others?.[i];
+                        return (Array.isArray(choice) ? choice.length > 0 : !! choice) || (typeof own === 'string' && own.trim() !== '');
+                    },
+                    allAnswered() { return [...Array(this.total).keys()].every((i) => this.answered(i)); },
+                }"
+                x-on:question-step.window="step = $event.detail.step">
                 <div class="flex items-start gap-3">
                     <flux:icon.chat-bubble-left-ellipsis class="mt-0.5 size-5 shrink-0 text-sky-600" />
-                    <form wire:submit="answer('{{ $this->pending->uuid }}')" class="min-w-0 flex-1 space-y-5">
-                        <div class="text-sm font-semibold">{{ __('Claude has a question for you') }}</div>
-                        @foreach ($this->pending->questions() as $i => $question)
-                            <div wire:key="question-{{ $this->pending->uuid }}-{{ $i }}">
-                                @if ($question['header'] !== '')
+                    <form wire:submit="answer('{{ $this->pending->uuid }}')" class="min-w-0 flex-1 space-y-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="text-sm font-semibold">{{ $total > 1 ? __('Claude has :count questions for you', ['count' => $total]) : __('Claude has a question for you') }}</div>
+                            @if ($total > 1)
+                                <div class="shrink-0 text-xs tabular-nums text-zinc-500" x-text="`${step + 1} / ${total}`"></div>
+                            @endif
+                        </div>
+
+                        @if ($total > 1)
+                            <div class="flex flex-wrap gap-1 border-b border-sky-200 dark:border-sky-800/60" role="tablist">
+                                @foreach ($questions as $i => $question)
+                                    <button type="button" role="tab" x-on:click="step = {{ $i }}" :aria-selected="step === {{ $i }}"
+                                        class="-mb-px flex items-center gap-1.5 rounded-t-md border-b-2 px-2.5 py-1.5 text-xs font-medium transition"
+                                        :class="step === {{ $i }} ? 'border-sky-600 text-sky-700 dark:text-sky-300' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'">
+                                        @if ($errors->has("choices.{$i}"))
+                                            <span class="size-1.5 rounded-full bg-red-500"></span>
+                                        @else
+                                            <flux:icon.check x-show="answered({{ $i }})" x-cloak class="size-3 text-sky-600" />
+                                        @endif
+                                        {{ $question['header'] !== '' ? $question['header'] : __('Question :n', ['n' => $i + 1]) }}
+                                    </button>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @foreach ($questions as $i => $question)
+                            <div wire:key="question-{{ $this->pending->uuid }}-{{ $i }}" x-show="step === {{ $i }}" @if ($i > 0) x-cloak @endif role="tabpanel">
+                                @if ($question['header'] !== '' && $total === 1)
                                     <flux:badge size="sm" color="sky">{{ $question['header'] }}</flux:badge>
                                 @endif
                                 <div class="mt-1 text-sm font-medium">{{ $question['question'] }}</div>
@@ -86,10 +116,17 @@
                                 @endif
                             </div>
                         @endforeach
+
                         @if ($canChat)
-                            <div class="flex flex-wrap gap-2">
-                                <flux:button type="submit" size="sm" variant="primary" icon="paper-airplane">{{ __('Answer') }}</flux:button>
-                                <flux:button size="sm" variant="ghost" wire:click="skip('{{ $this->pending->uuid }}')">{{ __('Skip') }}</flux:button>
+                            <div class="flex flex-wrap items-center gap-2">
+                                @if ($total > 1)
+                                    <flux:button size="sm" variant="ghost" icon="chevron-left" x-show="step > 0" x-cloak x-on:click="step--">{{ __('Back') }}</flux:button>
+                                    <flux:button size="sm" variant="filled" icon:trailing="chevron-right" x-show="step < total - 1" x-on:click="step++">{{ __('Next') }}</flux:button>
+                                @endif
+                                <span @if ($total > 1) x-show="step === total - 1 || allAnswered()" x-cloak @endif>
+                                    <flux:button type="submit" size="sm" variant="primary" icon="paper-airplane">{{ __('Answer') }}</flux:button>
+                                </span>
+                                <flux:button size="sm" variant="ghost" wire:click="skip('{{ $this->pending->uuid }}')" class="ms-auto">{{ __('Skip') }}</flux:button>
                             </div>
                         @endif
                     </form>
@@ -134,13 +171,6 @@
                         <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
                     @endforeach
                 </flux:select>
-                @if (count($conversation->user->claudeAccounts()) === 2)
-                    <flux:select wire:model="account" :label="__('Claude account')">
-                        <flux:select.option value="">{{ __('Your choice in Settings (:account)', ['account' => \App\Enums\ClaudeAuthMode::from($conversation->user->claudeAccountFor() ?? 'none')->label()]) }}</flux:select.option>
-                        <flux:select.option value="subscription">{{ __('Claude subscription') }}</flux:select.option>
-                        <flux:select.option value="api_key">{{ __('API key') }}</flux:select.option>
-                    </flux:select>
-                @endif
                 <flux:radio.group wire:model="mode" :label="__('Mode')">
                     @foreach ($modes as $value => $definition)
                         <flux:radio :value="$value" :label="$definition['label']" :description="$definition['hint']" />

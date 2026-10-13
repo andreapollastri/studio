@@ -1854,7 +1854,7 @@
           <dl><dt>Drive</dt><dd>Folders and files with access by project and role, and <em>Copy / Move into the workspace</em>.
             See <a href="#tools-drive">Drive</a>.</dd></dl>
           <dl><dt>Sign in with Claude</dt><dd>A Pro or Max subscription is your own <code>claude auth login</code> in your home on
-            the server; Studio keeps nothing of it. With an API key too, you choose which one runs. See
+            the server; Studio keeps nothing of it. Or an API key: one or the other, as you choose. See
             <a href="#setup-connections">Git &amp; Claude</a>.</dd></dl>
           <dl><dt>Live pages</dt><dd>The workspace badge, the chat, the projects and the System page update on their own; an
             update is followed through its switch and the page reloads onto the new release.</dd></dl>
@@ -2402,9 +2402,9 @@
           let a platform collect or forward claude.ai credentials, which is why Studio no longer takes a
           <code>setup-token</code>; signing in to the unmodified Claude Code where a platform hosts it is what its terms allow.
           With an Anthropic Console account: paste the API key; Studio keeps it encrypted and the bridge hands it to Claude
-          Code only in the conversations that run on it. The login files and the kept key are denied to the agent itself.</p>
-        <p>You may have both. <em>Your conversations use</em> picks the one for every conversation, and <em>Model &amp; mode</em>
-          lets a single conversation use the other; when the chosen one is no longer connected, the other is used.</p>
+          Code. The login files and the kept key are denied to the agent itself.</p>
+        <p>One or the other: signing in with Claude replaces an API key, and saving an API key signs you out of the
+          subscription on the server.</p>
 
         <div class="note"><strong>Changing a token</strong> updates every workspace the person already has and restarts its
           bridge. Removing one stops what depends on it: no git token, no new workspaces; no Claude, no chat.</div>
@@ -2886,7 +2886,6 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             <tbody>
               <tr><td><strong>Model</strong></td><td>Default, Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 (the list is in <code>config/studio.php</code>)</td><td><code>--model</code></td></tr>
               <tr><td><strong>Effort</strong></td><td>Default, low, medium, high, max: how much the model thinks before it answers</td><td><code>--effort</code></td></tr>
-              <tr><td><strong>Claude account</strong></td><td>With both a subscription and an API key: your choice in Settings, the subscription, or the API key</td><td>the key in the environment, or none</td></tr>
               <tr><td><strong>Ask before actions</strong></td><td>Claude asks before commands and edits outside the automatic scope</td><td><code>--permission-mode default</code></td></tr>
               <tr><td><strong>Ask, edits allowed</strong></td><td>File edits in the workspace run; commands still ask</td><td><code>acceptEdits</code></td></tr>
               <tr><td><strong>Autopilot</strong></td><td>No questions: Claude Code's classifier reviews each action before it runs; the turn goes to the end on its own</td><td><code>auto</code></td></tr>

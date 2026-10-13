@@ -173,7 +173,8 @@ test('events posted by the bridge become messages, a pending permission, then an
     $conversation->refresh();
 
     expect($conversation->agent_session_id)->toBe('sess-123')
-        ->and($conversation->model)->toBe('claude-sonnet-5')
+        ->and($conversation->model)->toBeNull()
+        ->and($conversation->runtime['model'])->toBe('claude-sonnet-5')
         ->and($conversation->status)->toBe(ConversationStatus::WaitingPermission)
         ->and($conversation->messages()->pluck('kind')->all())->toBe(['text', 'tool_use', 'tool_result'])
         ->and($conversation->pendingPermission()?->summary())->toBe('npm run build');
@@ -307,7 +308,7 @@ test('Claude\'s questions show as a card with their options, not as a permission
 
     Livewire::actingAs($user)
         ->test(Chat::class, ['conversation' => $conversation])
-        ->assertSee('Claude has a question for you')
+        ->assertSee('Claude has 2 questions for you')
         ->assertSee('how deep should Larapilot work?')
         ->assertSee('deep on every flow')
         ->assertSee('Which seams should the plan cover?')
@@ -325,7 +326,11 @@ test('answering sends each question with the chosen labels, or the person\'s own
         ->test(Chat::class, ['conversation' => $conversation])
         ->call('answer', $request->uuid)
         ->assertHasErrors(['choices.0', 'choices.1'])
+        ->assertDispatched('question-step', step: 0)
         ->set('choices.0', 'MAX')
+        ->call('answer', $request->uuid)
+        ->assertHasErrors(['choices.1'])
+        ->assertDispatched('question-step', step: 1)
         ->set('choices.1', ['Admin', 'API', 'Not an option'])
         ->set('others.1', 'the webhooks')
         ->call('answer', $request->uuid)

@@ -44,32 +44,28 @@
 
             {{-- Claude --}}
             @php($onServer = \App\Claude\ClaudeLogin::onServer())
-            <div class="space-y-4" @if ($onServer && $user->claude_signed_in) wire:init="refreshClaude(true)" @endif>
+            <div class="space-y-4" @if ($onServer && $user->claude_auth_mode === \App\Enums\ClaudeAuthMode::Subscription) wire:init="refreshClaude(true)" @endif>
                 <div class="flex items-center gap-3">
                     <flux:heading size="lg">Claude</flux:heading>
-                    @forelse ($user->claudeAccounts() as $account)
-                        <flux:badge color="green" size="sm">{{ \App\Enums\ClaudeAuthMode::from($account)->label() }}</flux:badge>
-                    @empty
+                    @if ($user->hasClaude())
+                        <flux:badge color="green" size="sm">{{ $user->claude_auth_mode->label() }}</flux:badge>
+                    @else
                         <flux:badge color="yellow" size="sm">{{ __('not connected') }}</flux:badge>
-                    @endforelse
+                    @endif
                 </div>
                 <flux:text>
                     {{ __('Every conversation runs the Claude Code in your workspace with your own Claude: nobody else uses it; usage and cost are yours.') }}
                 </flux:text>
 
-                @if (count($user->claudeAccounts()) === 2)
-                    <div class="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/40">
-                        <flux:radio.group wire:model.live="claude_auth_mode" :label="__('Your conversations use')" variant="segmented">
-                            <flux:radio value="subscription" :label="__('Claude subscription')" icon="sparkles" />
-                            <flux:radio value="api_key" :label="__('API key')" icon="key" />
-                        </flux:radio.group>
-                        <flux:text class="mt-2 text-xs">{{ __('A conversation can use the other one: Model & mode in the chat. If the chosen one is no longer connected, the other is used.') }}</flux:text>
-                    </div>
-                @endif
+                <flux:radio.group wire:model.live="claude_auth_mode" variant="segmented">
+                    <flux:radio value="subscription" :label="__('Claude subscription')" icon="sparkles" />
+                    <flux:radio value="api_key" :label="__('API key')" icon="key" />
+                </flux:radio.group>
+                <flux:text class="text-xs">{{ __('One or the other: signing in with Claude replaces an API key, saving an API key signs you out of the subscription on the server.') }}</flux:text>
 
-                    <div class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700" x-data="claudeLogin">
+                    <div class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700" x-data="claudeLogin" x-show="$wire.claude_auth_mode === 'subscription'">
                         <flux:heading size="sm" class="flex items-center gap-2"><flux:icon.sparkles variant="micro" class="size-4" />{{ __('Claude subscription') }}</flux:heading>
-                        @if ($user->claude_signed_in)
+                        @if ($user->claude_signed_in && $user->claude_auth_mode === \App\Enums\ClaudeAuthMode::Subscription)
                             <div class="flex flex-wrap items-center gap-3">
                                 <flux:icon.check-circle class="size-5 text-green-500" />
                                 <flux:text class="flex-1">
@@ -84,6 +80,9 @@
                             <flux:text>
                                 {{ __('Sign in once with your Claude Pro or Max account: the official Claude Code sign-in runs in your own home on this server, every project of yours uses it, and Studio never sees or keeps it.') }}
                             </flux:text>
+                            @if (filled($user->claude_token))
+                                <flux:text class="text-xs text-amber-600 dark:text-amber-400">{{ __('You use an API key now: once you are signed in, the subscription replaces it and the key is removed.') }}</flux:text>
+                            @endif
                             @if ($onServer)
                                 <div class="flex flex-wrap gap-2">
                                     <flux:button variant="primary" icon="sparkles" x-on:click="start(); $flux.modal('claude-login').show()">{{ __('Sign in with Claude') }}</flux:button>
@@ -137,17 +136,17 @@
                         </flux:modal>
                     </div>
 
-                    <form wire:submit="saveClaude" class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                    <form wire:submit="saveClaude" class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700" x-show="$wire.claude_auth_mode === 'api_key'" @if ($user->claude_signed_in) wire:confirm="{{ __('Use the API key instead of your Claude subscription? You are signed out of the subscription on the server.') }}" @endif>
                         <flux:heading size="sm" class="flex items-center gap-2">
                             <flux:icon.key variant="micro" class="size-4" />{{ __('API key') }}
-                            @if (filled($user->claude_token))<flux:badge size="sm" color="green">{{ __('saved') }}</flux:badge>@endif
+                            @if (filled($user->claude_token) && $user->claude_auth_mode === \App\Enums\ClaudeAuthMode::ApiKey)<flux:badge size="sm" color="green">{{ __('in use') }}</flux:badge>@endif
                         </flux:heading>
-                        <flux:text>{{ __('An API key from the Anthropic Console, billed on your Console account. Studio keeps it encrypted and gives it only to the conversations that use it.') }}</flux:text>
+                        <flux:text>{{ __('An API key from the Anthropic Console, billed on your Console account. Studio keeps it encrypted; your workspaces give it to Claude Code.') }}</flux:text>
                         <flux:input wire:model="claude_token" type="password" viewable :label="__('API key')" :placeholder="filled($user->claude_token) ? __('Paste a new key to replace the current one') : 'sk-ant-…'" autocomplete="off" />
                         <div class="flex gap-2">
                             <flux:button type="submit" variant="primary">{{ filled($user->claude_token) ? __('Replace') : __('Save the key') }}</flux:button>
                             @if (filled($user->claude_token))
-                                <flux:button variant="ghost" wire:click="forgetClaude" wire:confirm="{{ __('Remove the API key? Conversations that use it switch to your subscription, or stop if you have none.') }}">{{ __('Remove') }}</flux:button>
+                                <flux:button variant="ghost" wire:click="forgetClaude" wire:confirm="{{ __('Remove the API key? Your conversations stop until you connect Claude again.') }}">{{ __('Remove') }}</flux:button>
                             @endif
                         </div>
                     </form>

@@ -55,11 +55,12 @@ final class ClaudeLogin
     }
 
     /**
-     * Ask the CLI and keep the answer on the person: a claude.ai login is their subscription.
+     * Ask the CLI and keep the answer on the person. After a sign-in ($adopt) a claude.ai
+     * login becomes their one account: the subscription, and an API key they had goes.
      *
      * @return array{logged_in: bool, method: string|null, error: string|null}
      */
-    public function refresh(User $user): array
+    public function refresh(User $user, bool $adopt = false): array
     {
         $status = $this->status($user);
 
@@ -68,12 +69,13 @@ final class ClaudeLogin
         }
 
         $signedIn = $status['logged_in'] && $status['method'] === 'claude.ai';
-        $user->forceFill([
-            'claude_signed_in' => $signedIn,
-            'claude_checked_at' => now(),
-            // the first account a person connects is the one they use
-            'claude_auth_mode' => $signedIn && $user->claude_auth_mode === ClaudeAuthMode::None ? ClaudeAuthMode::Subscription : $user->claude_auth_mode,
-        ])->save();
+        $user->forceFill(['claude_signed_in' => $signedIn, 'claude_checked_at' => now()]);
+
+        // One account at a time: signing in makes the subscription the one, the key goes.
+        if ($signedIn && ($adopt || $user->claude_auth_mode === ClaudeAuthMode::None)) {
+            $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_token' => null]);
+        }
+        $user->save();
 
         return $status;
     }
@@ -87,9 +89,7 @@ final class ClaudeLogin
         $user->forceFill([
             'claude_signed_in' => false,
             'claude_checked_at' => now(),
-            'claude_auth_mode' => $user->claude_auth_mode === ClaudeAuthMode::Subscription
-                ? (filled($user->claude_token) ? ClaudeAuthMode::ApiKey : ClaudeAuthMode::None)
-                : $user->claude_auth_mode,
+            'claude_auth_mode' => $user->claude_auth_mode === ClaudeAuthMode::Subscription ? ClaudeAuthMode::None : $user->claude_auth_mode,
         ])->save();
     }
 }

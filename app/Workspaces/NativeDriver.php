@@ -2,6 +2,7 @@
 
 namespace App\Workspaces;
 
+use App\Enums\ClaudeAuthMode;
 use App\Enums\WorkspaceStatus;
 use App\Git\Providers\GitProvider;
 use App\Models\Workspace;
@@ -175,10 +176,10 @@ final class NativeDriver implements WorkspaceDriver
             'git_username' => $git->gitUsername(),
             // what the agent's CLI and Larapilot read; the helper clears the variables of any other provider
             'git_env' => $user->git_token ? $git->agentEnvironment($user->git_token) : (object) [],
-            // The API key, when there is one, kept apart from Claude Code's own variable: the bridge
-            // hands it over only to the conversations that run on it. A subscription is the
-            // login in the person's home: nothing of it travels.
-            'claude_api_key' => $user->claude_token,
+            // The API key when that is the account chosen, kept apart from Claude Code's own
+            // variable (the bridge hands it over to Claude Code). A subscription is the login in
+            // the person's home: nothing of it travels, and no key is left behind.
+            'claude_api_key' => $user->claude_auth_mode === ClaudeAuthMode::ApiKey ? $user->claude_token : null,
         ];
     }
 }
