@@ -31,6 +31,8 @@ sys_warn() { printf '\033[1;33m    ! %s\033[0m\n' "$*"; }
 
 # apt's own output goes to a log; on failure its last lines are shown
 STUDIO_APT_LOG=${STUDIO_APT_LOG:-/var/log/studio-install.log}
+# Chromium for the agents' browser (Playwright MCP), shared read-only by every workspace
+STUDIO_BROWSERS=${STUDIO_BROWSERS:-/usr/local/lib/studio/browsers}
 
 studio_apt() {
     if ! DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
@@ -220,6 +222,48 @@ ensure_claude_code() { # the newest Claude Code; workspaces have DISABLE_AUTOUPD
     npm install -g @anthropic-ai/claude-code@latest >/dev/null 2>&1 || sys_warn "Claude Code could not be installed with npm; workspaces fail until it is"
 }
 
+# ensure_agent_browser — the agents' browser: Playwright MCP at the version this release was tested
+# with, and the Chromium its Playwright wants (with the libraries it needs), in one place every
+# workspace reads. Without it the chats work as before, without screenshots.
+ensure_agent_browser() {
+    local ver=${PLAYWRIGHT_MCP_VERSION:-latest} root cli
+    npm install -g "@playwright/mcp@${ver}" >/dev/null 2>&1 \
+        || { sys_warn "Playwright MCP could not be installed with npm: the agents work without a browser"; return 0; }
+    root=$(npm root -g)
+    # its own Playwright: the Chromium build has to be the one that Playwright drives
+    cli="$root/@playwright/mcp/node_modules/playwright/cli.js"; [ -f "$cli" ] || cli="$root/playwright/cli.js"
+    mkdir -p "$STUDIO_BROWSERS"
+    if ! PLAYWRIGHT_BROWSERS_PATH="$STUDIO_BROWSERS" node "$cli" install --with-deps chromium >>"$STUDIO_APT_LOG" 2>&1; then
+        sys_warn "Chromium for the agents could not be installed (see $STUDIO_APT_LOG): the agents work without a browser"
+        return 0
+    fi
+    chmod -R a+rX "$STUDIO_BROWSERS"
+    ensure_browser_apparmor
+}
+
+# Ubuntu 23.10 and later refuse unprivileged user namespaces to programs AppArmor knows nothing of,
+# and Chromium's sandbox needs one. A profile like Ubuntu's own for Chrome lets it keep the sandbox;
+# where it cannot be loaded, the marker tells the bridges to start Chromium without it.
+ensure_browser_apparmor() {
+    rm -f "$STUDIO_BROWSERS/.no-sandbox"
+    [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ] || return 0
+    if command -v apparmor_parser >/dev/null 2>&1 && [ -d /etc/apparmor.d ]; then
+        cat > /etc/apparmor.d/studio-chromium <<PROFILE
+abi <abi/4.0>,
+include <tunables/global>
+
+profile studio-chromium ${STUDIO_BROWSERS}/**/{chrome,headless_shell,chrome-headless-shell} flags=(unconfined) {
+  userns,
+
+  include if exists <local/studio-chromium>
+}
+PROFILE
+        apparmor_parser -r /etc/apparmor.d/studio-chromium >/dev/null 2>&1 && return 0
+    fi
+    sys_warn "AppArmor would not take a profile for the agents' Chromium: it runs without its sandbox (still as the workspace's user)"
+    touch "$STUDIO_BROWSERS/.no-sandbox"
+}
+
 # ensure_git_cli PROVIDER — the command-line tool the agents use for pull requests
 ensure_git_cli() {
     case "$1" in
@@ -308,6 +352,8 @@ ensure_system() {
     ensure_node
     sys_note "· Claude Code (npm; a minute or two)"
     ensure_claude_code
+    sys_note "· the agents' browser: Playwright MCP and Chromium (a minute or two)"
+    ensure_agent_browser
     sys_note "· the ${provider} command-line tool"
     ensure_git_cli "$provider"
     sys_note "· MariaDB, PostgreSQL, redis"
@@ -330,6 +376,8 @@ package_versions() {
     [ -n "$v" ] && echo "composer-phar $v"
     v=$(claude --version 2>/dev/null | awk '{print $1}') || true
     [ -n "$v" ] && echo "claude-code $v"
+    v=$(playwright-mcp --version 2>/dev/null | awk '{print $NF}') || true
+    [ -n "$v" ] && echo "playwright-mcp $v"
     v=$(az extension show --name azure-devops --query version -o tsv 2>/dev/null) || true
     [ -n "$v" ] && echo "az-azure-devops $v"
     return 0

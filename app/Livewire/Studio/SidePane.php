@@ -6,8 +6,10 @@ use App\Bridge\BridgeClient;
 use App\Bridge\BridgeException;
 use App\Models\Workspace;
 use Closure;
+use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Client\RequestException;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -17,7 +19,7 @@ class SidePane extends Component
 
     public string $tab = 'preview';
 
-    /** @var array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after?: list<string>}|null */
+    /** @var array<string, mixed>|null the working tree as the bridge reads it (BridgeClient's GitState) */
     public ?array $git = null;
 
     public ?string $gitError = null;
@@ -27,19 +29,78 @@ class SidePane extends Component
 
     public string $commitMessage = '';
 
+    /** The next commit rewrites the last one instead of adding one. */
+    public bool $amend = false;
+
     public string $newBranch = '';
 
-    /** Which view of the Changes tab is open: the working tree, the history graph, or the branches. */
+    /** Which view of the Changes tab is open: the working tree, the history graph, the branches, the tags or the stashes. */
     public string $changesView = 'tree';
 
     /** @var array{branch: ?string, head: ?string, commits: list<array<string, mixed>>}|null */
     public ?array $log = null;
+
+    /** How many commits the history shows; "Load more" raises it. */
+    public int $logLimit = 80;
+
+    public string $logSearch = '';
 
     /** @var array{current: ?string, local: list<array<string, mixed>>, remote: list<array<string, mixed>>}|null */
     public ?array $branches = null;
 
     /** @var array<string, mixed>|null the commit opened from the history */
     public ?array $commit = null;
+
+    /** @var list<array<string, mixed>>|null */
+    public ?array $tags = null;
+
+    /** @var list<array<string, mixed>>|null */
+    public ?array $stashes = null;
+
+    /** @var array{index: int, patch: string}|null the stash whose patch is open */
+    public ?array $stashPatch = null;
+
+    /** @var array{path: string, staged: string, unstaged: string, untracked: bool}|null the file of the working tree whose diff is open */
+    public ?array $fileDiff = null;
+
+    /** The merge being asked: the branch, what it would bring, and how. */
+    public ?string $mergeBranch = null;
+
+    /** @var array<string, mixed>|null */
+    public ?array $mergePreview = null;
+
+    public string $mergeMode = 'merge';
+
+    /** @var array<string, mixed>|null the local branch being deleted, as the branch list has it */
+    public ?array $deleting = null;
+
+    public bool $deleteForce = false;
+
+    public bool $deleteRemote = false;
+
+    public ?string $renameFrom = null;
+
+    public string $renameTo = '';
+
+    /** @var array<string, mixed>|null the commit the current branch would be reset to */
+    public ?array $resetTo = null;
+
+    public string $resetMode = 'mixed';
+
+    public string $tagName = '';
+
+    public string $tagMessage = '';
+
+    /** The commit the new tag goes on; null for the current one. */
+    public ?string $tagAt = null;
+
+    public ?string $deletingTag = null;
+
+    public bool $deleteTagRemote = false;
+
+    public string $stashMessage = '';
+
+    public bool $stashUntracked = true;
 
     public string $command = '';
 
@@ -54,9 +115,24 @@ class SidePane extends Component
     /** The Files tab mounts on first use and then stays alive, hidden, so open editors survive tab switches. */
     public bool $filesMounted = false;
 
-    public function mount(Workspace $workspace): void
+    /** The open conversation's sandbox, when it has one ready: git, terminal and files work in its worktree. */
+    #[Locked]
+    public ?string $sandbox = null;
+
+    /** That sandbox's preview, which the Preview tab shows instead of the workspace's. */
+    #[Locked]
+    public ?string $sandboxUrl = null;
+
+    public function mount(Workspace $workspace, ?string $sandbox = null, ?string $sandboxUrl = null): void
     {
         $this->workspace = $workspace;
+        $this->sandbox = $sandbox;
+        $this->sandboxUrl = $sandboxUrl;
+    }
+
+    private function bridge(): BridgeClient
+    {
+        return new BridgeClient($this->workspace, $this->sandbox);
     }
 
     public function setTab(string $tab): void
@@ -95,8 +171,10 @@ class SidePane extends Component
 
     public function setChangesView(string $view): void
     {
-        $this->changesView = in_array($view, ['tree', 'history', 'branches'], true) ? $view : 'tree';
+        $this->changesView = in_array($view, ['tree', 'history', 'branches', 'tags', 'stashes'], true) ? $view : 'tree';
         $this->commit = null;
+        $this->fileDiff = null;
+        $this->stashPatch = null;
         $this->gitNotice = null;
         $this->loadChangesView();
     }
@@ -117,10 +195,59 @@ class SidePane extends Component
         $this->rememberBranch($this->git['branch']);
 
         match ($this->changesView) {
-            'history' => $this->log = $bridge->gitLog(80),
+            'history' => $this->log = $bridge->gitLog($this->logLimit, trim($this->logSearch)),
             'branches' => $this->branches = $bridge->gitBranches(),
-            default => null,
+            'tags' => $this->tags = $bridge->gitTags(),
+            'stashes' => $this->stashes = $bridge->gitStashes(),
+            default => $this->refreshFileDiff($bridge),
         };
+    }
+
+    /** The open file's diff follows the working tree; a file that has no changes left closes. */
+    private function refreshFileDiff(BridgeClient $bridge): void
+    {
+        if ($this->fileDiff === null) {
+            return;
+        }
+
+        $path = $this->fileDiff['path'];
+        $files = is_array($this->git['files'] ?? null) ? $this->git['files'] : [];
+        $listed = in_array($path, array_column($files, 'path'), true);
+        $this->fileDiff = $listed ? $bridge->gitDiffFile($path) : null;
+    }
+
+    public function updatedLogSearch(): void
+    {
+        $this->logLimit = 80;
+        $this->commit = null;
+        $this->loadChangesView();
+    }
+
+    public function loadMoreLog(): void
+    {
+        $this->logLimit = min(400, $this->logLimit + 80);
+        $this->loadChangesView();
+    }
+
+    /** Open one file of the working tree with its diff, staged and not. */
+    public function openFile(string $path): void
+    {
+        $this->withGit(function (BridgeClient $bridge) use ($path): void {
+            $this->fileDiff = $bridge->gitDiffFile($path);
+        });
+    }
+
+    public function closeFile(): void
+    {
+        $this->fileDiff = null;
+    }
+
+    /** A commit named elsewhere (a tag) opened in the history. */
+    public function openCommit(string $sha): void
+    {
+        $this->changesView = 'history';
+        $this->loadChangesView();
+        $this->showCommit($sha);
     }
 
     public function showCommit(string $sha): void
@@ -156,21 +283,81 @@ class SidePane extends Component
         $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitPush(), __('Pushed to the remote.'));
     }
 
+    /** After an amend or a reset: overwrite the remote branch, unless someone pushed to it meanwhile. */
+    public function forcePush(): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitPush(force: true), __('Force pushed to the remote.'));
+    }
+
+    /** Stage one file as the working tree lists it, or every change. */
+    public function stage(?string $path = null): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitStage($path === null ? null : [$path]), null);
+    }
+
+    public function unstage(?string $path = null): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitUnstage($path === null ? null : [$path]), null);
+    }
+
     /** Stage every change and commit it; while a merge is open this concludes it. */
     public function commitAll(): void
     {
-        $message = trim($this->commitMessage);
+        $this->commitChanges('all');
+    }
 
-        if ($message === '') {
+    /**
+     * Commit what is staged, or every change ("all"); with `push` the branch goes to the remote right after.
+     * With "amend" ticked the last commit is rewritten, keeping its message when none is written.
+     */
+    public function commitChanges(string $what = 'staged', bool $push = false): void
+    {
+        $message = trim($this->commitMessage);
+        $amend = $this->amend;
+
+        if ($message === '' && ! $amend) {
             $this->gitError = __('Write a commit message first.');
 
             return;
         }
 
-        $this->changeGit(function (BridgeClient $bridge) use ($message): void {
-            $bridge->gitCommitAll($message);
+        $pushed = $amend && ($this->git['last']['pushed'] ?? false);
+
+        $this->changeGit(function (BridgeClient $bridge) use ($message, $what, $amend, $push): void {
+            $bridge->gitCommitAll($message, all: $what === 'all', amend: $amend);
             $this->commitMessage = '';
-        }, __('Changes committed.'));
+            $this->amend = false;
+            $this->fileDiff = null;
+
+            if ($push) {
+                $bridge->gitPush();
+            }
+        }, match (true) {
+            $push => __('Committed and pushed.'),
+            $pushed => __('Last commit amended. It was already pushed: force push to replace it on the remote.'),
+            $amend => __('Last commit amended.'),
+            default => __('Changes committed.'),
+        });
+    }
+
+    /** Ticking "amend" brings back the last commit's message to edit. */
+    public function updatedAmend(bool $amend): void
+    {
+        if ($amend && trim($this->commitMessage) === '') {
+            $this->commitMessage = (string) ($this->git['last']['message'] ?? '');
+        }
+    }
+
+    /** Settle one conflicted file of an open merge: "ours", "theirs", or "resolved" as edited. */
+    public function resolve(string $path, string $side): void
+    {
+        $label = match ($side) {
+            'ours' => __(':path: kept this branch\'s version.', ['path' => $path]),
+            'theirs' => __(':path: took the incoming version.', ['path' => $path]),
+            default => __(':path marked as resolved.', ['path' => $path]),
+        };
+
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitResolve($path, $side), $label);
     }
 
     /** Throw away the changes of one file as git status lists it, or of the whole working tree. */
@@ -179,22 +366,101 @@ class SidePane extends Component
         $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitDiscard($path), $path === null ? __('All changes discarded.') : __('Changes to :path discarded.', ['path' => $path]));
     }
 
+    public function askStash(): void
+    {
+        $this->authorizeGit();
+
+        $this->stashMessage = '';
+        $this->stashUntracked = true;
+        Flux::modal('git-stash')->show();
+    }
+
     public function stash(): void
     {
-        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitStash(), __('Changes put aside in a stash.'));
+        $message = trim($this->stashMessage);
+        $untracked = $this->stashUntracked;
+        Flux::modal('git-stash')->close();
+
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitStashPush($message, $untracked), __('Changes put aside in a stash.'));
     }
 
     public function stashPop(): void
     {
-        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitStash(pop: true), __('Stashed changes brought back.'));
+        $this->stashApply(0);
     }
 
-    /** Merge a branch into the current one, all or nothing: on a conflict the bridge undoes it and names the files. */
-    public function merge(string $branch): void
+    /** Bring a stash back: `pop` drops it from the list, otherwise it stays to apply again. */
+    public function stashApply(int $index, bool $pop = true): void
     {
-        $current = $this->git['branch'] ?? 'HEAD';
+        $this->changeGit(function (BridgeClient $bridge) use ($index, $pop): void {
+            $bridge->gitStashApply($index, $pop);
+            $this->stashPatch = null;
+        }, $pop ? __('Stashed changes brought back.') : __('Stashed changes applied; the stash is kept.'));
+    }
 
-        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitMerge($branch), fn (array $state) => $this->withNextSteps(__(':branch merged into :current.', ['branch' => $branch, 'current' => $current]), $state));
+    public function stashDrop(int $index): void
+    {
+        $this->changeGit(function (BridgeClient $bridge) use ($index): void {
+            $bridge->gitStashDrop($index);
+            $this->stashPatch = null;
+        }, __('Stash deleted.'));
+    }
+
+    public function showStash(int $index): void
+    {
+        if (($this->stashPatch['index'] ?? null) === $index) {
+            $this->stashPatch = null;
+
+            return;
+        }
+
+        $this->withGit(function (BridgeClient $bridge) use ($index): void {
+            $this->stashPatch = ['index' => $index, 'patch' => $bridge->gitStashShow($index)];
+        });
+    }
+
+    /** Open the merge dialog with what the branch would bring, conflicts foreseen included. */
+    public function askMerge(string $branch): void
+    {
+        $this->authorizeGit();
+
+        $this->mergeBranch = $branch;
+        $this->mergeMode = 'merge';
+        $this->mergePreview = null;
+
+        $this->withGit(function (BridgeClient $bridge) use ($branch): void {
+            $this->mergePreview = $bridge->gitCompare($branch);
+        });
+
+        Flux::modal('git-merge')->show();
+    }
+
+    /**
+     * Merge a branch into the current one, all or nothing: on a conflict the bridge undoes it and names the files.
+     * A squash stages the changes for one commit, whose message the commit form gets ready.
+     */
+    public function merge(?string $branch = null, ?string $mode = null): void
+    {
+        $branch ??= (string) $this->mergeBranch;
+        $mode = in_array($mode ?? $this->mergeMode, ['merge', 'no-ff', 'squash'], true) ? ($mode ?? $this->mergeMode) : 'merge';
+        $current = $this->git['branch'] ?? 'HEAD';
+        $subjects = array_map(fn (array $c) => '- '.($c['subject'] ?? ''), $this->mergePreview['commits'] ?? []);
+        Flux::modal('git-merge')->close();
+        $this->mergeBranch = null;
+        $this->mergePreview = null;
+
+        $this->changeGit(function (BridgeClient $bridge) use ($branch, $mode, $subjects): array {
+            $state = $bridge->gitMerge($branch, $mode);
+
+            if ($mode === 'squash') {
+                $this->commitMessage = trim(__('Squashed :branch', ['branch' => $branch])."\n\n".implode("\n", $subjects));
+                $this->changesView = 'tree';
+            }
+
+            return $state;
+        }, fn (array $state) => $mode === 'squash'
+            ? __(':branch squashed: its changes are staged, commit them as one.', ['branch' => $branch])
+            : $this->withNextSteps(__(':branch merged into :current.', ['branch' => $branch, 'current' => $current]), $state));
     }
 
     /**
@@ -209,9 +475,12 @@ class SidePane extends Component
         return $steps === [] ? $notice : $notice.' '.__('Run in the Terminal: :steps.', ['steps' => implode(', ', $steps)]);
     }
 
+    /** Abort whatever git left open: a merge, a revert, a cherry-pick or a rebase. */
     public function abortMerge(): void
     {
-        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitMergeAbort(), __('Merge aborted.'));
+        $operation = $this->git['operation'] ?? 'merge';
+
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitMergeAbort(), __('The :operation was aborted.', ['operation' => $operation]));
     }
 
     /** Create a branch from the current commit, or from the commit open in the history, and switch to it. */
@@ -232,9 +501,63 @@ class SidePane extends Component
         }, __('Created and switched to :branch.', ['branch' => $name]));
     }
 
-    public function deleteBranch(string $branch): void
+    public function askRenameBranch(string $branch): void
     {
-        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitDeleteBranch($branch), __('Branch :branch deleted.', ['branch' => $branch]));
+        $this->authorizeGit();
+
+        $this->renameFrom = $branch;
+        $this->renameTo = $branch;
+        Flux::modal('git-rename-branch')->show();
+    }
+
+    public function renameBranch(): void
+    {
+        $from = (string) $this->renameFrom;
+        $to = trim($this->renameTo);
+
+        if ($to === '' || $to === $from) {
+            Flux::modal('git-rename-branch')->close();
+
+            return;
+        }
+
+        Flux::modal('git-rename-branch')->close();
+        $this->renameFrom = null;
+
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitRenameBranch($from, $to), __(':from renamed to :to.', ['from' => $from, 'to' => $to]));
+    }
+
+    /** Open the delete dialog: whether the branch is merged, and whether it has a branch on the remote. */
+    public function askDeleteBranch(string $branch): void
+    {
+        $this->authorizeGit();
+
+        $this->deleting = collect($this->branches['local'] ?? [])->firstWhere('name', $branch) ?? ['name' => $branch, 'merged' => true, 'upstream' => null];
+        $this->deleteForce = false;
+        $this->deleteRemote = false;
+        Flux::modal('git-delete-branch')->show();
+    }
+
+    public function deleteBranch(?string $branch = null): void
+    {
+        $branch ??= (string) ($this->deleting['name'] ?? '');
+        $force = $this->deleteForce;
+        $remote = $this->deleteRemote && ! empty($this->deleting['upstream']) && ! ($this->deleting['gone'] ?? false);
+        Flux::modal('git-delete-branch')->close();
+        $this->deleting = null;
+        $this->deleteForce = false;
+        $this->deleteRemote = false;
+
+        $this->changeGit(
+            fn (BridgeClient $bridge) => $bridge->gitDeleteBranch($branch, $force, $remote),
+            $remote ? __('Branch :branch deleted here and on the remote.', ['branch' => $branch]) : __('Branch :branch deleted.', ['branch' => $branch]),
+        );
+    }
+
+    /** Delete a branch on the remote, as the remote list names it (origin/feature/x). */
+    public function deleteRemoteBranch(string $branch): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitDeleteRemoteBranch($branch), __(':branch deleted on the remote.', ['branch' => $branch]));
     }
 
     /** A new commit that undoes one from the history. */
@@ -246,15 +569,111 @@ class SidePane extends Component
         }, __('Commit reverted.'));
     }
 
+    /** Copy a commit of another branch onto the current one. */
+    public function cherryPick(string $sha): void
+    {
+        $this->changeGit(function (BridgeClient $bridge) use ($sha): void {
+            $bridge->gitCherryPick($sha);
+            $this->commit = null;
+        }, __('Commit copied onto :branch.', ['branch' => $this->git['branch'] ?? 'HEAD']));
+    }
+
+    public function askReset(): void
+    {
+        $this->authorizeGit();
+
+        if ($this->commit === null) {
+            return;
+        }
+
+        $this->resetTo = $this->commit;
+        $this->resetMode = 'mixed';
+        Flux::modal('git-reset')->show();
+    }
+
+    /** Move the current branch back to the commit open in the history: soft, mixed or hard. */
+    public function resetBranch(): void
+    {
+        $sha = (string) ($this->resetTo['sha'] ?? '');
+        $short = (string) ($this->resetTo['short'] ?? $sha);
+        $mode = in_array($this->resetMode, ['soft', 'mixed', 'hard'], true) ? $this->resetMode : 'mixed';
+        Flux::modal('git-reset')->close();
+        $this->resetTo = null;
+
+        $this->changeGit(function (BridgeClient $bridge) use ($sha, $mode): array {
+            $state = $bridge->gitReset($sha, $mode);
+            $this->commit = null;
+
+            return $state;
+        }, fn (array $state) => __(':branch is back at :sha.', ['branch' => $state['branch'] ?? 'HEAD', 'sha' => $short])
+            .($state['upstream'] !== null && ($state['behind'] ?? 0) > 0 ? ' '.__('The remote still has the later commits: force push to drop them there too.') : ''));
+    }
+
+    /** Open the tag dialog for the commit open in the history, or for the current one. */
+    public function askTag(?string $at = null): void
+    {
+        $this->authorizeGit();
+
+        $this->tagAt = $at;
+        $this->tagName = '';
+        $this->tagMessage = '';
+        Flux::modal('git-tag')->show();
+    }
+
+    public function createTag(): void
+    {
+        $name = trim($this->tagName);
+
+        if ($name === '') {
+            $this->addError('tagName', __('Give the tag a name.'));
+
+            return;
+        }
+
+        $at = $this->tagAt;
+        $message = trim($this->tagMessage);
+        Flux::modal('git-tag')->close();
+
+        $this->changeGit(function (BridgeClient $bridge) use ($name, $at, $message): void {
+            $this->tags = $bridge->gitCreateTag($name, $at, $message);
+        }, __('Tag :tag created. Push it to share it.', ['tag' => $name]));
+    }
+
+    public function pushTags(?string $tag = null): void
+    {
+        $this->changeGit(function (BridgeClient $bridge) use ($tag): void {
+            $this->tags = $bridge->gitPushTags($tag);
+        }, $tag === null ? __('Tags pushed to the remote.') : __('Tag :tag pushed to the remote.', ['tag' => $tag]));
+    }
+
+    public function askDeleteTag(string $tag): void
+    {
+        $this->authorizeGit();
+
+        $this->deletingTag = $tag;
+        $this->deleteTagRemote = false;
+        Flux::modal('git-delete-tag')->show();
+    }
+
+    public function deleteTag(): void
+    {
+        $tag = (string) $this->deletingTag;
+        $remote = $this->deleteTagRemote;
+        Flux::modal('git-delete-tag')->close();
+        $this->deletingTag = null;
+
+        $this->changeGit(function (BridgeClient $bridge) use ($tag, $remote): void {
+            $this->tags = $bridge->gitDeleteTag($tag, $remote);
+        }, $remote ? __('Tag :tag deleted here and on the remote.', ['tag' => $tag]) : __('Tag :tag deleted.', ['tag' => $tag]));
+    }
+
     /**
      * Run one git command that changes the repository, then read it again whatever happened:
      * a failed merge or pull leaves something to see.
      */
-    private function changeGit(callable $call, string|Closure $notice): void
+    private function changeGit(callable $call, string|Closure|null $notice): void
     {
-        if (! $this->canUseTerminal()) {
-            abort(403);
-        }
+        $this->authorizeGit();
 
         $this->gitNotice = null;
 
@@ -275,6 +694,14 @@ class SidePane extends Component
         });
     }
 
+    /** Changing the repository is for whoever may use the workspace's terminal. */
+    private function authorizeGit(): void
+    {
+        if (! $this->canUseTerminal()) {
+            abort(403);
+        }
+    }
+
     /** Run one git call against the bridge of a running workspace, keeping the error where the tab shows it. */
     private function withGit(callable $call): void
     {
@@ -287,7 +714,7 @@ class SidePane extends Component
         }
 
         try {
-            $call(new BridgeClient($this->workspace));
+            $call($this->bridge());
             $this->gitError = null;
         } catch (BridgeException $e) {
             $this->gitError = $this->gitRefusal($e) ?? $e->getMessage();
@@ -311,7 +738,8 @@ class SidePane extends Component
     /** The branch a workspace is on decides which access rule its preview gets, so keep it current. */
     private function rememberBranch(?string $branch): void
     {
-        if ($branch !== null && $branch !== '' && $branch !== $this->workspace->branch) {
+        // a sandbox's branch is its own, not the workspace's
+        if ($this->sandbox === null && $branch !== null && $branch !== '' && $branch !== $this->workspace->branch) {
             $this->workspace->forceFill(['branch' => $branch])->save();
         }
     }
@@ -342,7 +770,7 @@ class SidePane extends Component
                 $this->runs = array_slice([$this->run, ...$this->runs], 0, 10);
             }
 
-            $this->run = (new BridgeClient($this->workspace))->run($command);
+            $this->run = $this->bridge()->run($command);
             $this->terminalError = null;
             $this->command = '';
         } catch (BridgeException $e) {
@@ -357,7 +785,7 @@ class SidePane extends Component
         }
 
         try {
-            $this->run = (new BridgeClient($this->workspace))->runStatus((string) $this->run['id']);
+            $this->run = $this->bridge()->runStatus((string) $this->run['id']);
         } catch (BridgeException $e) {
             $this->terminalError = $e->getMessage();
             $this->run['status'] = 'failed';
@@ -371,7 +799,7 @@ class SidePane extends Component
         }
 
         try {
-            $this->run = (new BridgeClient($this->workspace))->killRun((string) $this->run['id']);
+            $this->run = $this->bridge()->killRun((string) $this->run['id']);
         } catch (BridgeException $e) {
             $this->terminalError = $e->getMessage();
         }
@@ -392,6 +820,8 @@ class SidePane extends Component
             'shortcuts' => (array) config('studio.terminal', []),
             // Without a running workspace the staging site is the next best thing to look at.
             'previewUrl' => $this->workspace->isRunning() ? null : ($this->workspace->project->isOnline() ? $this->workspace->project->siteUrl() : null),
+            // a sandboxed conversation looks at its own preview
+            'appUrl' => $this->sandboxUrl ?? $this->workspace->app_url,
         ]);
     }
 }

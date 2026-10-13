@@ -17,7 +17,8 @@ Zero dependencies, Node 20+.
 
 ```bash
 BRIDGE_TOKEN=secret WORKSPACE_DIR=/path/to/laravel-project node bin/bridge.js
-# optional: CLAUDE_BIN, BRIDGE_PORT (4455), BRIDGE_IDLE_TTL (600s), BRIDGE_FLUSH_MS (200)
+# optional: CLAUDE_BIN, BRIDGE_PORT (4455), BRIDGE_IDLE_TTL (600s), BRIDGE_FLUSH_MS (200),
+# BRIDGE_BROWSER_MCP (playwright-mcp), BRIDGE_BROWSER_EXECUTABLE, BRIDGE_BROWSER_NO_SANDBOX, BRIDGE_SANDBOX_ROOT
 ```
 
 Studio passes the callback (URL and token) with every turn, so the bridge knows nothing about
@@ -36,6 +37,17 @@ Studio in advance.
 | GET | `/skills` | | `{skills: [{name, description, source}]}` |
 | GET | `/git` | | `{branch, status[], stat, diff}` |
 | PUT | `/files/upload?path=…&overwrite=0\|1` | raw bytes | 201 `{path, size}`; 409 when it exists (without overwrite), 413 over `BRIDGE_UPLOAD_MAX` (512 MB) |
+| POST | `/sandboxes` | `{name: "c<id>", branch, base?}` | 201, the sandbox's state: a worktree on `branch` under `BRIDGE_SANDBOX_ROOT` |
+| GET | `/sandboxes/{name}` | | `{path, branch, workspace_branch, ahead, behind, files, status, stat}` |
+| POST | `/sandboxes/{name}/commit` | `{message}` | everything committed on its branch (nothing to commit is fine) |
+| DELETE | `/sandboxes/{name}?branch=0\|1` | | stops the agent in it, removes the worktree (and the branch) |
+
+With `X-Studio-Sandbox: c<id>`, the `/git`, `/files` and `/run` routes work in that sandbox's worktree.
+A turn may carry `browser: {url, cookies}` (the agent gets Playwright MCP as the MCP server `browser`,
+signed in with those cookies, when `BRIDGE_BROWSER_MCP` names its command) and `sandbox: "c<id>"`
+(Claude Code runs in that worktree). Studio's subagents (`--agents`) and context (`--append-system-prompt`)
+go with every process; `BRIDGE_STUDIO_AGENTS=0` leaves them out. Tool results carry their images
+(`images: [{media_type, data}]`), and subagents their `task` events.
 
 ## Tests
 

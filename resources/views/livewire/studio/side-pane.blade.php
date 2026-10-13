@@ -14,8 +14,13 @@
             >{{ $label }}</button>
         @endforeach
         <flux:spacer />
-        @if ($tab === 'preview' && ($workspace->isRunning() ? $workspace->app_url : $previewUrl))
-            <flux:button size="xs" variant="ghost" icon="arrow-top-right-on-square" :href="$workspace->isRunning() ? $workspace->app_url : $previewUrl" target="_blank">{{ $workspace->isRunning() ? __('Open') : __('Open the site') }}</flux:button>
+        @if ($sandbox)
+            <flux:tooltip :content="__('This conversation works in its sandbox: the preview, changes, terminal and files are the sandbox\'s.')">
+                <flux:badge size="sm" color="violet" icon="beaker" class="me-1 shrink-0">{{ __('Sandbox') }}</flux:badge>
+            </flux:tooltip>
+        @endif
+        @if ($tab === 'preview' && ($workspace->isRunning() ? $appUrl : $previewUrl))
+            <flux:button size="xs" variant="ghost" icon="arrow-top-right-on-square" :href="$workspace->isRunning() ? $appUrl : $previewUrl" target="_blank">{{ $workspace->isRunning() ? __('Open') : __('Open the site') }}</flux:button>
         @elseif ($tab === 'changes')
             <flux:button size="xs" variant="ghost" icon="arrow-path" wire:click="setChangesView(@js($changesView))">{{ __('Refresh') }}</flux:button>
         @elseif ($tab === 'terminal' && $run && ($run['status'] ?? '') === 'running')
@@ -31,12 +36,12 @@
         @if ($filesMounted)
             {{-- Mounted on first use and kept, hidden, so open editor tabs survive switching panes. --}}
             <div @class(['absolute inset-0', 'hidden' => $tab !== 'files'])>
-                <livewire:studio.files :workspace="$workspace" :key="'files-'.$workspace->id" />
+                <livewire:studio.files :workspace="$workspace" :sandbox="$sandbox" :key="'files-'.$workspace->id.'-'.$sandbox" />
             </div>
         @endif
         @if ($tab === 'preview')
-            @if ($workspace->isRunning() && $workspace->app_url)
-                <iframe src="{{ $workspace->app_url }}" title="{{ __('Workspace preview') }}" class="h-full w-full bg-white" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
+            @if ($workspace->isRunning() && $appUrl)
+                <iframe src="{{ $appUrl }}" title="{{ $sandbox ? __('Sandbox preview') : __('Workspace preview') }}" class="h-full w-full bg-white" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
             @elseif ($previewUrl)
                 <iframe src="{{ $previewUrl }}" title="{{ __('Project site') }}" class="h-full w-full bg-white" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
             @else
@@ -47,8 +52,12 @@
         @elseif ($tab === 'changes')
             <div class="flex h-full min-h-0 flex-col text-sm">
                 <div class="flex flex-wrap items-center gap-1 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-700">
-                    @foreach (['tree' => __('Working tree'), 'history' => __('History'), 'branches' => __('Branches')] as $key => $label)
-                        <button type="button" wire:click="setChangesView('{{ $key }}')" @class(['rounded px-2 py-0.5 text-xs', 'bg-zinc-200 font-medium dark:bg-zinc-700' => $changesView === $key, 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800' => $changesView !== $key])>{{ $label }}</button>
+                    @foreach (['tree' => __('Working tree'), 'history' => __('History'), 'branches' => __('Branches'), 'tags' => __('Tags'), 'stashes' => __('Stashes')] as $key => $label)
+                        <button type="button" wire:click="setChangesView('{{ $key }}')" @class(['inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs', 'bg-zinc-200 font-medium dark:bg-zinc-700' => $changesView === $key, 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800' => $changesView !== $key])>
+                            {{ $label }}
+                            @if ($key === 'tree' && $git && count($git['files'] ?? []) > 0)<span class="rounded-full bg-amber-100 px-1.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">{{ count($git['files']) }}</span>@endif
+                            @if ($key === 'stashes' && $git && ($git['stashes'] ?? 0) > 0)<span class="rounded-full bg-zinc-200 px-1.5 text-[10px] font-medium dark:bg-zinc-600">{{ $git['stashes'] }}</span>@endif
+                        </button>
                     @endforeach
                     @if ($git && $git['branch'])
                         <span class="ml-auto flex items-center gap-1.5">
@@ -56,8 +65,17 @@
                             @if ($git['behind'] > 0)<span class="text-xs text-amber-600" title="{{ __('Commits to pull') }}">↓{{ $git['behind'] }}</span>@endif
                             @if ($git['ahead'] > 0)<span class="text-xs text-blue-600" title="{{ __('Commits to push') }}">↑{{ $git['ahead'] }}</span>@endif
                             @if ($canUseTerminal)
-                                <flux:button size="xs" variant="ghost" icon="arrow-down" wire:click="pullRemote" wire:loading.attr="disabled" wire:target="pullRemote,pushRemote" :title="__('Pull: bring in the commits of the remote branch')">{{ __('Pull') }}</flux:button>
-                                <flux:button size="xs" variant="ghost" icon="arrow-up" wire:click="pushRemote" wire:loading.attr="disabled" wire:target="pullRemote,pushRemote" :title="__('Push: send the commits of this branch to the remote')">{{ __('Push') }}</flux:button>
+                                <flux:button size="xs" variant="ghost" icon="arrow-down" wire:click="pullRemote" wire:loading.attr="disabled" wire:target="pullRemote,pushRemote,forcePush,fetch" :title="__('Pull: bring in the commits of the remote branch')">{{ __('Pull') }}</flux:button>
+                                <flux:button size="xs" variant="ghost" icon="arrow-up" wire:click="pushRemote" wire:loading.attr="disabled" wire:target="pullRemote,pushRemote,forcePush,fetch" :title="$git['upstream'] ? __('Push: send the commits of this branch to the remote') : __('Publish the branch on the remote')">{{ $git['upstream'] ? __('Push') : __('Publish') }}</flux:button>
+                                <flux:dropdown position="bottom" align="end">
+                                    <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" :aria-label="__('More')" />
+                                    <flux:menu>
+                                        <flux:menu.item icon="arrow-down-tray" wire:click="fetch">{{ __('Fetch') }}</flux:menu.item>
+                                        @if ($git['upstream'])
+                                            <flux:menu.item icon="exclamation-triangle" x-on:click="$dispatch('git-confirm', @js(['method' => 'forcePush', 'icon' => 'push', 'danger' => true, 'title' => __('Force push :branch?', ['branch' => $git['branch']]), 'body' => __('The remote branch is replaced by this one, for example after an amend or a reset. Commits only on the remote are lost; if somebody pushed meanwhile, git refuses.'), 'subject' => $git['upstream'], 'confirm' => __('Force push')]))">{{ __('Force push…') }}</flux:menu.item>
+                                        @endif
+                                    </flux:menu>
+                                </flux:dropdown>
                             @endif
                         </span>
                     @elseif ($log && $log['branch'])
@@ -71,201 +89,7 @@
                         <flux:callout variant="success" icon="check-circle" class="mb-3"><flux:callout.text>{{ $gitNotice }}</flux:callout.text></flux:callout>
                     @endif
 
-                    @if ($git && $git['merging'])
-                        <flux:callout variant="warning" icon="arrows-right-left" class="mb-3">
-                            <flux:callout.heading>{{ __('Merge in progress') }}</flux:callout.heading>
-                            <flux:callout.text>
-                                @if (count($git['conflicts']) > 0)
-                                    {{ __('Resolve the conflicts in these files, then commit to conclude the merge:') }}
-                                    <span class="mt-1 block font-mono text-xs">{{ implode(', ', $git['conflicts']) }}</span>
-                                @else
-                                    {{ __('No conflicts left: commit to conclude the merge.') }}
-                                @endif
-                            </flux:callout.text>
-                            @if ($canUseTerminal)
-                                <x-slot name="actions">
-                                    <flux:button size="sm" x-on:click="$dispatch('git-confirm', @js(['method' => 'abortMerge', 'icon' => 'abort', 'danger' => true, 'title' => __('Abort the merge?'), 'body' => __('The working tree goes back to how it was before it.'), 'confirm' => __('Abort merge')]))">{{ __('Abort merge') }}</flux:button>
-                                </x-slot>
-                            @endif
-                        </flux:callout>
-                    @endif
-
-                    @if ($changesView === 'tree')
-                        @if ($git)
-                            @if ($canUseTerminal && (count($git['status']) > 0 || $git['merging']))
-                                <form wire:submit="commitAll" class="mb-3 flex gap-2">
-                                    <flux:input size="sm" wire:model="commitMessage" :placeholder="__('Commit message')" class="flex-1" />
-                                    <flux:button size="sm" type="submit" variant="primary" icon="check">{{ __('Commit all') }}</flux:button>
-                                </form>
-                            @endif
-                            @if ($canUseTerminal && (count($git['status']) > 0 || $git['stashes'] > 0) && ! $git['merging'])
-                                <div class="mb-3 flex flex-wrap items-center gap-1">
-                                    @if (count($git['status']) > 0)
-                                        <flux:button size="xs" variant="ghost" icon="archive-box-arrow-down" wire:click="stash" :title="__('Put the changes aside, for example to switch branch')">{{ __('Stash') }}</flux:button>
-                                    @endif
-                                    @if ($git['stashes'] > 0)
-                                        <flux:button size="xs" variant="ghost" icon="archive-box" wire:click="stashPop">{{ __('Restore stash') }} ({{ $git['stashes'] }})</flux:button>
-                                    @endif
-                                    @if (count($git['status']) > 0)
-                                        <flux:button size="xs" variant="ghost" icon="trash" class="ml-auto text-red-600!" x-on:click="$dispatch('git-confirm', @js(['method' => 'discard', 'icon' => 'trash', 'danger' => true, 'title' => __('Discard all changes?'), 'body' => __('Every uncommitted change goes, new files included. This cannot be undone.'), 'confirm' => __('Discard all')]))">{{ __('Discard all') }}</flux:button>
-                                    @endif
-                                </div>
-                            @endif
-                            @if (count($git['status']) === 0)
-                                <flux:text>{{ __('No uncommitted changes.') }}</flux:text>
-                            @else
-                                <ul class="mb-3 space-y-0.5 font-mono text-xs">
-                                    @foreach ($git['status'] as $line)
-                                        <li class="group flex items-center gap-2" wire:key="status-{{ md5($line) }}">
-                                            <span class="min-w-0 flex-1 truncate whitespace-pre">{{ $line }}</span>
-                                            @if ($canUseTerminal && ! $git['merging'])
-                                                <button type="button" class="touch-reveal shrink-0 rounded px-1 text-zinc-400 opacity-0 hover:bg-zinc-100 hover:text-red-600 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-zinc-800" x-on:click="$dispatch('git-confirm', @js(['method' => 'discard', 'args' => [substr($line, 3)], 'icon' => 'trash', 'danger' => true, 'title' => __('Discard these changes?'), 'body' => __('The file goes back to its last commit. This cannot be undone.'), 'subject' => substr($line, 3), 'confirm' => __('Discard')]))" title="{{ __('Discard') }}">✕</button>
-                                            @endif
-                                        </li>
-                                    @endforeach
-                                </ul>
-                                <pre class="mb-3 whitespace-pre-wrap font-mono text-xs text-zinc-600 dark:text-zinc-300">{{ $git['stat'] }}</pre>
-                                <pre class="max-h-[60vh] overflow-auto rounded bg-zinc-50 p-3 font-mono text-[11px] leading-snug dark:bg-zinc-800">{{ $git['diff'] }}</pre>
-                            @endif
-                        @elseif (! $gitError)
-                            <flux:text>{{ __('Loading…') }}</flux:text>
-                        @endif
-
-                    @elseif ($changesView === 'history')
-                        @if ($commit)
-                            <div class="mb-4 rounded-lg border border-zinc-200 dark:border-zinc-700">
-                                <div class="flex items-start gap-3 border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
-                                    <div class="min-w-0 flex-1">
-                                        <div class="font-medium">{{ $commit['subject'] ?? '' }}</div>
-                                        <div class="mt-0.5 text-xs text-zinc-500">
-                                            <span class="font-mono">{{ $commit['short'] ?? '' }}</span>
-                                            · {{ $commit['author'] ?? '' }}
-                                            @if (! empty($commit['date'])) · {{ \Illuminate\Support\Carbon::parse($commit['date'])->toDayDateTimeString() }} @endif
-                                            @foreach ((array) ($commit['refs'] ?? []) as $ref) <flux:badge size="sm">{{ $ref }}</flux:badge> @endforeach
-                                        </div>
-                                    </div>
-                                    <flux:button size="xs" variant="ghost" icon="x-mark" wire:click="closeCommit" />
-                                </div>
-                                @if ($canUseTerminal)
-                                    <div class="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
-                                        <form wire:submit="createBranch(@js((string) ($commit['sha'] ?? '')))" class="flex min-w-0 flex-1 gap-2">
-                                            <flux:input size="sm" wire:model="newBranch" :placeholder="__('New branch from here')" class="min-w-0 flex-1" />
-                                            <flux:button size="sm" type="submit" icon="plus">{{ __('Create') }}</flux:button>
-                                        </form>
-                                        <flux:button size="sm" variant="ghost" icon="arrow-uturn-left" x-on:click="$dispatch('git-confirm', @js(['method' => 'revert', 'args' => [(string) ($commit['sha'] ?? '')], 'icon' => 'revert', 'title' => __('Revert this commit?'), 'body' => __('A new commit that undoes it is added on :branch.', ['branch' => $git['branch'] ?? 'HEAD']), 'subject' => trim(($commit['short'] ?? '').' '.($commit['subject'] ?? '')), 'confirm' => __('Revert')]))">{{ __('Revert') }}</flux:button>
-                                    </div>
-                                @endif
-                                <pre class="whitespace-pre-wrap px-3 py-2 font-mono text-xs text-zinc-600 dark:text-zinc-300">{{ $commit['stat'] ?? '' }}</pre>
-                                <pre class="max-h-[40vh] overflow-auto border-t border-zinc-200 bg-zinc-50 p-3 font-mono text-[11px] leading-snug dark:border-zinc-700 dark:bg-zinc-800">{{ $commit['patch'] ?? '' }}</pre>
-                            </div>
-                        @endif
-                        @if ($log && count($log['commits']) > 0)
-                            @php
-                                $graph = \App\Git\Graph::lanes(array_map(fn (array $c) => ['sha' => (string) ($c['sha'] ?? ''), 'parents' => array_values(array_map('strval', (array) ($c['parents'] ?? [])))], $log['commits']));
-                                $gutter = $graph['lanes'] * 14 + 6;
-                            @endphp
-                            <div class="relative">
-                                <svg class="pointer-events-none absolute left-0 top-0" width="{{ $gutter }}" height="{{ count($log['commits']) * 28 }}" aria-hidden="true">
-                                    @foreach ($graph['rows'] as $i => $row)
-                                        @foreach ($row['edges'] as $edge)
-                                            @php
-                                                $x1 = $edge['from'] * 14 + 9; $x2 = $edge['to'] * 14 + 9; $y1 = $i * 28 + 14; $y2 = $y1 + 28;
-                                            @endphp
-                                            @if ($x1 === $x2)
-                                                <line x1="{{ $x1 }}" y1="{{ $y1 }}" x2="{{ $x2 }}" y2="{{ $y2 }}" stroke="{{ \App\Git\Graph::color($edge['to']) }}" stroke-width="2" />
-                                            @else
-                                                <path d="M{{ $x1 }} {{ $y1 }} C{{ $x1 }} {{ $y1 + 16 }}, {{ $x2 }} {{ $y1 + 12 }}, {{ $x2 }} {{ $y2 }}" fill="none" stroke="{{ \App\Git\Graph::color($edge['to']) }}" stroke-width="2" />
-                                            @endif
-                                        @endforeach
-                                    @endforeach
-                                    @foreach ($graph['rows'] as $i => $row)
-                                        <circle cx="{{ $row['lane'] * 14 + 9 }}" cy="{{ $i * 28 + 14 }}" r="{{ ($log['commits'][$i]['head'] ?? false) ? 5 : 4 }}" fill="{{ \App\Git\Graph::color($row['lane']) }}" @if ($log['commits'][$i]['head'] ?? false) stroke="white" stroke-width="2" @endif />
-                                    @endforeach
-                                </svg>
-                                <ul style="padding-left: {{ $gutter + 4 }}px">
-                                    @foreach ($log['commits'] as $c)
-                                        <li class="flex h-7 items-center gap-2 text-xs" wire:key="commit-{{ $c['sha'] ?? $loop->index }}" title="{{ ($c['short'] ?? '').' · '.($c['author'] ?? '') }}">
-                                            <button type="button" wire:click="showCommit(@js((string) ($c['sha'] ?? '')))" @class(['min-w-[45%] flex-1 truncate text-left hover:underline', 'font-semibold' => ($commit['sha'] ?? null) === ($c['sha'] ?? '')])>{{ $c['subject'] ?? '' }}</button>
-                                            @if (! empty($c['refs']))
-                                                <span class="flex min-w-0 shrink gap-1 overflow-hidden">
-                                                    @foreach ((array) $c['refs'] as $ref)
-                                                        <flux:badge size="sm" class="truncate" :color="str_starts_with((string) $ref, 'origin/') ? 'zinc' : (str_starts_with((string) $ref, 'tag: ') ? 'amber' : 'blue')">{{ $ref }}</flux:badge>
-                                                    @endforeach
-                                                </span>
-                                            @endif
-                                            <span class="shrink-0 font-mono text-zinc-500">{{ $c['short'] ?? '' }}</span>
-                                            <span class="hidden shrink-0 whitespace-nowrap text-zinc-500 2xl:inline">{{ $c['author'] ?? '' }}</span>
-                                            @if (! empty($c['date']))<span class="shrink-0 whitespace-nowrap text-zinc-500">{{ \Illuminate\Support\Carbon::parse($c['date'])->diffForHumans(short: true) }}</span>@endif
-                                        </li>
-                                    @endforeach
-                                </ul>
-                            </div>
-                        @elseif ($log)
-                            <flux:text>{{ __('No commits yet.') }}</flux:text>
-                        @elseif (! $gitError)
-                            <flux:text>{{ __('Loading…') }}</flux:text>
-                        @endif
-
-                    @else
-                        @if ($branches)
-                            @if ($canUseTerminal)
-                                <form wire:submit="createBranch" class="mb-3 flex gap-2">
-                                    <flux:input size="sm" wire:model="newBranch" :placeholder="__('New branch from :branch', ['branch' => $branches['current'] ?? 'HEAD'])" class="flex-1" />
-                                    <flux:button size="sm" type="submit" icon="plus">{{ __('Create') }}</flux:button>
-                                </form>
-                            @endif
-                            <div class="mb-2 flex items-center justify-between">
-                                <div class="text-[10px] uppercase tracking-wide text-zinc-500">{{ __('Local') }}</div>
-                                @if ($canUseTerminal)
-                                    <flux:button size="xs" variant="ghost" icon="arrow-down-tray" wire:click="fetch">{{ __('Fetch') }}</flux:button>
-                                @endif
-                            </div>
-                            <ul class="mb-4 divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
-                                @forelse ($branches['local'] as $b)
-                                    <li class="flex items-center gap-3 px-3 py-1.5 text-xs" wire:key="local-{{ $b['name'] ?? $loop->index }}">
-                                        <span @class(['min-w-0 flex-1 truncate font-mono', 'font-semibold' => $b['current'] ?? false])>{{ $b['name'] ?? '' }}@if ($b['current'] ?? false) <span class="ml-1 text-green-600">●</span>@endif</span>
-                                        @if (! empty($b['track'])) <span class="text-zinc-500">{{ $b['track'] }}</span> @endif
-                                        @if (! empty($b['upstream'])) <span class="hidden text-zinc-400 sm:inline">→ {{ $b['upstream'] }}</span> @endif
-                                        <span class="font-mono text-zinc-500">{{ $b['sha'] ?? '' }}</span>
-                                        @if ($canUseTerminal && ! ($b['current'] ?? false))
-                                            <flux:button size="xs" variant="ghost" wire:click="checkout(@js((string) ($b['name'] ?? '')))">{{ __('Switch') }}</flux:button>
-                                            <flux:dropdown position="bottom" align="end">
-                                                <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('More')" />
-                                                <flux:menu>
-                                                    <flux:menu.item icon="arrows-right-left" x-on:click="$dispatch('git-confirm', @js(['method' => 'merge', 'args' => [(string) ($b['name'] ?? '')], 'icon' => 'merge', 'title' => __('Merge :branch into :current?', ['branch' => $b['name'] ?? '', 'current' => $branches['current'] ?? 'HEAD']), 'body' => __('Its commits join :current. If both changed the same lines, the merge stops on the conflicts for you to resolve.', ['current' => $branches['current'] ?? 'HEAD']), 'from' => (string) ($b['name'] ?? ''), 'into' => $branches['current'] ?? 'HEAD', 'confirm' => __('Merge')]))">{{ __('Merge into :current', ['current' => $branches['current'] ?? 'HEAD']) }}</flux:menu.item>
-                                                    <flux:menu.item icon="trash" variant="danger" x-on:click="$dispatch('git-confirm', @js(['method' => 'deleteBranch', 'args' => [(string) ($b['name'] ?? '')], 'icon' => 'trash', 'danger' => true, 'title' => __('Delete this branch?'), 'body' => __('Git refuses if it is not merged anywhere.'), 'subject' => (string) ($b['name'] ?? ''), 'confirm' => __('Delete')]))">{{ __('Delete') }}</flux:menu.item>
-                                                </flux:menu>
-                                            </flux:dropdown>
-                                        @endif
-                                    </li>
-                                @empty
-                                    <li class="px-3 py-2 text-xs text-zinc-500">{{ __('No local branches.') }}</li>
-                                @endforelse
-                            </ul>
-                            <div class="mb-2 text-[10px] uppercase tracking-wide text-zinc-500">{{ __('Remote') }}</div>
-                            <ul class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
-                                @forelse ($branches['remote'] as $b)
-                                    <li class="flex items-center gap-3 px-3 py-1.5 text-xs" wire:key="remote-{{ $b['name'] ?? $loop->index }}">
-                                        <span class="min-w-0 flex-1 truncate font-mono">{{ $b['name'] ?? '' }}</span>
-                                        <span class="font-mono text-zinc-500">{{ $b['sha'] ?? '' }}</span>
-                                        @if ($canUseTerminal)
-                                            <flux:button size="xs" variant="ghost" wire:click="checkout(@js((string) ($b['name'] ?? '')))">{{ __('Check out') }}</flux:button>
-                                            <flux:dropdown position="bottom" align="end">
-                                                <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('More')" />
-                                                <flux:menu>
-                                                    <flux:menu.item icon="arrows-right-left" x-on:click="$dispatch('git-confirm', @js(['method' => 'merge', 'args' => [(string) ($b['name'] ?? '')], 'icon' => 'merge', 'title' => __('Merge :branch into :current?', ['branch' => $b['name'] ?? '', 'current' => $branches['current'] ?? 'HEAD']), 'body' => __('Its commits join :current. If both changed the same lines, the merge stops on the conflicts for you to resolve.', ['current' => $branches['current'] ?? 'HEAD']), 'from' => (string) ($b['name'] ?? ''), 'into' => $branches['current'] ?? 'HEAD', 'confirm' => __('Merge')]))">{{ __('Merge into :current', ['current' => $branches['current'] ?? 'HEAD']) }}</flux:menu.item>
-                                                </flux:menu>
-                                            </flux:dropdown>
-                                        @endif
-                                    </li>
-                                @empty
-                                    <li class="px-3 py-2 text-xs text-zinc-500">{{ __('No remote branches. Fetch to see them.') }}</li>
-                                @endforelse
-                            </ul>
-                        @elseif (! $gitError)
-                            <flux:text>{{ __('Loading…') }}</flux:text>
-                        @endif
-                    @endif
+                    @include('livewire.studio.partials.git.'.$changesView)
                 </div>
             </div>
         @elseif ($tab === 'terminal')
@@ -310,40 +134,8 @@
             </div>
         @endif
     </div>
-    {{-- One confirmation for every git action that changes the repository; the trigger says what it asks --}}
-    @if ($canUseTerminal)
-        <flux:modal name="git-confirm" class="w-full md:w-[28rem]">
-            <div class="space-y-5">
-                <div class="flex items-start gap-4">
-                    <div class="flex size-10 shrink-0 items-center justify-center rounded-full" :class="ask.danger ? 'bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400' : 'bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300'">
-                        <flux:icon.arrows-right-left x-show="ask.icon === 'merge'" class="size-5" />
-                        <flux:icon.trash x-show="ask.icon === 'trash'" class="size-5" />
-                        <flux:icon.arrow-uturn-left x-show="ask.icon === 'revert'" class="size-5" />
-                        <flux:icon.x-circle x-show="ask.icon === 'abort'" class="size-5" />
-                    </div>
-                    <div class="min-w-0 pt-1">
-                        <flux:heading size="lg" class="break-words" x-text="ask.title" />
-                        <flux:text class="mt-1" x-text="ask.body" />
-                    </div>
-                </div>
-                <div x-show="ask.from" class="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900/50">
-                    <span class="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-white px-2 py-1 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:ring-zinc-700">
-                        <flux:icon.code-bracket variant="micro" class="size-3 shrink-0 text-zinc-400" />
-                        <span class="truncate" x-text="ask.from"></span>
-                    </span>
-                    <flux:icon.arrow-long-right variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                    <span class="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-violet-50 px-2 py-1 font-semibold text-violet-800 ring-1 ring-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-800">
-                        <flux:icon.code-bracket variant="micro" class="size-3 shrink-0" />
-                        <span class="truncate" x-text="ask.into"></span>
-                    </span>
-                </div>
-                <div x-show="ask.subject" class="truncate rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900/50" x-text="ask.subject"></div>
-                <div class="flex justify-end gap-2">
-                    <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                    <flux:button variant="primary" x-show="! ask.danger" x-on:click="confirm()"><span x-text="ask.confirm"></span></flux:button>
-                    <flux:button variant="danger" x-show="ask.danger" x-on:click="confirm()"><span x-text="ask.confirm"></span></flux:button>
-                </div>
-            </div>
-        </flux:modal>
+    {{-- The confirmations and dialogs of the git actions --}}
+    @if ($canUseTerminal && $tab === 'changes')
+        @include('livewire.studio.partials.git.modals')
     @endif
 </div>

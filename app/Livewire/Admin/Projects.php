@@ -92,6 +92,14 @@ class Projects extends Component
     /** @var list<array{branch: string, ips: string}> */
     public array $branch_rules = [];
 
+    // ---- What the agent gets: its browser and sandboxed conversations
+
+    public bool $agent_browser = true;
+
+    public bool $agent_sandboxes = true;
+
+    public int $agent_sandbox_limit = 3;
+
     // ---- MCP servers in the chats of the project
 
     public ?int $mcp_id = null;
@@ -303,6 +311,10 @@ class Projects extends Component
         $this->horizon = $features['horizon'];
         $this->pulse = $features['pulse'];
         $this->timezone = $project->timezone();
+        $agent = $project->agentSettings();
+        $this->agent_browser = $agent['browser'];
+        $this->agent_sandboxes = $agent['sandboxes'];
+        $this->agent_sandbox_limit = $agent['sandbox_limit'];
         $this->site_ips = implode("\n", $access['site']['ips']);
         $this->previews_ips = implode("\n", $access['previews']['ips']);
         $this->branch_rules = array_map(fn (array $rule) => ['branch' => $rule['branch'], 'ips' => implode(', ', $rule['ips'])], $access['branches']);
@@ -331,6 +343,7 @@ class Projects extends Component
         $this->validate([
             'queues' => ['required', 'string', 'regex:/^\s*[a-z0-9][a-z0-9_-]*(\s*,\s*[a-z0-9][a-z0-9_-]*)*\s*$/'],
             'timezone' => ['required', Rule::in(timezone_identifiers_list())],
+            'agent_sandbox_limit' => ['required', 'integer', 'min:1', 'max:10'],
             'site_ips' => ['nullable', 'string', 'max:4000'],
             'previews_ips' => ['nullable', 'string', 'max:4000'],
             'branch_rules' => ['array', 'max:50'],
@@ -362,6 +375,7 @@ class Projects extends Component
         $project->update(['settings' => array_merge($project->settings ?? [], [
             'features' => ['scheduler' => $this->scheduler, 'queues' => $this->queueList(), 'reverb' => $this->reverb, 'horizon' => $this->horizon, 'pulse' => $this->pulse],
             'timezone' => $this->timezone,
+            'agent' => ['browser' => $this->agent_browser, 'sandboxes' => $this->agent_sandboxes, 'sandbox_limit' => $this->agent_sandbox_limit],
             'access' => [
                 'site' => ['ips' => $this->ipList($this->site_ips)],
                 'previews' => ['ips' => $this->ipList($this->previews_ips)],

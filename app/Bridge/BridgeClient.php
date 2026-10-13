@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\PermissionRequest;
 use App\Models\ProjectMcpServer;
 use App\Models\Workspace;
+use App\Server\SitePass;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -16,14 +17,26 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
+ * @phpstan-type GitFile array{path: string, from: ?string, index: string, worktree: string, staged: bool, unstaged: bool, untracked: bool, conflicted: bool}
+ * @phpstan-type GitState array{branch: ?string, detached: bool, status: list<string>, files: list<GitFile>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, operation: ?string, conflicts: list<string>, stashes: int, last: array{sha: string, short: string, subject: string, message: string, pushed: bool}|null, after: list<string>, squashed: ?string}
+ *
  * Studio's side of the bridge protocol: plain HTTP calls into the Node bridge
  * that runs inside the workspace and drives Claude Code. Every turn tells the
  * bridge where to call back and with which token, so the bridge needs no
  * configuration about Studio beyond accepting this client's bearer token.
+ *
+ * With a sandbox name, the git and file calls work in that sandbox's worktree
+ * instead of the workspace (the bridge reads it from X-Studio-Sandbox).
  */
 final class BridgeClient
 {
-    public function __construct(private readonly Workspace $workspace) {}
+    public function __construct(private readonly Workspace $workspace, private readonly ?string $sandbox = null) {}
+
+    /** The same bridge, its git and file calls pointed at a conversation's sandbox (or the workspace, without one). */
+    public static function for(Conversation $conversation): self
+    {
+        return new self($conversation->workspace, $conversation->sandboxReady() ? $conversation->sandboxName() : null);
+    }
 
     /**
      * @return array<string, mixed>
@@ -48,11 +61,84 @@ final class BridgeClient
             // even while it looks disconnected, so the CLI never falls back to another login or key
             'auth' => $conversation->user->claude_auth_mode === ClaudeAuthMode::None ? null : $conversation->user->claude_auth_mode->value,
             'mcp_servers' => $this->mcpServers($conversation),
+            'browser' => $this->browser($conversation),
+            // a sandboxed conversation runs in its worktree; one whose sandbox is not ready never gets here
+            'sandbox' => $conversation->isSandboxed() ? $conversation->sandboxName() : null,
             'callback' => [
                 'url' => $this->callbackUrl(),
                 'token' => $this->workspace->callback_token,
             ],
         ]));
+    }
+
+    /**
+     * The preview the agent's browser opens, signed in as the person: the pass cookie a
+     * project host's gatekeeper accepts, for that host alone (see SitePass). Null when the
+     * project keeps the browser off or there is no preview to look at.
+     *
+     * @return array{url: string, cookies: list<array{name: string, value: string, expires: int}>}|null
+     */
+    public function browser(Conversation $conversation): ?array
+    {
+        $url = $conversation->previewUrl();
+
+        if (! $conversation->workspace->project->agentSettings()['browser'] || blank($url)) {
+            return null;
+        }
+
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $domain = strtolower((string) config('studio.domain'));
+        $passes = app(SitePass::class);
+
+        // Only a host behind Studio's gatekeeper wants the pass; a local preview opens as it is.
+        $cookies = $domain !== '' && str_ends_with($host, '.'.$domain) ? [[
+            'name' => SitePass::COOKIE,
+            'value' => $passes->passFor($conversation->user, $host),
+            'expires' => now()->addMinutes($passes->passLifetimeMinutes())->getTimestamp(),
+        ]] : [];
+
+        return ['url' => $url, 'cookies' => $cookies];
+    }
+
+    /**
+     * A worktree for the conversation's sandbox, on its own branch from the workspace's current commit.
+     *
+     * @return array{name: string, path: string, branch: string, workspace_branch: string, ahead: int, behind: int, files: int, status: list<string>, stat: string, upstream: ?string}
+     */
+    public function createSandbox(string $name, string $branch): array
+    {
+        /** @var array{name: string, path: string, branch: string, workspace_branch: string, ahead: int, behind: int, files: int, status: list<string>, stat: string, upstream: ?string} */
+        return $this->request(fn (PendingRequest $http) => $http->timeout(120)->post('/sandboxes', ['name' => $name, 'branch' => $branch]));
+    }
+
+    /**
+     * The sandbox's working tree and how far its branch is from the workspace's.
+     *
+     * @return array<string, mixed>
+     */
+    public function sandboxState(string $name): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->get('/sandboxes/'.rawurlencode($name)));
+    }
+
+    /**
+     * Everything in the sandbox committed on its branch (nothing to commit is fine).
+     *
+     * @return array<string, mixed>
+     */
+    public function commitSandbox(string $name, string $message): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->timeout(60)->post('/sandboxes/'.rawurlencode($name).'/commit', ['message' => $message]));
+    }
+
+    /**
+     * The worktree goes, and its branch with it when asked.
+     *
+     * @return array<string, mixed>
+     */
+    public function removeSandbox(string $name, bool $deleteBranch = false): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->timeout(60)->withQueryParameters(['branch' => $deleteBranch ? '1' : '0'])->delete('/sandboxes/'.rawurlencode($name)));
     }
 
     /**
@@ -86,7 +172,10 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * The working tree: branch, files staged and not, the diff against the last commit, the upstream,
+     * what git is in the middle of and the last commit.
+     *
+     * @return GitState
      */
     public function git(): array
     {
@@ -94,13 +183,14 @@ final class BridgeClient
     }
 
     /**
-     * The newest commits of every branch, with parents, so the pane can draw the graph.
+     * The newest commits of every branch, with parents, so the pane can draw the graph; `search`
+     * keeps the commits whose message, author or id says it.
      *
      * @return array{branch: ?string, head: ?string, commits: list<array<string, mixed>>}
      */
-    public function gitLog(int $limit = 80): array
+    public function gitLog(int $limit = 80, string $search = ''): array
     {
-        $data = $this->request(fn (PendingRequest $http) => $http->get('/git/log', ['limit' => $limit]));
+        $data = $this->request(fn (PendingRequest $http) => $http->get('/git/log', array_filter(['limit' => $limit, 'search' => $search])));
 
         return [
             'branch' => isset($data['branch']) ? (string) $data['branch'] : null,
@@ -118,7 +208,7 @@ final class BridgeClient
     }
 
     /**
-     * @return array<string, mixed> the commit with its stat and patch
+     * @return array<string, mixed> the commit with its body, stat and patch, and whether it is on the current branch
      */
     public function gitCommit(string $sha): array
     {
@@ -126,9 +216,48 @@ final class BridgeClient
     }
 
     /**
-     * Switch the working tree to a branch; the answer is the new working tree state.
+     * One file's diff: staged, not staged, or the whole of a new file.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @return array{path: string, staged: string, unstaged: string, untracked: bool}
+     */
+    public function gitDiffFile(string $path): array
+    {
+        $data = $this->request(fn (PendingRequest $http) => $http->get('/git/diff', ['path' => $path]));
+
+        return [
+            'path' => (string) ($data['path'] ?? $path),
+            'staged' => (string) ($data['staged'] ?? ''),
+            'unstaged' => (string) ($data['unstaged'] ?? ''),
+            'untracked' => (bool) ($data['untracked'] ?? false),
+        ];
+    }
+
+    /**
+     * What merging a branch would bring: its commits, the files it changes, a fast-forward or not,
+     * and the files that would conflict (null when git cannot tell).
+     *
+     * @return array{branch: string, commits: list<array<string, mixed>>, ahead: int, behind: int, stat: string, files: list<string>, fastForward: bool, conflicts: list<string>|null}
+     */
+    public function gitCompare(string $branch): array
+    {
+        $data = $this->request(fn (PendingRequest $http) => $http->get('/git/compare', ['branch' => $branch]));
+
+        return [
+            'branch' => (string) ($data['branch'] ?? $branch),
+            'commits' => array_values(array_filter((array) ($data['commits'] ?? []), 'is_array')),
+            'ahead' => (int) ($data['ahead'] ?? 0),
+            'behind' => (int) ($data['behind'] ?? 0),
+            'stat' => (string) ($data['stat'] ?? ''),
+            'files' => array_values(array_map('strval', (array) ($data['files'] ?? []))),
+            'fastForward' => (bool) ($data['fastForward'] ?? false),
+            'conflicts' => isset($data['conflicts']) && is_array($data['conflicts']) ? array_values(array_map('strval', $data['conflicts'])) : null,
+        ];
+    }
+
+    /**
+     * Switch the working tree to a branch; a remote branch is worked on through its local branch.
+     *
+     * @return GitState
      */
     public function gitCheckout(string $branch): array
     {
@@ -136,6 +265,8 @@ final class BridgeClient
     }
 
     /**
+     * Fetch from the remote with the workspace's own credentials, tags included; the answer is the branches as they are now.
+     *
      * @return array{current: ?string, local: list<array<string, mixed>>, remote: list<array<string, mixed>>}
      */
     public function gitFetch(): array
@@ -144,19 +275,47 @@ final class BridgeClient
     }
 
     /**
-     * Stage everything and commit it; during a merge this concludes it.
-     *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @param  list<string>|null  $paths  null for every change
+     * @return GitState
      */
-    public function gitCommitAll(string $message): array
+    public function gitStage(?array $paths = null): array
     {
-        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/commit', ['message' => $message])));
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/stage', ['paths' => $paths])));
     }
 
     /**
-     * Throw away the changes of one path as git status lists it, or of the whole working tree.
+     * @param  list<string>|null  $paths  null for every staged file
+     * @return GitState
+     */
+    public function gitUnstage(?array $paths = null): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/unstage', ['paths' => $paths])));
+    }
+
+    /**
+     * Commit every change (`all`) or what is staged; `amend` rewrites the last commit. While a merge is open this concludes it.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @return GitState
+     */
+    public function gitCommitAll(string $message, bool $all = true, bool $amend = false): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/commit', ['message' => $message, 'all' => $all, 'amend' => $amend])));
+    }
+
+    /**
+     * Settle one conflicted file of an open merge: ours, theirs, or resolved as edited.
+     *
+     * @return GitState
+     */
+    public function gitResolve(string $path, string $side): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/resolve', ['path' => $path, 'side' => $side])));
+    }
+
+    /**
+     * Throw away uncommitted changes: one path as git status lists it, or everything.
+     *
+     * @return GitState
      */
     public function gitDiscard(?string $path = null): array
     {
@@ -164,7 +323,9 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * Pull the current branch with a merge, all or nothing.
+     *
+     * @return GitState
      */
     public function gitPull(): array
     {
@@ -172,25 +333,29 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
-     */
-    public function gitPush(): array
-    {
-        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->post('/git/push')));
-    }
-
-    /**
-     * Merge a branch into the current one; a conflict leaves the merge open (the state says `merging`).
+     * Push the current branch, setting its upstream the first time; `force` overwrites the remote branch with a lease.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @return GitState
      */
-    public function gitMerge(string $branch): array
+    public function gitPush(bool $force = false): array
     {
-        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/merge', ['branch' => $branch])));
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->post('/git/push', ['force' => $force])));
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * Merge a branch into the current one, all or nothing: "merge" (fast-forward when possible), "no-ff" or "squash".
+     *
+     * @return GitState
+     */
+    public function gitMerge(string $branch, string $mode = 'merge'): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/merge', ['branch' => $branch, 'mode' => $mode])));
+    }
+
+    /**
+     * Abort whatever git left open: a merge, a revert, a cherry-pick or a rebase.
+     *
+     * @return GitState
      */
     public function gitMergeAbort(): array
     {
@@ -198,9 +363,9 @@ final class BridgeClient
     }
 
     /**
-     * Create a branch from the current commit, or from $from, and switch to it.
+     * Create a branch from the current commit or the one given, and switch to it.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @return GitState
      */
     public function gitCreateBranch(string $branch, ?string $from = null): array
     {
@@ -210,15 +375,35 @@ final class BridgeClient
     /**
      * @return array{current: ?string, local: list<array<string, mixed>>, remote: list<array<string, mixed>>}
      */
-    public function gitDeleteBranch(string $branch): array
+    public function gitRenameBranch(string $from, string $to): array
     {
-        return $this->branchesFrom($this->request(fn (PendingRequest $http) => $http->withQueryParameters(['branch' => $branch])->delete('/git/branches')));
+        return $this->branchesFrom($this->request(fn (PendingRequest $http) => $http->post('/git/branches/rename', ['from' => $from, 'to' => $to])));
     }
 
     /**
-     * A new commit that undoes $sha.
+     * Delete a local branch: git refuses one merged nowhere unless `force`; `remote` deletes its branch on the remote too.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @return array{current: ?string, local: list<array<string, mixed>>, remote: list<array<string, mixed>>}
+     */
+    public function gitDeleteBranch(string $branch, bool $force = false, bool $remote = false): array
+    {
+        return $this->branchesFrom($this->request(fn (PendingRequest $http) => $http->withQueryParameters(array_filter(['branch' => $branch, 'force' => $force ? 1 : null, 'remote' => $remote ? 1 : null]))->delete('/git/branches')));
+    }
+
+    /**
+     * Delete a branch on its remote, named as listed (origin/feature/x).
+     *
+     * @return array{current: ?string, local: list<array<string, mixed>>, remote: list<array<string, mixed>>}
+     */
+    public function gitDeleteRemoteBranch(string $branch): array
+    {
+        return $this->branchesFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->withQueryParameters(['branch' => $branch])->delete('/git/remote-branches')));
+    }
+
+    /**
+     * A new commit that undoes one from the history.
+     *
+     * @return GitState
      */
     public function gitRevert(string $sha): array
     {
@@ -226,13 +411,100 @@ final class BridgeClient
     }
 
     /**
-     * Put the changes aside, or bring the newest stash back with $pop.
+     * Copy a commit of another branch onto the current one, all or nothing.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @return GitState
      */
-    public function gitStash(bool $pop = false): array
+    public function gitCherryPick(string $sha): array
     {
-        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/stash', ['pop' => $pop])));
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/cherry-pick', ['sha' => $sha])));
+    }
+
+    /**
+     * Move the current branch to a commit: soft, mixed or hard.
+     *
+     * @return GitState
+     */
+    public function gitReset(string $sha, string $mode): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/reset', ['sha' => $sha, 'mode' => $mode])));
+    }
+
+    /**
+     * @return list<array<string, mixed>> name, annotated, sha, date, message, pushed
+     */
+    public function gitTags(): array
+    {
+        return $this->tagsFrom($this->request(fn (PendingRequest $http) => $http->get('/git/tags')));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function gitCreateTag(string $tag, ?string $at = null, string $message = ''): array
+    {
+        return $this->tagsFrom($this->request(fn (PendingRequest $http) => $http->post('/git/tags', ['tag' => $tag, 'at' => $at, 'message' => $message])));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function gitDeleteTag(string $tag, bool $remote = false): array
+    {
+        return $this->tagsFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->withQueryParameters(array_filter(['tag' => $tag, 'remote' => $remote ? 1 : null]))->delete('/git/tags')));
+    }
+
+    /**
+     * Push one tag, or all of them.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function gitPushTags(?string $tag = null): array
+    {
+        return $this->tagsFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->post('/git/tags/push', ['tag' => $tag])));
+    }
+
+    /**
+     * @return list<array<string, mixed>> index, branch, message, date, files
+     */
+    public function gitStashes(): array
+    {
+        $data = $this->request(fn (PendingRequest $http) => $http->get('/git/stashes'));
+
+        return array_values(array_filter((array) ($data['stashes'] ?? []), 'is_array'));
+    }
+
+    public function gitStashShow(int $index): string
+    {
+        return (string) ($this->request(fn (PendingRequest $http) => $http->get('/git/stash/show', ['index' => $index]))['patch'] ?? '');
+    }
+
+    /**
+     * Put the changes aside, new files too unless `untracked` is false.
+     *
+     * @return GitState
+     */
+    public function gitStashPush(string $message = '', bool $untracked = true): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/stash', ['message' => $message, 'untracked' => $untracked])));
+    }
+
+    /**
+     * Bring a stash back, dropping it (`pop`) or keeping it in the list.
+     *
+     * @return GitState
+     */
+    public function gitStashApply(int $index = 0, bool $pop = true): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/stash/apply', ['index' => $index, 'pop' => $pop])));
+    }
+
+    /**
+     * @return GitState
+     */
+    public function gitStashDrop(int $index): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->withQueryParameters(['index' => $index])->delete('/git/stash')));
     }
 
     /**
@@ -250,22 +522,95 @@ final class BridgeClient
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
+     * @return list<array<string, mixed>>
+     */
+    private function tagsFrom(array $data): array
+    {
+        return array_values(array_filter((array) ($data['tags'] ?? []), 'is_array'));
+    }
+
+    /**
+     * One `git status --porcelain` line ("XY path" or "XY old -> new") as the bridge describes a file.
+     *
+     * @return array<string, mixed>
+     */
+    private function fileFromStatus(string $line): array
+    {
+        $x = $line[0] ?? ' ';
+        $y = $line[1] ?? ' ';
+        $path = substr($line, 3);
+        $from = null;
+
+        if (in_array($x, ['R', 'C'], true) && str_contains($path, ' -> ')) {
+            [$from, $path] = explode(' -> ', $path, 2);
+        }
+
+        $conflicted = in_array($x.$y, ['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'], true);
+
+        return [
+            'path' => $path,
+            'from' => $from,
+            'index' => $x,
+            'worktree' => $y,
+            'staged' => ! $conflicted && $x !== ' ' && $x !== '?',
+            'unstaged' => ! $conflicted && ($y !== ' ' || $x === '?'),
+            'untracked' => $x === '?',
+            'conflicted' => $conflicted,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return GitState
      */
     private function stateFrom(array $data): array
     {
+        $files = [];
+        // an older bridge sends only the porcelain lines: the files are read from them
+        $listed = isset($data['files']) ? (array) $data['files'] : array_map(fn ($line) => $this->fileFromStatus((string) $line), (array) ($data['status'] ?? []));
+
+        foreach ($listed as $file) {
+            if (! is_array($file) || ! isset($file['path'])) {
+                continue;
+            }
+
+            $files[] = [
+                'path' => (string) $file['path'],
+                'from' => isset($file['from']) ? (string) $file['from'] : null,
+                'index' => (string) ($file['index'] ?? ' '),
+                'worktree' => (string) ($file['worktree'] ?? ' '),
+                'staged' => (bool) ($file['staged'] ?? false),
+                'unstaged' => (bool) ($file['unstaged'] ?? false),
+                'untracked' => (bool) ($file['untracked'] ?? false),
+                'conflicted' => (bool) ($file['conflicted'] ?? false),
+            ];
+        }
+
+        $last = is_array($data['last'] ?? null) ? [
+            'sha' => (string) ($data['last']['sha'] ?? ''),
+            'short' => (string) ($data['last']['short'] ?? ''),
+            'subject' => (string) ($data['last']['subject'] ?? ''),
+            'message' => (string) ($data['last']['message'] ?? ''),
+            'pushed' => (bool) ($data['last']['pushed'] ?? false),
+        ] : null;
+
         return [
             'branch' => isset($data['branch']) ? (string) $data['branch'] : null,
+            'detached' => (bool) ($data['detached'] ?? false),
             'status' => array_values(array_map('strval', (array) ($data['status'] ?? []))),
+            'files' => $files,
             'stat' => (string) ($data['stat'] ?? ''),
             'diff' => (string) ($data['diff'] ?? ''),
             'upstream' => isset($data['upstream']) ? (string) $data['upstream'] : null,
             'ahead' => (int) ($data['ahead'] ?? 0),
             'behind' => (int) ($data['behind'] ?? 0),
             'merging' => (bool) ($data['merging'] ?? false),
+            'operation' => isset($data['operation']) ? (string) $data['operation'] : (($data['merging'] ?? false) ? 'merge' : null),
             'conflicts' => array_values(array_map('strval', (array) ($data['conflicts'] ?? []))),
             'stashes' => (int) ($data['stashes'] ?? 0),
+            'last' => $last,
             'after' => array_values(array_map('strval', (array) ($data['after'] ?? []))),
+            'squashed' => isset($data['squashed']) ? (string) $data['squashed'] : null,
         ];
     }
 
@@ -435,6 +780,7 @@ final class BridgeClient
     {
         return Http::baseUrl((string) $this->workspace->bridge_url)
             ->withToken((string) $this->workspace->bridge_token)
+            ->withHeaders($this->sandbox !== null ? ['X-Studio-Sandbox' => $this->sandbox] : [])
             ->acceptJson()
             ->asJson()
             ->connectTimeout(5)

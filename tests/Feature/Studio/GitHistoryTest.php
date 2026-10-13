@@ -38,7 +38,7 @@ function fakeGitBridge(): void
             $url === 'http://bridge.test:4455/git' => Http::response(['branch' => $current, 'status' => [' M app/Models/Order.php'], 'stat' => '1 file changed', 'diff' => '+between', 'upstream' => 'origin/develop', 'ahead' => 2, 'behind' => 1, 'merging' => false, 'conflicts' => [], 'stashes' => 0]),
             $url === 'http://bridge.test:4455/git/merge' && $request['branch'] === 'feature/conflict' => Http::response(['error' => 'merging feature/conflict conflicts in app/Models/Order.php: nothing was merged. Ask Claude to merge it and resolve the conflicts, or align the two branches first.'], 409),
             $url === 'http://bridge.test:4455/git/merge' && $request['branch'] === 'feature/deps' => Http::response(['branch' => 'develop', 'status' => [], 'stat' => '', 'diff' => '', 'after' => ['composer install', 'php artisan migrate']]),
-            in_array($url, ['http://bridge.test:4455/git/commit', 'http://bridge.test:4455/git/discard', 'http://bridge.test:4455/git/pull', 'http://bridge.test:4455/git/push', 'http://bridge.test:4455/git/merge', 'http://bridge.test:4455/git/merge/abort', 'http://bridge.test:4455/git/branches', 'http://bridge.test:4455/git/revert', 'http://bridge.test:4455/git/stash'], true) => Http::response(['branch' => 'develop', 'status' => [], 'stat' => '', 'diff' => '']),
+            in_array($url, ['http://bridge.test:4455/git/commit', 'http://bridge.test:4455/git/discard', 'http://bridge.test:4455/git/pull', 'http://bridge.test:4455/git/push', 'http://bridge.test:4455/git/merge', 'http://bridge.test:4455/git/merge/abort', 'http://bridge.test:4455/git/branches', 'http://bridge.test:4455/git/revert', 'http://bridge.test:4455/git/stash', 'http://bridge.test:4455/git/stash/apply'], true) => Http::response(['branch' => 'develop', 'status' => [], 'stat' => '', 'diff' => '']),
             str_starts_with($url, 'http://bridge.test:4455/git/branches?') => Http::response(['current' => 'develop', 'local' => [], 'remote' => []]),
             default => Http::response(['error' => 'unexpected '.$url], 500),
         };
@@ -122,7 +122,7 @@ test('the working tree commits, discards, stashes, pulls and pushes', function (
     Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/git/commit' && $request['message'] === 'Add the date range filter');
     Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/git/discard' && $request['path'] === 'app/Models/Order.php');
     Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/git/discard' && $request['path'] === null);
-    Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/git/stash' && $request['pop'] === true);
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/git/stash/apply' && $request['index'] === 0 && $request['pop'] === true);
     Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/git/pull');
     Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/git/push');
 });

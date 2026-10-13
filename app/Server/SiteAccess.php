@@ -2,6 +2,7 @@
 
 namespace App\Server;
 
+use App\Models\Conversation;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
@@ -20,9 +21,10 @@ final class SiteAccess
 
     /**
      * The project behind a host: `<slug>.<domain>` is the site, a workspace's
-     * `app_url` is a preview.
+     * `app_url` is a preview, and so is a sandboxed conversation's host (with
+     * the sandbox's branch, which the access rules may single out).
      *
-     * @return array{project: Project, kind: 'site'|'preview', workspace: Workspace|null}|null
+     * @return array{project: Project, kind: 'site'|'preview', workspace: Workspace|null, branch?: string|null}|null
      */
     public function resolveHost(string $host): ?array
     {
@@ -46,6 +48,12 @@ final class SiteAccess
             return ['project' => $workspace->project, 'kind' => 'preview', 'workspace' => $workspace];
         }
 
+        $conversation = Conversation::query()->with('workspace.project')->where('sandbox_host', $host)->first();
+
+        if ($conversation) {
+            return ['project' => $conversation->workspace->project, 'kind' => 'preview', 'workspace' => $conversation->workspace, 'branch' => $conversation->sandbox['branch'] ?? null];
+        }
+
         return null;
     }
 
@@ -56,9 +64,9 @@ final class SiteAccess
      * @param  'site'|'preview'  $kind
      * @return self::ALLOW|self::LOGIN|self::FORBIDDEN
      */
-    public function decide(Project $project, string $kind, ?Workspace $workspace, string $ip, ?User $user): string
+    public function decide(Project $project, string $kind, ?Workspace $workspace, string $ip, ?User $user, ?string $branch = null): string
     {
-        $branch = $kind === 'site' ? $project->default_branch : $workspace?->branch;
+        $branch = $kind === 'site' ? $project->default_branch : ($branch ?? $workspace?->branch);
         $rule = $project->accessRuleFor($kind, $branch);
 
         if ($rule['ips'] !== [] && ! IpMatcher::matchesAny($ip, $rule['ips'])) {

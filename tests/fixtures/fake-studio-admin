@@ -14,6 +14,12 @@ case "$cmd" in
     printf '{"ok":true,"app_url":"https://%s","bridge_url":"http://127.0.0.1:%s","path":"/srv/studio/workspaces/%s/%s"}\n' "$host" "$port" "$handle" "$slug" ;;
   workspace-start|workspace-stop|workspace-delete|workspace-env|workspace-configure|project-configure)
     printf '{"ok":true}\n' ;;
+  sandbox-create)
+    if [ "${FAKE_SANDBOX_FAIL:-}" = 1 ]; then printf '{"ok":false,"error":"composer install failed: out of memory"}\n'; exit 1; fi
+    host=$(printf '%s' "$input" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_host"])')
+    printf '{"ok":true,"app_url":"https://%s","path":"/srv/studio/workspaces/%s/.sandboxes/%s/c%s"}\n' "$host" "$1" "$2" "$3" ;;
+  sandbox-delete)
+    printf '{"ok":true}\n' ;;
   person-ensure|claude-logout)
     printf '{"ok":true}\n' ;;
   claude-status)

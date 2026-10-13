@@ -142,6 +142,36 @@ class Project extends Model
         return $this->isOnline() ? rtrim($this->siteUrl(), '/').'/larapilot' : null;
     }
 
+    /** `<handle>-<slug>--c<id>`: the preview of one sandboxed conversation, cut to fit a host label (63). */
+    public function sandboxHostFor(User $user, int $conversationId): string
+    {
+        $suffix = '--c'.$conversationId;
+        $base = rtrim(substr(($user->handle ?: 'user').'-'.$this->slug, 0, 63 - strlen($suffix)), '-');
+
+        return $base.$suffix.'.'.config('studio.domain');
+    }
+
+    /** @var array{browser: bool, sandboxes: bool, sandbox_limit: int} */
+    public const AGENT_DEFAULTS = ['browser' => true, 'sandboxes' => true, 'sandbox_limit' => 3];
+
+    /**
+     * What the agent gets in this project's chats: a browser signed in to the preview it
+     * works on (screenshots, console), and conversations in a sandbox of their own, so many
+     * per person at once.
+     *
+     * @return array{browser: bool, sandboxes: bool, sandbox_limit: int}
+     */
+    public function agentSettings(): array
+    {
+        $stored = (array) ($this->settings['agent'] ?? []);
+
+        return [
+            'browser' => (bool) ($stored['browser'] ?? self::AGENT_DEFAULTS['browser']),
+            'sandboxes' => (bool) ($stored['sandboxes'] ?? self::AGENT_DEFAULTS['sandboxes']),
+            'sandbox_limit' => max(1, min(10, (int) ($stored['sandbox_limit'] ?? self::AGENT_DEFAULTS['sandbox_limit']))),
+        ];
+    }
+
     /** @var array{scheduler: bool, queues: list<string>, reverb: bool, horizon: bool, pulse: bool} */
     public const FEATURE_DEFAULTS = ['scheduler' => true, 'queues' => ['default'], 'reverb' => false, 'horizon' => false, 'pulse' => false];
 

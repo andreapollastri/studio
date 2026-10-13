@@ -65,7 +65,9 @@ kernel needs a reboot (`SYSTEM_REBOOT=1` in `/etc/studio/studio.env` reboots by 
 a new major of a database stays a decision for a person.
 
 Inside a conversation the chat is the full Claude Code CLI: subagents, plan mode, skills and slash commands,
-MCP servers from the repository, hooks. *Model & mode* picks the model, the effort and the permission mode
+MCP servers from the repository, hooks. Studio adds a browser signed in to the preview (screenshots show in the
+chat), subagent cards with `code-reviewer` and `browser-qa`, and conversations in a sandbox of their own
+(worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* picks the model, the effort and the permission mode
 (ask, ask with edits, autopilot, plan only); the *Terminal* tab runs allowlisted commands in the workspace; the *Files* tab is a file manager with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
 ## Status (1.1)
@@ -93,6 +95,8 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Password manager (*Tools → Password manager*): nested personal folders, items encrypted (username, password, notes, TOTP with live codes), password generator; an item is tied to a project for the roles ticked (client, PM, dev) and shared with single people to view or edit, with a table of who sees it and why | done, tested |
 | Drive (*Tools → Drive*): folders and files on Studio's disk, upload by button or drag and drop; a folder tied to a project opens by role to view or to view and edit, down the tree; administrators see everything, clients create nothing; *Copy / Move into the workspace* sends files or whole folders to the person's workspace of that project through the bridge | done, tested (the bridge's `PUT /files/upload` against real directories) |
 | Claude: *Sign in with Claude* (the official `claude auth login` in the person's home on the server, through the SSH gateway), or an API key: one or the other, chosen in Settings | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
+| Agent browser (Playwright MCP signed in to the preview with the person's pass), screenshots in the chat, subagents as cards, Studio's `code-reviewer` and `browser-qa` | done, tested (bridge against the fake CLI; Playwright MCP 0.0.83 run for real against a site behind a pass cookie: navigate, screenshot, console); not yet run on a live server |
+| Conversations in a sandbox: worktree on its own branch, database copy, build and preview host; merge, push, remove; the side pane follows it | done, tested (bridge against real git repositories, Studio with stand-ins for the bridge and the helper); `sandbox-create`/`sandbox-delete` shellchecked, not yet run on a live server |
 | Not started | atomic releases for project sites, notifications, mobile layout |
 
 ## Run it locally (no server)

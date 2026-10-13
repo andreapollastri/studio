@@ -7,9 +7,14 @@
  * Prompts it understands: anything (plain answer), "tool …" (asks to run a
  * tool first), "ask …" (asks the person questions with AskUserQuestion),
  * "exit …" (ends the process after the result), "crash [stderr]" (dies without
- * a result, saying what follows on stderr).
+ * a result, saying what follows on stderr), "screenshot …" (a subagent opens
+ * the preview with the browser and takes a screenshot).
+ *
+ * With FAKE_CLAUDE_ARGS_DIR set, it writes its arguments and directory there.
  */
 import { createInterface } from 'node:readline';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -20,6 +25,10 @@ const permissionMode = flag('--permission-mode') || 'default';
 const model = flag('--model') || 'claude-sonnet-5';
 const sessionId = flag('--resume') || `sess-${Math.random().toString(36).slice(2, 10)}`;
 const hasStdioPermissions = args.includes('--permission-prompt-tool');
+
+if (process.env.FAKE_CLAUDE_ARGS_DIR) {
+  writeFileSync(join(process.env.FAKE_CLAUDE_ARGS_DIR, `args-${process.pid}.json`), JSON.stringify({ args, cwd: process.cwd() }));
+}
 
 const out = (object) => process.stdout.write(JSON.stringify(object) + '\n');
 let uuid = 0;
@@ -101,6 +110,20 @@ rl.on('line', (line) => {
 
     pending = { requestId: 'req_q', finish };
     out({ type: 'control_request', request_id: 'req_q', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: { questions }, tool_use_id: 'toolu_q' } });
+    return;
+  }
+
+  if (text.startsWith('screenshot')) {
+    // a 1×1 PNG, as the browser's screenshot tool answers it
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    out({ type: 'system', subtype: 'task_started', session_id: sessionId, task_id: 'task_1', tool_use_id: 'toolu_agent', description: 'Check the home page', task_type: 'local_agent', uuid: next() });
+    out({ type: 'assistant', session_id: sessionId, uuid: next(), parent_tool_use_id: null, message: { id: 'msg_agent', role: 'assistant', model, content: [{ type: 'tool_use', id: 'toolu_agent', name: 'Task', input: { description: 'Check the home page', subagent_type: 'browser-qa', prompt: 'Open / and take a screenshot' } }] } });
+    out({ type: 'assistant', session_id: sessionId, uuid: next(), parent_tool_use_id: 'toolu_agent', message: { id: 'msg_sub', role: 'assistant', model, content: [{ type: 'tool_use', id: 'toolu_shot', name: 'mcp__browser__browser_take_screenshot', input: {} }] } });
+    out({ type: 'user', session_id: sessionId, uuid: next(), parent_tool_use_id: 'toolu_agent', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_shot', content: [{ type: 'text', text: 'Took the screenshot of the viewport' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } }] }] } });
+    out({ type: 'user', session_id: sessionId, uuid: next(), parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_agent', content: [{ type: 'text', text: 'The home page renders, no console errors.' }] }] } });
+    out({ type: 'system', subtype: 'task_notification', session_id: sessionId, task_id: 'task_1', tool_use_id: 'toolu_agent', status: 'completed', summary: 'Home page checked', uuid: next() });
+    say('La home funziona.', 'msg_end');
+    result('La home funziona.');
     return;
   }
 

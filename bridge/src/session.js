@@ -6,6 +6,9 @@ import { EventEmitter } from 'node:events';
 import { NdjsonParser } from './ndjson.js';
 import { normalize, stripAnsi } from './normalize.js';
 import { CallbackPoster } from './callback.js';
+import { BridgeError } from './errors.js';
+import { BROWSER_READ_TOOLS, BROWSER_SERVER, browserServer, normalizeBrowser, removeBrowserFiles } from './browser.js';
+import { studioAgents, studioPrompt, writeAgentsFile } from './agents.js';
 
 /**
  * One Claude Code process per conversation.
@@ -23,6 +26,10 @@ import { CallbackPoster } from './callback.js';
  * windows as percentages, read by Claude Code itself with its own credentials.
  * They reach Studio as `plan_usage`; an API key, or a CLI that does not know
  * the question, answers nothing worth forwarding.
+ *
+ * Studio may also hand over, per turn, a preview to look at (`browser`: the
+ * agent gets a headless browser signed in to it, see browser.js) and a sandbox
+ * (`sandbox`: the conversation runs in that git worktree, see sandboxes.js).
  */
 export class Session extends EventEmitter {
   key;
@@ -36,17 +43,24 @@ export class Session extends EventEmitter {
   #idleTimer = null;
   #spawn;
   #log;
-  #turn = null; // { permission_mode, model }
+  #sandboxes;
+  #turn = null; // { permission_mode, model, effort, auth, mcp, browser, sandbox, cwd }
   #stderr = ''; // the tail of what the current process said outside stream-json
   #usageRequest = null; // the request_id of the get_usage still unanswered
   #usageAskedAt = 0;
 
-  constructor(key, config, { spawn: spawnImpl = spawn, log = () => {} } = {}) {
+  constructor(key, config, { spawn: spawnImpl = spawn, log = () => {}, sandboxes = null } = {}) {
     super();
     this.key = String(key);
     this.#config = config;
     this.#spawn = spawnImpl;
+    this.#sandboxes = sandboxes;
     this.#log = (message) => log(`[${this.key}] ${message}`);
+  }
+
+  /** The directory this conversation's Claude Code runs in. */
+  get cwd() {
+    return this.#turn?.cwd ?? this.#config.workspaceDir;
   }
 
   snapshot() {
@@ -84,6 +98,9 @@ export class Session extends EventEmitter {
       throw new BridgeError(409, 'a turn is still running in this conversation: interrupt it first');
     }
     const mcp = normalizeMcpServers(turn.mcp_servers);
+    // no browser on this server: the turn goes on without one rather than failing
+    const browser = this.#config.browserCmd ? normalizeBrowser(turn.browser) : null;
+    const sandbox = this.#sandbox(turn.sandbox);
 
     this.#clearIdleTimer();
 
@@ -93,12 +110,17 @@ export class Session extends EventEmitter {
       && this.#turn.model === (turn.model || null)
       && this.#turn.effort === (turn.effort || null)
       && this.#turn.auth === (turn.auth ?? undefined)
-      && this.#turn.mcp === mcp.key;
+      && this.#turn.mcp === mcp.key
+      && (this.#turn.browser?.url ?? null) === (browser?.url ?? null)
+      && this.#turn.cwd === sandbox.cwd;
+
+    // a fresh pass for the browser on every turn: the process reads it when it next opens the browser
+    if (browser) browserServer(this.key, browser, this.#config);
 
     if (!this.#process || !sameTarget) {
       this.#stopProcess();
       if (turn.session_id && !this.sessionId) this.sessionId = turn.session_id;
-      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, mcp: mcp.key, mcpServers: mcp.servers };
+      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, mcp: mcp.key, mcpServers: mcp.servers, browser, sandbox: sandbox.info, cwd: sandbox.cwd };
       this.#poster = new CallbackPoster({
         url: turn.callback.url,
         token: turn.callback.token,
@@ -159,7 +181,21 @@ export class Session extends EventEmitter {
   async close() {
     this.#clearIdleTimer();
     this.#stopProcess();
+    removeBrowserFiles(this.key);
     if (this.#poster) await this.#poster.drain();
+  }
+
+  /** Where this turn runs: the workspace, or the sandbox Studio named (it must exist). */
+  #sandbox(name) {
+    if (name === undefined || name === null || name === '') return { cwd: this.#config.workspaceDir, info: null };
+    if (!this.#sandboxes) throw new BridgeError(422, 'this bridge has no sandboxes');
+    let dir;
+    try {
+      dir = this.#sandboxes.resolve(name);
+    } catch (error) {
+      throw new BridgeError(error.status === 404 ? 409 : 422, error.message);
+    }
+    return { cwd: dir, info: { name: String(name), dir, branch: this.#sandboxes.branchOf(name) } };
   }
 
   // ---------------------------------------------------------------- process
@@ -170,11 +206,14 @@ export class Session extends EventEmitter {
    */
   #writeMcpConfig() {
     const file = join(tmpdir(), `studio-mcp-${this.key.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
-    if (!this.#turn.mcpServers) {
+    const servers = { ...(this.#turn.mcpServers ?? {}) };
+    // Studio's own browser: a project server of the same name gives way to it
+    if (this.#turn.browser) servers[BROWSER_SERVER] = browserServer(this.key, this.#turn.browser, this.#config);
+    if (Object.keys(servers).length === 0) {
       rmSync(file, { force: true });
       return null;
     }
-    writeFileSync(file, JSON.stringify({ mcpServers: this.#turn.mcpServers }), { mode: 0o600 });
+    writeFileSync(file, JSON.stringify({ mcpServers: servers }), { mode: 0o600 });
     chmodSync(file, 0o600);
     return file;
   }
@@ -194,11 +233,22 @@ export class Session extends EventEmitter {
     if (this.sessionId) args.push('--resume', this.sessionId);
     const mcpFile = this.#writeMcpConfig();
     if (mcpFile) args.push('--mcp-config', mcpFile);
+    if (this.#config.studioAgents !== false) {
+      const context = { browser: this.#turn.browser, sandbox: this.#turn.sandbox };
+      args.push('--agents', writeAgentsFile(this.key, studioAgents(context)));
+      args.push('--append-system-prompt', studioPrompt(context));
+    }
+    // Looking at the preview never asks, in any mode; acting in it (clicks, forms) is part of the work in
+    // the modes that let edits run, and asks like any other tool in the others.
+    if (this.#turn.browser) {
+      const free = ['acceptEdits', 'auto', 'bypassPermissions'].includes(this.#turn.permission_mode);
+      args.push('--allowedTools', free ? `mcp__${BROWSER_SERVER}` : BROWSER_READ_TOOLS.join(','));
+    }
 
-    this.#log(`spawn ${this.#config.claudeBin} ${args.join(' ')}`);
+    this.#log(`spawn ${this.#config.claudeBin} ${args.filter((arg) => !arg.includes('\n')).join(' ')}`);
 
     const child = this.#spawn(this.#config.claudeBin, args, {
-      cwd: this.#config.workspaceDir,
+      cwd: this.#turn.cwd ?? this.#config.workspaceDir,
       env: claudeEnv(process.env, this.#turn.auth),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -396,12 +446,7 @@ export function explainExit({ code = null, signal = null, error = null, stderr =
   return lastWords ? `${base} It said: ${lastWords}` : base;
 }
 
-export class BridgeError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+export { BridgeError };
 
 /**
  * Only remote (HTTP) MCP servers come from Studio: a stdio server would be a

@@ -21,6 +21,10 @@
 #                                       bridge_token, git_token, git_username, git_env, claude_api_key, git_name, git_email}
 #   workspace-env    <handle> <slug>   {git_token, git_username, git_env, claude_api_key}
 #   workspace-start | workspace-stop | workspace-status | workspace-delete | workspace-configure <handle> <slug>
+#   sandbox-create   <handle> <slug> <id>  {branch, php_version, db_engine, preview_host, timezone}
+#                                      the worktree the bridge made for conversation <id> (…/.sandboxes/<slug>/c<id>):
+#                                      its .env, a copy of the workspace's database, the build, a preview host
+#   sandbox-delete   <handle> <slug> <id>  {delete_branch}: the preview host, the database, the worktree
 #   person-ensure    <handle>          the person's Linux user (ws-<handle>) and home, shared by their workspaces
 #   claude-status    <handle>          {ok, logged_in, auth_method, status}: `claude auth status` in their home
 #   claude-logout    <handle>          `claude auth logout` in their home
@@ -44,6 +48,8 @@ TPL=$ETC/templates
 PROJECTS=/srv/studio/projects
 WORKSPACES=/srv/studio/workspaces
 ASKPASS=/usr/local/lib/studio/askpass
+# the agents' browser: Chromium builds for Playwright MCP, shared read-only by every workspace
+BROWSERS=/usr/local/lib/studio/browsers
 
 [ "$(id -u)" = 0 ] || { echo '{"ok":false,"error":"studio-admin must run as root"}'; exit 1; }
 # shellcheck disable=SC1091
@@ -679,6 +685,7 @@ cmd_claude_login() {
 }
 
 workspace_paths() { # handle slug
+    W_SANDBOXES="$WORKSPACES/$1/.sandboxes/$2"
     W_USER="ws-$1"; W_HOME="/home/ws-$1"; W_DIR="$WORKSPACES/$1/$2"; W_ENV="$ETC/workspaces/$1--$2.env"
     W_POOL="studio-ws-$1--$2"; W_SITE="/etc/caddy/sites/ws-$1--$2.caddy"; W_UNIT="studio-bridge-$1--$2"; W_BASE="studio-ws-$1--$2"; W_DB="ws_$(dbname "$1")_$(dbname "$2")"
 }
@@ -714,6 +721,7 @@ write_workspace_env() { # after workspace_paths; reads tokens from INPUT, keeps 
             done
         fi
     fi
+    workspace_agent_env
     # Claude: a subscription is the person's own login in ~/.claude (claude-login), never a
     # token here. An API key is kept apart from Claude Code's own variable: the bridge hands it
     # over as ANTHROPIC_API_KEY only to the conversations that run on it.
@@ -721,6 +729,21 @@ write_workspace_env() { # after workspace_paths; reads tokens from INPUT, keeps 
     if has_field claude_api_key; then
         unset_env "$W_ENV" STUDIO_ANTHROPIC_API_KEY
         [ -n "$claude_api_key" ] && set_env "$W_ENV" STUDIO_ANTHROPIC_API_KEY "$claude_api_key"
+    fi
+}
+
+# workspace_agent_env — after workspace_paths: where the bridge puts sandboxes, and the agents'
+# browser when this server has it (Playwright MCP and its Chromium, from the system step); its
+# sandbox off only where AppArmor could not be given a profile for it (the .no-sandbox marker).
+workspace_agent_env() {
+    set_env "$W_ENV" BRIDGE_SANDBOX_ROOT "$W_SANDBOXES"
+    local mcp; mcp=$(command -v playwright-mcp 2>/dev/null || true)
+    if [ -n "$mcp" ] && [ -d "$BROWSERS" ]; then
+        set_env "$W_ENV" BRIDGE_BROWSER_MCP "$mcp"
+        set_env "$W_ENV" PLAYWRIGHT_BROWSERS_PATH "$BROWSERS"
+        if [ -f "$BROWSERS/.no-sandbox" ]; then set_env "$W_ENV" BRIDGE_BROWSER_NO_SANDBOX 1; else unset_env "$W_ENV" BRIDGE_BROWSER_NO_SANDBOX; fi
+    else
+        unset_env "$W_ENV" BRIDGE_BROWSER_MCP PLAYWRIGHT_BROWSERS_PATH BRIDGE_BROWSER_NO_SANDBOX
     fi
 }
 
@@ -783,6 +806,7 @@ cmd_workspace_start() {
     local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
     [ -f "/etc/systemd/system/$W_UNIT.service" ] || fail "workspace $handle/$slug does not exist"
     if [ -f "$W_SITE" ]; then reload_caddy; else render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$(grep -E '^APP_URL=' "$W_DIR/.env" | cut -d= -f2- | sed 's#https://##')" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"; fi
+    [ -f "$W_ENV" ] && workspace_agent_env
     systemctl start "$W_UNIT"
     restart_services "$W_BASE"
     echo '{"ok":true,"status":"running"}'
@@ -818,6 +842,16 @@ cmd_workspace_delete() {
     systemctl disable --now "$W_UNIT" >/dev/null 2>&1 || true
     remove_services "$W_BASE"
     rm -f "/etc/systemd/system/$W_UNIT.service" "$W_SITE"
+    # its sandboxes: their preview hosts, databases and worktrees
+    local sb id
+    for sb in "$W_SANDBOXES"/c*; do
+        [ -d "$sb" ] || continue
+        id=${sb##*/c}; [[ "$id" =~ ^[0-9]+$ ]] || continue
+        sandbox_paths "$handle" "$slug" "$id"
+        rm -f "$S_SITE"; db_drop mariadb "$S_DB"; db_drop pgsql "$S_DB"
+    done
+    rm -f /etc/caddy/sites/"ws-$handle--$slug--c"*.caddy
+    rm -rf "${W_SANDBOXES:?}"
     rm -f /etc/php/*/fpm/pool.d/"$W_POOL".conf
     systemctl daemon-reload; reload_caddy
     reload_all_fpm
@@ -829,6 +863,70 @@ cmd_workspace_delete() {
         pkill -u "$W_USER" 2>/dev/null || true
         userdel -r "$W_USER" 2>/dev/null || true
         rm -rf "${WORKSPACES:?}/${handle:?}"
+    fi
+    echo '{"ok":true}'
+}
+
+# -------------------------------------------------------------- sandboxes --
+# A sandbox is one conversation's own copy of a workspace: the bridge makes the git worktree
+# (…/.sandboxes/<slug>/c<id>, on its own branch of the same repository); this gives it what
+# makes it an app: its .env, a copy of the workspace's database, the build, and a preview host
+# served by the workspace's own PHP pool. Queues run inline there, no scheduler, no Reverb:
+# one conversation's app, not a site.
+
+sandbox_paths() { # handle slug id — after or without workspace_paths
+    S_DIR="$WORKSPACES/$1/.sandboxes/$2/c$3"; S_SITE="/etc/caddy/sites/ws-$1--$2--c$3.caddy"
+    S_DB=$(printf 'sb_%s_%s_%s' "$3" "$(dbname "$1")" "$(dbname "$2")" | cut -c1-60); S_MATCHER="sb_$3_$(dbname "$1")_$(dbname "$2")"
+}
+
+cmd_sandbox_create() {
+    local handle=$1 slug=$2 id=$3; valid_name "$handle"; valid_name "$slug"; [[ "$id" =~ ^[0-9]{1,12}$ ]] || fail "invalid sandbox id"
+    workspace_paths "$handle" "$slug"; sandbox_paths "$handle" "$slug" "$id"
+    local php engine host branch; php=$(require_field php_version); engine=$(require_field db_engine); host=$(require_field preview_host); branch=$(require_field branch)
+    valid_php "$php"; valid_engine "$engine"; valid_branch "$branch"
+    [[ "$host" =~ ^[a-z0-9][a-z0-9.-]{0,252}$ ]] || fail "invalid preview host"
+    [ -f "$S_DIR/.git" ] || fail "sandbox c$id of $handle/$slug has no worktree: the bridge creates it first"
+    [ "$(stat -c %U "$S_DIR")" = "$W_USER" ] || fail "sandbox c$id is not owned by $W_USER"
+
+    # Caddy and PHP get through to it like to the workspace
+    chmod 751 "$WORKSPACES/$handle/.sandboxes" "$W_SANDBOXES" "$S_DIR"
+
+    local dbpass; dbpass=$(openssl rand -hex 16)
+    db_create "$engine" "$S_DB" "$dbpass"
+    local seeded=0
+    if db_clone "$engine" "$W_DB" "$S_DB" 2>/dev/null; then seeded=1; log "sandbox database copied from the workspace"; fi
+    [ -f "$W_DIR/.env" ] && [ ! -f "$S_DIR/.env" ] && install -o "$W_USER" -g "$W_USER" -m 600 "$W_DIR/.env" "$S_DIR/.env"
+    write_env "$S_DIR" "https://$host" local true "$engine" "$S_DB" "$dbpass" "sb_${id}_${handle}_${slug}_"
+    set_env "$S_DIR/.env" SESSION_COOKIE "sb_${id}_${handle}_${slug}_session"
+    set_env "$S_DIR/.env" QUEUE_CONNECTION sync
+    set_env "$S_DIR/.env" BROADCAST_CONNECTION log
+    set_env "$S_DIR/.env" APP_TIMEZONE "$(project_timezone)"
+    chown "$W_USER:$W_USER" "$S_DIR/.env"; chmod 600 "$S_DIR/.env"
+
+    build "$W_USER" "$S_DIR" "$W_ENV" "$php" 1
+    grant_web "$S_DIR"
+    [ "$seeded" = 1 ] || run_as "$W_USER" "$S_DIR" "$W_ENV" "php$php" artisan migrate --force --quiet || log "migrate failed"
+    # the pool exists while the workspace does; the host reloads Caddy, or puts the old file back
+    render_site "$S_SITE" "$S_MATCHER" "$host" "$S_DIR" "$W_POOL" local ""
+
+    jq -n --arg u "https://$host" --arg p "$S_DIR" --arg d "$S_DB" '{ok:true, app_url:$u, path:$p, database:$d}'
+}
+
+cmd_sandbox_delete() {
+    local handle=$1 slug=$2 id=$3; valid_name "$handle"; valid_name "$slug"; [[ "$id" =~ ^[0-9]{1,12}$ ]] || fail "invalid sandbox id"
+    workspace_paths "$handle" "$slug"; sandbox_paths "$handle" "$slug" "$id"
+    rm -f "$S_SITE"; reload_caddy
+    db_drop mariadb "$S_DB"; db_drop pgsql "$S_DB"
+    # the bridge removes the worktree while the workspace runs; here when it did not
+    if [ -e "$S_DIR" ]; then
+        local branch=""
+        [ -f "$S_DIR/.git" ] && branch=$(run_as "$W_USER" "$S_DIR" "" git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        pkill -u "$W_USER" -f "$S_DIR" 2>/dev/null || true
+        rm -rf "${S_DIR:?}"
+        [ -d "$W_DIR/.git" ] && run_as "$W_USER" "$W_DIR" "" git worktree prune || true
+        if [ "$(field delete_branch)" = 1 ] && [ -n "$branch" ] && [ "$branch" != HEAD ] && [ -d "$W_DIR/.git" ]; then
+            run_as "$W_USER" "$W_DIR" "" git branch -D "$branch" >/dev/null 2>&1 || true
+        fi
     fi
     echo '{"ok":true}'
 }
@@ -896,6 +994,8 @@ case "$cmd" in
     workspace-status) [ $# -eq 2 ] || fail "usage";  cmd_workspace_status "$1" "$2" ;;
     workspace-delete) [ $# -eq 2 ] || fail "usage";  cmd_workspace_delete "$1" "$2" ;;
     workspace-configure) [ $# -eq 2 ] || fail "usage: workspace-configure <handle> <slug>"; cmd_workspace_configure "$1" "$2" ;;
+    sandbox-create)   [ $# -eq 3 ] || fail "usage: sandbox-create <handle> <slug> <id>"; cmd_sandbox_create "$1" "$2" "$3" ;;
+    sandbox-delete)   [ $# -eq 3 ] || fail "usage: sandbox-delete <handle> <slug> <id>"; cmd_sandbox_delete "$1" "$2" "$3" ;;
     person-ensure)    [ $# -eq 1 ] || fail "usage: person-ensure <handle>"; cmd_person_ensure "$1" ;;
     claude-status)    [ $# -eq 1 ] || fail "usage: claude-status <handle>"; cmd_claude_status "$1" ;;
     claude-logout)    [ $# -eq 1 ] || fail "usage: claude-logout <handle>"; cmd_claude_logout "$1" ;;

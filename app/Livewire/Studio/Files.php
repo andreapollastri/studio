@@ -6,6 +6,7 @@ use App\Bridge\BridgeClient;
 use App\Bridge\BridgeException;
 use App\Models\Workspace;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
@@ -37,9 +38,14 @@ class Files extends Component
     /** @var array{path: string, size: int, binary: bool, limit: int}|null the last file that could not be opened */
     public ?array $unopenable = null;
 
-    public function mount(Workspace $workspace): void
+    /** A sandbox's worktree instead of the workspace (the open conversation's). */
+    #[Locked]
+    public ?string $sandbox = null;
+
+    public function mount(Workspace $workspace, ?string $sandbox = null): void
     {
         $this->workspace = $workspace;
+        $this->sandbox = $sandbox;
 
         abort_unless($this->allowed(), 403);
 
@@ -57,7 +63,7 @@ class Files extends Component
         }
 
         try {
-            $this->dirs[$path] = (new BridgeClient($this->workspace))->listFiles($path)['entries'];
+            $this->dirs[$path] = (new BridgeClient($this->workspace, $this->sandbox))->listFiles($path)['entries'];
             $this->error = null;
         } catch (BridgeException $e) {
             $this->error = $e->getMessage();
@@ -92,7 +98,7 @@ class Files extends Component
     public function open(string $path): void
     {
         try {
-            $file = (new BridgeClient($this->workspace))->readFile($path);
+            $file = (new BridgeClient($this->workspace, $this->sandbox))->readFile($path);
         } catch (BridgeException $e) {
             $this->error = $e->getMessage();
 
@@ -130,7 +136,7 @@ class Files extends Component
         }
 
         try {
-            $saved = (new BridgeClient($this->workspace))->writeFile($path, $content, $hash === '' ? null : $hash);
+            $saved = (new BridgeClient($this->workspace, $this->sandbox))->writeFile($path, $content, $hash === '' ? null : $hash);
         } catch (BridgeException $e) {
             return ['ok' => false, 'error' => $e->getMessage()];
         }
@@ -186,7 +192,7 @@ class Files extends Component
         $path = ltrim($dir.'/'.$name, '/');
 
         try {
-            (new BridgeClient($this->workspace))->createPath($path, $type === 'dir' ? 'dir' : 'file');
+            (new BridgeClient($this->workspace, $this->sandbox))->createPath($path, $type === 'dir' ? 'dir' : 'file');
         } catch (BridgeException $e) {
             $this->error = $e->getMessage();
 
@@ -219,7 +225,7 @@ class Files extends Component
 
         if ($to !== $from) {
             try {
-                (new BridgeClient($this->workspace))->renamePath($from, $to);
+                (new BridgeClient($this->workspace, $this->sandbox))->renamePath($from, $to);
             } catch (BridgeException $e) {
                 $this->error = $e->getMessage();
 
@@ -237,7 +243,7 @@ class Files extends Component
     public function delete(string $path): void
     {
         try {
-            (new BridgeClient($this->workspace))->deletePath($path);
+            (new BridgeClient($this->workspace, $this->sandbox))->deletePath($path);
         } catch (BridgeException $e) {
             $this->error = $e->getMessage();
 

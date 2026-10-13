@@ -8,9 +8,12 @@ use App\Jobs\ProvisionWorkspace;
 use App\Models\Conversation;
 use App\Models\Project;
 use App\Models\Workspace;
+use App\Workspaces\Sandboxes;
 use App\Workspaces\WorkspaceManager;
+use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use InvalidArgumentException;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -101,11 +104,41 @@ class Shell extends Component
         $this->redirectRoute('studio.conversation', ['project' => $this->project, 'conversation' => $conversation], navigate: true);
     }
 
+    /** A conversation in a sandbox of its own: its branch, database and preview; it opens once they are ready. */
+    public function newSandbox(StartConversation $start, Sandboxes $sandboxes): void
+    {
+        $this->authorize('chat', $this->project);
+        $this->workspace->refresh();
+
+        try {
+            $conversation = $sandboxes->open($this->workspace, auth()->user(), $start);
+        } catch (InvalidArgumentException $e) {
+            Flux::toast(variant: 'warning', text: $e->getMessage());
+
+            return;
+        }
+
+        $this->redirectRoute('studio.conversation', ['project' => $this->project, 'conversation' => $conversation], navigate: true);
+    }
+
+    /** The open conversation's sandbox became ready or went away: the pane on the right follows it. */
+    #[On('sandbox-updated')]
+    public function refreshSandbox(): void
+    {
+        $this->conversation?->refresh();
+    }
+
     public function render(): View
     {
+        $sandboxed = $this->conversation?->sandboxReady() && $this->conversation->user_id === auth()->id();
+
         return view('livewire.studio.shell', [
             'title' => $this->project->name,
             'missing' => $this->missingConnections(),
+            'sandboxes' => $this->project->agentSettings()['sandboxes'] && auth()->user()->can('chat', $this->project),
+            // the pane works where the open conversation works: its sandbox, or the workspace
+            'paneSandbox' => $sandboxed ? $this->conversation->sandboxName() : null,
+            'paneSandboxUrl' => $sandboxed ? $this->conversation->previewUrl() : null,
         ]);
     }
 }

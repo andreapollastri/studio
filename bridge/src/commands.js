@@ -87,7 +87,8 @@ export class RunManager {
     this.#spawn = spawnImpl;
   }
 
-  start(input) {
+  /** @param {{cwd?: string}} options a sandbox's worktree instead of the workspace */
+  start(input, { cwd = null } = {}) {
     const { bin, args, display } = parseCommand(input);
     const id = randomUUID();
     const run = { id, command: display, status: 'running', exit_code: null, output: '', started_at: new Date().toISOString(), finished_at: null, truncated: false };
@@ -95,7 +96,7 @@ export class RunManager {
     this.#trim();
 
     const child = this.#spawn(bin, args, {
-      cwd: this.#config.workspaceDir,
+      cwd: cwd ?? this.#config.workspaceDir,
       env: {
         ...withoutNoColor(process.env),
         CI: '1',

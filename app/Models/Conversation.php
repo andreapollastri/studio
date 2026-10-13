@@ -28,10 +28,12 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $last_result
  * @property Carbon|null $last_activity_at
  * @property Carbon|null $seen_at when the person last opened it
+ * @property array{status: string, name: string, branch: string, url?: string|null, path?: string|null, error?: string|null, merged_at?: string|null, pushed_at?: string|null}|null $sandbox
+ * @property string|null $sandbox_host
  * @property-read Workspace $workspace
  * @property-read User $user
  */
-#[Fillable(['workspace_id', 'user_id', 'title', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'runtime', 'last_result', 'last_activity_at'])]
+#[Fillable(['workspace_id', 'user_id', 'title', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'sandbox', 'sandbox_host', 'runtime', 'last_result', 'last_activity_at'])]
 class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */
@@ -46,6 +48,7 @@ class Conversation extends Model
     {
         return [
             'runtime' => 'array',
+            'sandbox' => 'array',
             'status' => ConversationStatus::class,
             'last_result' => 'array',
             'last_activity_at' => 'datetime',
@@ -80,6 +83,71 @@ class Conversation extends Model
     public function pendingPermission(): ?PermissionRequest
     {
         return $this->permissionRequests()->where('status', 'pending')->oldest()->first();
+    }
+
+    public const SANDBOX_CREATING = 'creating';
+
+    public const SANDBOX_READY = 'ready';
+
+    public const SANDBOX_FAILED = 'failed';
+
+    public const SANDBOX_REMOVING = 'removing';
+
+    public const SANDBOX_REMOVED = 'removed';
+
+    /** Started in a sandbox of its own: a worktree on its own branch, with its own database and preview. */
+    public function isSandboxed(): bool
+    {
+        return $this->sandbox !== null;
+    }
+
+    /** The sandbox's name on the bridge and the server: c<id>. */
+    public function sandboxName(): string
+    {
+        return 'c'.$this->id;
+    }
+
+    public function sandboxStatus(): ?string
+    {
+        return $this->sandbox['status'] ?? null;
+    }
+
+    public function sandboxReady(): bool
+    {
+        return $this->sandboxStatus() === self::SANDBOX_READY;
+    }
+
+    /** A sandbox still taking room on the server: it counts against the person's limit. */
+    public function sandboxAlive(): bool
+    {
+        return in_array($this->sandboxStatus(), [self::SANDBOX_CREATING, self::SANDBOX_READY, self::SANDBOX_FAILED, self::SANDBOX_REMOVING], true);
+    }
+
+    /**
+     * Whether the person can write here: always in the workspace; in a sandbox only once it is ready.
+     * A removed sandbox took the Claude session's directory with it: that conversation is history.
+     */
+    public function acceptsMessages(): bool
+    {
+        return ! $this->isSandboxed() || $this->sandboxReady();
+    }
+
+    /**
+     * @param  array<string, mixed>  $changes
+     */
+    public function updateSandbox(array $changes): void
+    {
+        $this->forceFill(['sandbox' => array_merge($this->sandbox ?? [], $changes)])->save();
+    }
+
+    /** The app this conversation works on: its sandbox's preview, or the workspace's. */
+    public function previewUrl(): ?string
+    {
+        if ($this->isSandboxed()) {
+            return $this->sandboxReady() ? ($this->sandbox['url'] ?? null) : null;
+        }
+
+        return $this->workspace->isRunning() ? $this->workspace->app_url : null;
     }
 
     public function isBusy(): bool

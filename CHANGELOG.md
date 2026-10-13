@@ -4,6 +4,36 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 1.2.0 (unreleased)
+
+### The agent sees, delegates and works apart
+- **A browser for the agent**: every chat gets Playwright MCP, a headless Chromium on the server,
+  as the MCP server `browser`, signed in to the preview it works on with the person's own pass for
+  that host (the same gatekeeper and access rules as a person). Claude opens pages, takes
+  screenshots, reads the console and failed requests; looking never asks, clicking and typing ask
+  unless edits are allowed. On by default, per project in *Project settings → Agent*.
+- **Screenshots in the chat**: images in tool results (a browser screenshot, a picture Claude read)
+  are kept on Studio's disk, shown as thumbnails under their tool call and full size on a click,
+  served only to who may read the conversation, and removed with it.
+- **Subagents as cards**: each subagent is a card with its status, steps, time, screenshots and
+  report; those started together sit side by side. Studio adds two of its own (`code-reviewer`,
+  and `browser-qa` with the browser) and a paragraph of context about the preview and the sandbox;
+  the repository's `.claude/agents` still apply.
+- **Conversations in a sandbox** (*New → Conversation in a sandbox*): a git worktree of the
+  person's workspace on its own branch (`sandbox/<handle>-<id>`), with a copy of the workspace's
+  database, its own build and preview host (`<handle>-<project>--c<id>.<domain>`). Several run at
+  once without touching the workspace or each other; the Preview, Changes, Terminal and Files tabs
+  follow the open conversation. *Merge into my workspace* commits and merges the branch (all or
+  nothing), *Push the branch* pushes it for a pull request, *Remove* keeps the conversation to read.
+  Queues run inline there, no scheduler or Reverb. Up to 3 per person by default.
+
+### Server
+- The system step installs Playwright MCP (pinned in `requirements.env`) and its Chromium in
+  `/usr/local/lib/studio/browsers`, with an AppArmor profile so Chromium keeps its sandbox on
+  Ubuntu 24.04+. New helper commands `sandbox-create` and `sandbox-delete`; `workspace-delete`
+  removes the workspace's sandboxes. `installer/upgrades/1.2.0.sh` gives every bridge its new
+  variables and restarts it.
+
 ## 1.1.0
 
 ### Tools

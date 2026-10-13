@@ -37,7 +37,17 @@
         <div class="flex items-center justify-between px-3 py-3">
             <flux:heading size="sm">{{ __('Conversations') }}</flux:heading>
             @can('chat', $project)
-                <flux:button size="xs" icon="plus" variant="subtle" wire:click="newConversation">{{ __('New') }}</flux:button>
+                @if ($sandboxes)
+                    <flux:dropdown position="bottom" align="end">
+                        <flux:button size="xs" icon="plus" icon:trailing="chevron-down" variant="subtle">{{ __('New') }}</flux:button>
+                        <flux:menu>
+                            <flux:menu.item icon="chat-bubble-left-right" wire:click="newConversation">{{ __('Conversation in my workspace') }}</flux:menu.item>
+                            <flux:menu.item icon="beaker" wire:click="newSandbox">{{ __('Conversation in a sandbox') }}</flux:menu.item>
+                        </flux:menu>
+                    </flux:dropdown>
+                @else
+                    <flux:button size="xs" icon="plus" variant="subtle" wire:click="newConversation">{{ __('New') }}</flux:button>
+                @endif
             @endcan
         </div>
         <livewire:studio.conversation-list :project="$project" :workspace="$workspace" :current="$conversation?->uuid" :key="'conversations-'.$workspace->uuid.'-'.$conversation?->uuid" />
@@ -75,7 +85,15 @@
                     <flux:text class="max-w-md">
                         {{ __('Every conversation is a Claude Code session in your workspace, with the Larapilot skills. Ask, approve, watch the preview next to it.') }}
                     </flux:text>
-                    <flux:button variant="primary" icon="chat-bubble-left-right" wire:click="newConversation">{{ __('New conversation') }}</flux:button>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <flux:button variant="primary" icon="chat-bubble-left-right" wire:click="newConversation">{{ __('New conversation') }}</flux:button>
+                        @if ($sandboxes)
+                            <flux:button icon="beaker" wire:click="newSandbox">{{ __('New in a sandbox') }}</flux:button>
+                        @endif
+                    </div>
+                    @if ($sandboxes)
+                        <flux:text class="max-w-md text-xs">{{ __('A sandbox is a copy of your workspace on its own branch, with its own database and preview: several can work at once, and you merge the one you like.') }}</flux:text>
+                    @endif
                 @else
                     <flux:heading size="lg">{{ __('Follow the project') }}</flux:heading>
                     <flux:text class="max-w-md">{{ __('The site on the right is the deploy branch as it runs today. The team works in its own conversations.') }}</flux:text>
@@ -86,7 +104,7 @@
 
     {{-- Preview / changes / terminal / files --}}
     <aside class="studio-pane hidden w-[30rem] shrink-0 border-s border-zinc-200 dark:border-zinc-700 xl:flex" x-bind:class="{ 'flex! w-auto! min-w-0 flex-1 border-s-0': wide }">
-        <livewire:studio.side-pane :workspace="$workspace" :key="'pane-'.$workspace->uuid" />
+        <livewire:studio.side-pane :workspace="$workspace" :sandbox="$paneSandbox" :sandbox-url="$paneSandboxUrl" :key="'pane-'.$workspace->uuid.'-'.$paneSandbox" />
     </aside>
 
     {{-- Phone: one panel at a time --}}

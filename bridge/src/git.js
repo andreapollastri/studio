@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 
 const run = promisify(execFile);
@@ -363,14 +363,17 @@ export async function gitCheckout(workspaceDir, branch) {
   const name = branchName(branch);
   const busy = await inProgress(workspaceDir);
   if (busy) throw new GitError(409, `a ${busy} is in progress: conclude or abort it before switching branch.`);
-  try {
-    await git(workspaceDir, ['checkout', '-q', name, '--']);
-  } catch (error) {
-    if (!(await succeeds(workspaceDir, ['rev-parse', '-q', '--verify', `refs/remotes/${name}`]))) throw error;
+  const isLocal = await succeeds(workspaceDir, ['rev-parse', '-q', '--verify', `refs/heads/${name}`]);
+  const isRemote = !isLocal && (await succeeds(workspaceDir, ['rev-parse', '-q', '--verify', `refs/remotes/${name}`]));
+  if (isRemote) {
+    // never a detached HEAD, where commits get lost: a remote branch is worked on through its local branch
     const { branch: local } = await remoteBranch(workspaceDir, name);
-    // the local branch may already exist: then it is simply switched to
     if (await succeeds(workspaceDir, ['rev-parse', '-q', '--verify', `refs/heads/${local}`])) await git(workspaceDir, ['checkout', '-q', local, '--']);
     else await git(workspaceDir, ['checkout', '-q', '--track', name]);
+  } else if (isLocal) {
+    await git(workspaceDir, ['checkout', '-q', name, '--']);
+  } else {
+    throw new GitError(422, `unknown branch ${name}`);
   }
 
   return gitState(workspaceDir);
@@ -432,8 +435,8 @@ export async function gitResolve(workspaceDir, path, side) {
       return gitState(workspaceDir);
     }
   } else {
-    const content = await git(workspaceDir, ['diff', '--', name]).catch(() => '');
-    if (/^\+(<{7}|>{7})( |$)/m.test(content)) throw new GitError(409, `${name} still has conflict markers.`);
+    const content = await readFile(join(workspaceDir, name), 'utf8').catch(() => '');
+    if (/^(<{7}|>{7})( |$)/m.test(content)) throw new GitError(409, `${name} still has conflict markers.`);
   }
   await git(workspaceDir, ['add', '--', name]);
 

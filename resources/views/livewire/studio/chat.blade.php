@@ -1,6 +1,9 @@
 <div
     class="flex h-full min-h-0 flex-col"
-    @if ($conversation->isBusy()) wire:poll.4s="poll" @endif
+    @if ($conversation->isBusy() || in_array($conversation->sandboxStatus(), [\App\Models\Conversation::SANDBOX_CREATING, \App\Models\Conversation::SANDBOX_REMOVING], true)) wire:poll.4s="poll" @endif
+    x-data="{ shot: null }"
+    x-on:studio-shot.window="shot = $event.detail.src"
+    x-on:keydown.escape.window="shot = null"
 >
     <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-2 dark:border-zinc-700 max-md:gap-2 max-md:px-3">
         <div class="min-w-0">
@@ -20,14 +23,106 @@
         </div>
     </div>
 
+    @if ($conversation->isSandboxed())
+        @php($sandbox = $conversation->sandbox)
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-violet-200 bg-violet-50/70 px-4 py-2 text-xs dark:border-violet-900/60 dark:bg-violet-950/20 max-md:px-3">
+            <span class="flex items-center gap-1.5 font-medium text-violet-700 dark:text-violet-300">
+                <flux:icon.beaker class="size-4" /> {{ __('Sandbox') }}
+            </span>
+            <span class="font-mono text-zinc-600 dark:text-zinc-300">{{ $sandbox['branch'] ?? '' }}</span>
+            @switch($conversation->sandboxStatus())
+                @case(\App\Models\Conversation::SANDBOX_CREATING)
+                    <span class="flex items-center gap-1.5 text-zinc-500"><flux:icon.loading class="size-3" /> {{ __('Preparing: a worktree of your workspace, a copy of its database, the build and a preview of its own. It takes a minute or two.') }}</span>
+                    @break
+                @case(\App\Models\Conversation::SANDBOX_READY)
+                    @if ($sandboxInfo)
+                        <span class="text-zinc-500">
+                            @if (($sandboxInfo['files'] ?? 0) > 0){{ trans_choice(':count file changed|:count files changed', $sandboxInfo['files']) }} · @endif
+                            {{ trans_choice(':count commit ahead of :branch|:count commits ahead of :branch', $sandboxInfo['ahead'] ?? 0, ['branch' => $sandboxInfo['workspace_branch'] ?? '']) }}
+                        </span>
+                    @endif
+                    @if (filled($sandbox['merged_at'] ?? null))
+                        <flux:badge size="sm" color="emerald" icon="check">{{ __('merged') }}</flux:badge>
+                    @endif
+                    @if (filled($sandbox['pushed_at'] ?? null))
+                        <flux:badge size="sm" color="sky" icon="arrow-up">{{ __('pushed') }}</flux:badge>
+                    @endif
+                    @if ($canChat)
+                        <span class="ms-auto flex flex-wrap items-center gap-1">
+                            @if (filled($sandbox['url'] ?? null))
+                                <flux:button size="xs" variant="ghost" icon="arrow-top-right-on-square" :href="$sandbox['url']" target="_blank">{{ __('Preview') }}</flux:button>
+                            @endif
+                            <flux:button size="xs" variant="primary" icon="arrow-down-on-square" wire:click="mergeSandbox" wire:confirm="{{ __('Commit what the sandbox holds and merge :branch into the branch of your workspace? A conflict leaves both as they are.', ['branch' => $sandbox['branch'] ?? '']) }}" :disabled="$conversation->isBusy()">{{ __('Merge into my workspace') }}</flux:button>
+                            <flux:dropdown position="bottom" align="end">
+                                <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('More')" />
+                                <flux:menu>
+                                    <flux:menu.item icon="arrow-up-tray" wire:click="pushSandbox" :disabled="$conversation->isBusy()">{{ __('Push the branch') }}</flux:menu.item>
+                                    <flux:modal.trigger name="remove-sandbox">
+                                        <flux:menu.item icon="trash" variant="danger">{{ __('Remove the sandbox') }}</flux:menu.item>
+                                    </flux:modal.trigger>
+                                </flux:menu>
+                            </flux:dropdown>
+                        </span>
+                    @endif
+                    @break
+                @case(\App\Models\Conversation::SANDBOX_FAILED)
+                    <span class="text-red-600 dark:text-red-400">{{ $sandbox['error'] ?? __('The sandbox could not be prepared.') }}</span>
+                    @if ($canChat)
+                        <span class="ms-auto flex gap-1">
+                            <flux:button size="xs" variant="primary" icon="arrow-path" wire:click="retrySandbox">{{ __('Try again') }}</flux:button>
+                            <flux:modal.trigger name="remove-sandbox"><flux:button size="xs" variant="ghost" icon="trash">{{ __('Remove') }}</flux:button></flux:modal.trigger>
+                        </span>
+                    @endif
+                    @break
+                @case(\App\Models\Conversation::SANDBOX_REMOVING)
+                    <span class="flex items-center gap-1.5 text-zinc-500"><flux:icon.loading class="size-3" /> {{ __('Removing the sandbox…') }}</span>
+                    @break
+                @default
+                    <span class="text-zinc-500">{{ __('The sandbox was removed: this conversation stays to read. Start a new one to go on.') }}</span>
+            @endswitch
+        </div>
+
+        @if ($canChat)
+            <flux:modal name="remove-sandbox" class="md:w-[28rem]">
+                <div class="space-y-4">
+                    <div>
+                        <flux:heading size="lg">{{ __('Remove the sandbox?') }}</flux:heading>
+                        <flux:text class="mt-1">{{ __('Its worktree, database and preview go. This conversation stays, to read. Work not committed is lost.') }}</flux:text>
+                    </div>
+                    <div class="flex flex-wrap justify-end gap-2">
+                        <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                        <flux:button wire:click="removeSandbox(false)">{{ __('Remove, keep the branch') }}</flux:button>
+                        <flux:button variant="danger" wire:click="removeSandbox(true)">{{ __('Discard with its branch') }}</flux:button>
+                    </div>
+                </div>
+            </flux:modal>
+        @endif
+    @endif
+
     <div
         class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 max-xl:overscroll-contain max-md:px-3"
         x-data
         x-init="$el.scrollTop = $el.scrollHeight"
         x-on:chat-updated.window="$nextTick(() => $el.scrollTop = $el.scrollHeight)"
     >
-        @forelse ($this->messages as $message)
-            <x-studio.message :message="$message" :result="$this->toolResults->get($message->tool_use_id)" :show-tools="$showTools" />
+        @forelse ($this->rows as $row)
+            @if ($row['agents'])
+                {{-- subagents started together ran in parallel: side by side --}}
+                <div class="max-w-3xl space-y-1.5" wire:key="agents-{{ $row['messages'][0]->id }}">
+                    @if (count($row['messages']) > 1)
+                        <div class="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                            <flux:icon.squares-2x2 class="size-3.5" /> {{ __(':count subagents in parallel', ['count' => count($row['messages'])]) }}
+                        </div>
+                    @endif
+                    <div @class(['grid gap-2', 'sm:grid-cols-2' => count($row['messages']) > 1])>
+                        @foreach ($row['messages'] as $call)
+                            <x-studio.agent :call="$call" :result="$this->toolResults->get($call->tool_use_id)" :steps="$this->children->get($call->tool_use_id, collect())" :results="$this->toolResults" :conversation="$conversation" :show-tools="$showTools" />
+                        @endforeach
+                    </div>
+                </div>
+            @else
+                <x-studio.message :message="$row['messages'][0]" :result="$this->toolResults->get($row['messages'][0]->tool_use_id)" :show-tools="$showTools" :conversation="$conversation" wire:key="message-{{ $row['messages'][0]->id }}" />
+            @endif
         @empty
             <div class="py-10 text-center text-sm text-zinc-500">
                 {{ __('Write what you want to achieve. Claude works in your workspace and asks you before sensitive actions.') }}
@@ -186,6 +281,21 @@
                     @endif
                     <div class="mt-1 text-zinc-500">{{ $mcpNames !== [] ? __('From the project settings, plus any in the repository\'s .mcp.json.') : __('None from the project settings; the repository\'s .mcp.json still applies.') }}</div>
                 </div>
+                <div class="rounded-lg bg-zinc-50 px-3 py-2 text-xs dark:bg-zinc-800">
+                    <div class="font-medium">{{ __('Studio tools') }}</div>
+                    <div class="mt-1 flex flex-wrap gap-1">
+                        @if ($browser)
+                            <flux:badge size="sm" icon="globe-alt" color="sky">{{ __('browser') }}</flux:badge>
+                            <flux:badge size="sm" icon="cpu-chip" class="font-mono">browser-qa</flux:badge>
+                        @endif
+                        <flux:badge size="sm" icon="cpu-chip" class="font-mono">code-reviewer</flux:badge>
+                    </div>
+                    <div class="mt-1 text-zinc-500">
+                        {{ $browser
+                            ? __('Claude opens the preview in a browser signed in as you, takes screenshots and reads the console; looking never asks, clicking asks unless edits are allowed. Subagents run in parallel; the repository\'s .claude/agents apply too.')
+                            : __('The browser is off for this project. Subagents run in parallel; the repository\'s .claude/agents apply too.') }}
+                    </div>
+                </div>
                 <div class="flex justify-end gap-2">
                     <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
                     <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
@@ -200,15 +310,23 @@
                         wire:model="draft"
                         rows="2"
                         resize="none"
-                        :placeholder="! $conversation->workspace->isRunning() ? __('Start the workspace to write') : ($conversation->isBusy() ? __('Claude is working… your next message can wait here (interrupt to send it now)') : __('Write to Claude… (⌘⏎ to send)'))"
-                        :disabled="! $conversation->workspace->isRunning()"
+                        :placeholder="! $conversation->workspace->isRunning() ? __('Start the workspace to write') : (! $conversation->acceptsMessages() ? ($conversation->sandboxStatus() === \App\Models\Conversation::SANDBOX_CREATING ? __('The sandbox is being prepared…') : __('This conversation is history: its sandbox is gone')) : ($conversation->isBusy() ? __('Claude is working… your next message can wait here (interrupt to send it now)') : ($conversation->isSandboxed() ? __('Write to Claude in the sandbox… (⌘⏎ to send)') : __('Write to Claude… (⌘⏎ to send)'))))"
+                        :disabled="! $conversation->workspace->isRunning() || ! $conversation->acceptsMessages()"
                         x-on:keydown.meta.enter.prevent="$wire.send()"
                         x-on:keydown.ctrl.enter.prevent="$wire.send()"
                     />
                     <flux:error name="draft" />
                 </div>
-                <flux:button type="submit" variant="primary" icon="paper-airplane" :disabled="! $conversation->workspace->isRunning() || $conversation->isBusy()" :aria-label="__('Send')"><span class="max-sm:hidden">{{ __('Send') }}</span></flux:button>
+                <flux:button type="submit" variant="primary" icon="paper-airplane" :disabled="! $conversation->workspace->isRunning() || $conversation->isBusy() || ! $conversation->acceptsMessages()" :aria-label="__('Send')"><span class="max-sm:hidden">{{ __('Send') }}</span></flux:button>
             </form>
         </div>
     @endif
+
+    {{-- a screenshot full size, over everything; a click or Esc closes it --}}
+    <div x-show="shot" x-cloak x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 sm:p-10" x-on:click="shot = null" role="dialog" aria-modal="true" aria-label="{{ __('Screenshot') }}">
+        <img x-bind:src="shot" alt="{{ __('Screenshot') }}" class="max-h-full max-w-full rounded-lg shadow-2xl">
+        <a x-bind:href="shot" target="_blank" class="absolute right-4 top-4 rounded-md bg-white/10 p-2 text-white hover:bg-white/20" x-on:click.stop aria-label="{{ __('Open in a new tab') }}">
+            <flux:icon.arrow-top-right-on-square class="size-5" />
+        </a>
+    </div>
 </div>

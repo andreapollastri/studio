@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\SystemStatusController;
+use App\Http\Controllers\ConversationImageController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
 use App\Livewire\Admin\Projects as AdminProjects;
@@ -23,6 +24,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('site-login', SiteLoginController::class)->name('site.login');
     Route::get('p/{project:slug}', Shell::class)->name('studio.show');
     Route::get('p/{project:slug}/c/{conversation}', Shell::class)->name('studio.conversation');
+    Route::get('p/{project:slug}/c/{conversation}/images/{file}', ConversationImageController::class)->name('studio.conversation.image');
 
     // Sessions from this server to any host: asks for the password again, as Settings → Security does.
     Route::get('ssh', SshTerminal::class)->middleware(['can:ssh', 'password.confirm'])->name('ssh');

@@ -29,6 +29,16 @@ export function loadConfig(env = process.env) {
     fileMaxBytes: Number(env.BRIDGE_FILE_MAX || 512 * 1024),
     // Largest file Studio's drive may copy into the workspace.
     uploadMaxBytes: Number(env.BRIDGE_UPLOAD_MAX || 512 * 1024 * 1024),
+    // The agent's browser (Playwright MCP): the command, unset for none; optionally Chromium's path,
+    // its sandbox off (only where the kernel refuses it), and the viewport of its screenshots.
+    browserCmd: env.BRIDGE_BROWSER_MCP || null,
+    browserExecutable: env.BRIDGE_BROWSER_EXECUTABLE || null,
+    browserNoSandbox: env.BRIDGE_BROWSER_NO_SANDBOX === '1',
+    browserViewport: env.BRIDGE_BROWSER_VIEWPORT || '1280x800',
+    // Where the sandboxes' worktrees go: by default <parent>/.sandboxes/<workspace>.
+    sandboxRoot: env.BRIDGE_SANDBOX_ROOT || null,
+    // Studio's own subagents (code-reviewer, browser-qa) and its paragraph of context.
+    studioAgents: env.BRIDGE_STUDIO_AGENTS !== '0',
     log: env.BRIDGE_LOG !== '0',
   };
 }

@@ -28,6 +28,12 @@ final class StartTurn
             throw new InvalidArgumentException(__('The workspace is not running: start it before writing.'));
         }
 
+        if (! $conversation->acceptsMessages()) {
+            throw new InvalidArgumentException($conversation->sandboxStatus() === Conversation::SANDBOX_CREATING
+                ? __('The sandbox is still being prepared: write once it is ready.')
+                : __('This conversation\'s sandbox is gone: start a new conversation to go on.'));
+        }
+
         // One turn at a time: a second message would queue inside Claude Code and the
         // conversation's state would drift from the agent's. Interrupt first.
         if ($conversation->isBusy()) {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Conversation;
 use App\Models\Project;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Caddy asks before issuing a certificate on demand: is this host one of
- * ours? Studio itself, a project site, or a workspace preview. Any other
+ * ours? Studio itself, a project site, a workspace preview or a sandbox's. Any other
  * name under the domain gets Studio's welcome page, so it may have one too,
  * within a daily budget: a stranger typing random names must not use up the
  * CA's weekly limit that the real hosts need.
@@ -32,7 +33,8 @@ class TlsAskController extends Controller
 
         $known = $label === 'studio'
             || Project::query()->where('slug', $label)->exists()
-            || Workspace::query()->where('app_url', 'https://'.$host)->exists();
+            || Workspace::query()->where('app_url', 'https://'.$host)->exists()
+            || Conversation::query()->where('sandbox_host', $host)->exists();
 
         return response('', $known || $this->welcomes($label) ? 200 : 404);
     }

@@ -19,7 +19,13 @@
                         <x-studio.conversation-dot :conversation="$item" />
                         <span class="truncate">{{ $item->displayTitle() }}</span>
                     </div>
-                    <div class="mt-0.5 truncate ps-4 text-xs text-zinc-500">{{ $item->updated_at?->diffForHumans() }}</div>
+                    <div class="mt-0.5 flex items-center gap-1 truncate ps-4 text-xs text-zinc-500">
+                        @if ($item->isSandboxed())
+                            <flux:icon.beaker @class(['size-3 shrink-0', 'text-violet-600' => $item->sandboxAlive(), 'text-zinc-400' => ! $item->sandboxAlive()]) />
+                            <span class="truncate font-mono">{{ $item->sandbox['branch'] ?? '' }}</span> ·
+                        @endif
+                        <span class="shrink-0">{{ $item->updated_at?->diffForHumans() }}</span>
+                    </div>
                 </a>
                 @can('delete', $item)
                     <flux:button

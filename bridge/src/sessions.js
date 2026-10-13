@@ -34,6 +34,13 @@ export class SessionManager {
     return true;
   }
 
+  /** A sandbox is going away: whatever runs in it stops (the conversations stay, idle). */
+  async stopIn(dir) {
+    for (const session of this.#sessions.values()) {
+      if (session.cwd === dir) session.interrupt();
+    }
+  }
+
   list() {
     return [...this.#sessions.values()].map((session) => session.snapshot());
   }

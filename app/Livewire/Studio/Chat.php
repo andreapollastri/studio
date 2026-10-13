@@ -10,6 +10,7 @@ use App\Enums\ConversationStatus;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\PermissionRequest;
+use App\Workspaces\Sandboxes;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -59,6 +60,17 @@ class Chat extends Component
     #[Locked]
     public string $signal = '';
 
+    /** The sandbox's status last drawn: when it moves, the pane on the right is told. */
+    #[Locked]
+    public ?string $sandboxStatus = null;
+
+    /**
+     * The sandbox's working tree and its distance from the workspace's branch, read when a turn ends.
+     *
+     * @var array<string, mixed>|null
+     */
+    public ?array $sandboxInfo = null;
+
     public function mount(Conversation $conversation): void
     {
         $this->authorize('view', $conversation);
@@ -67,6 +79,8 @@ class Chat extends Component
         $this->effort = (string) $conversation->effort;
         $this->mode = $conversation->permission_mode;
         $this->signal = $conversation->signal();
+        $this->sandboxStatus = $conversation->sandboxStatus();
+        $this->readSandbox();
     }
 
     /**
@@ -233,6 +247,68 @@ class Chat extends Component
         $this->reload();
     }
 
+    /** Commit what the sandbox holds and merge its branch into the branch the workspace is on. */
+    public function mergeSandbox(Sandboxes $sandboxes): void
+    {
+        $this->sandboxAction(function () use ($sandboxes): void {
+            $state = $sandboxes->merge($this->conversation);
+            Flux::toast(variant: 'success', text: __('Merged :branch into :into in your workspace.', ['branch' => $this->conversation->sandbox['branch'], 'into' => $state['branch'] ?? __('your branch')]));
+            $this->dispatch('chat-updated');
+        });
+    }
+
+    /** Commit what the sandbox holds and push its branch, for a pull request on the git provider. */
+    public function pushSandbox(Sandboxes $sandboxes): void
+    {
+        $this->sandboxAction(function () use ($sandboxes): void {
+            $sandboxes->push($this->conversation);
+            Flux::toast(variant: 'success', text: __('Pushed :branch: open a pull request from it on the git provider.', ['branch' => $this->conversation->sandbox['branch']]));
+        });
+    }
+
+    /** Remove the sandbox: the conversation stays to read; its branch stays unless it is discarded. */
+    public function removeSandbox(Sandboxes $sandboxes, bool $deleteBranch = false): void
+    {
+        $this->authorize('update', $this->conversation);
+
+        if ($this->conversation->isBusy()) {
+            Flux::toast(variant: 'warning', text: __('Claude is still working in the sandbox: wait for it, or interrupt it.'));
+
+            return;
+        }
+
+        $sandboxes->discard($this->conversation, $deleteBranch);
+        Flux::modal('remove-sandbox')->close();
+        $this->reload();
+    }
+
+    public function retrySandbox(Sandboxes $sandboxes): void
+    {
+        $this->authorize('update', $this->conversation);
+        $sandboxes->retry($this->conversation);
+        $this->reload();
+    }
+
+    private function sandboxAction(callable $action): void
+    {
+        $this->authorize('update', $this->conversation);
+
+        try {
+            $action();
+        } catch (InvalidArgumentException|BridgeException $e) {
+            Flux::toast(variant: 'danger', text: $e->getMessage());
+        }
+
+        $this->reload();
+    }
+
+    private function readSandbox(): void
+    {
+        $this->sandboxInfo = $this->conversation->sandboxReady() && ! $this->conversation->isBusy()
+            ? app(Sandboxes::class)->state($this->conversation)
+            : null;
+    }
+
     public function interrupt(): void
     {
         $this->authorize('update', $this->conversation);
@@ -254,6 +330,57 @@ class Chat extends Component
         }
 
         $this->reload();
+    }
+
+    /**
+     * What the chat draws, in order: one row per message, except that the work of a subagent goes
+     * inside its card (see children) and subagents started together sit side by side.
+     *
+     * @return list<array{agents: bool, messages: non-empty-list<Message>}>
+     */
+    #[Computed]
+    public function rows(): array
+    {
+        $rows = [];
+        $agents = [];
+
+        foreach ($this->messages() as $message) {
+            if (filled($message->payload['parent_tool_use_id'] ?? null) || $message->kind === Message::KIND_TOOL_RESULT) {
+                continue;
+            }
+
+            if ($message->isAgentCall()) {
+                $agents[] = $message;
+
+                continue;
+            }
+
+            if ($agents !== []) {
+                $rows[] = ['agents' => true, 'messages' => $agents];
+                $agents = [];
+            }
+
+            $rows[] = ['agents' => false, 'messages' => [$message]];
+        }
+
+        if ($agents !== []) {
+            $rows[] = ['agents' => true, 'messages' => $agents];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The messages of each subagent, by the id of the call that started it.
+     *
+     * @return Collection<array-key, Collection<int, Message>>
+     */
+    #[Computed]
+    public function children(): Collection
+    {
+        return $this->messages()
+            ->filter(fn (Message $message) => filled($message->payload['parent_tool_use_id'] ?? null) && $message->kind !== Message::KIND_TOOL_RESULT)
+            ->groupBy(fn (Message $message) => (string) $message->payload['parent_tool_use_id']);
     }
 
     /** @return Collection<int, Message> */
@@ -302,13 +429,23 @@ class Chat extends Component
 
     private function reload(): void
     {
+        $wasBusy = $this->conversation->isBusy();
         $this->conversation->refresh();
-        unset($this->messages, $this->toolResults, $this->pending);
+        unset($this->messages, $this->toolResults, $this->pending, $this->rows, $this->children);
         $this->dispatch('chat-updated');
 
         if ($this->signal !== $this->conversation->signal()) {
             $this->signal = $this->conversation->signal();
             $this->dispatch('conversation-signal');
+        }
+
+        if ($this->sandboxStatus !== $this->conversation->sandboxStatus()) {
+            $this->sandboxStatus = $this->conversation->sandboxStatus();
+            $this->dispatch('sandbox-updated');
+            $this->readSandbox();
+        } elseif ($this->conversation->sandboxReady() && ($wasBusy || $this->sandboxInfo === null) && ! $this->conversation->isBusy()) {
+            // a turn just ended: what it changed in the sandbox
+            $this->readSandbox();
         }
     }
 
@@ -320,6 +457,7 @@ class Chat extends Component
             'efforts' => (array) config('studio.efforts', []),
             'modes' => array_intersect_key((array) config('studio.modes', []), array_flip($this->allowedModes())),
             'mcpNames' => array_keys((new BridgeClient($this->conversation->workspace))->mcpServers($this->conversation) ?? []),
+            'browser' => $this->conversation->workspace->project->agentSettings()['browser'],
         ]);
     }
 }

@@ -43,6 +43,7 @@ import {
 } from './git.js';
 import { CommandError, RunManager } from './commands.js';
 import { FileError, Files } from './files.js';
+import { Sandboxes } from './sandboxes.js';
 
 export const VERSION = createRequire(import.meta.url)('../package.json').version;
 
@@ -52,9 +53,10 @@ export const VERSION = createRequire(import.meta.url)('../package.json').version
  */
 export function createServer(config, options = {}) {
   const log = config.log ? (message) => console.log(`[bridge] ${message}`) : () => {};
-  const sessions = new SessionManager(config, { ...options, log });
+  const sandboxes = new Sandboxes(config.workspaceDir, config.sandboxRoot);
+  const sessions = new SessionManager(config, { ...options, log, sandboxes });
   const runs = new RunManager(config, { spawn: options.spawnCommand });
-  const files = new Files(config.workspaceDir, { maxBytes: config.fileMaxBytes });
+  const workspaceFiles = new Files(config.workspaceDir, { maxBytes: config.fileMaxBytes });
   const startedAt = Date.now();
 
   const server = http.createServer(async (req, res) => {
@@ -70,17 +72,43 @@ export function createServer(config, options = {}) {
       if (!authorized(req, config.token)) return json(res, 401, { error: 'invalid bridge token' });
 
       if (req.method === 'GET' && path === '/info') {
-        return json(res, 200, { version: VERSION, workspace: config.workspaceDir, claude: config.claudeBin, sessions: sessions.list() });
+        return json(res, 200, { version: VERSION, workspace: config.workspaceDir, claude: config.claudeBin, browser: Boolean(config.browserCmd), sandboxes: sandboxes.root, sessions: sessions.list() });
       }
 
       let match;
+
+      // The Changes, Terminal and Files tabs of a sandboxed conversation: the same routes, in its worktree.
+      const sandbox = req.headers['x-studio-sandbox'];
+      const dir = sandbox ? sandboxes.resolve(String(sandbox)) : config.workspaceDir;
+      const files = sandbox ? new Files(dir, { maxBytes: config.fileMaxBytes }) : workspaceFiles;
+
+      if (req.method === 'POST' && path === '/sandboxes') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 201, await sandboxes.create(body.name, { branch: body.branch, base: body.base ?? null }));
+      }
+
+      if ((match = /^\/sandboxes\/([^/]+)$/.exec(path)) && req.method === 'GET') {
+        return json(res, 200, await sandboxes.state(decodeURIComponent(match[1])));
+      }
+
+      if ((match = /^\/sandboxes\/([^/]+)\/commit$/.exec(path)) && req.method === 'POST') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 200, await sandboxes.commit(decodeURIComponent(match[1]), body.message));
+      }
+
+      if ((match = /^\/sandboxes\/([^/]+)$/.exec(path)) && req.method === 'DELETE') {
+        const name = decodeURIComponent(match[1]);
+        // its conversation's Claude Code works in there: stop it first
+        await sessions.stopIn(sandboxes.dir(name));
+        return json(res, 200, await sandboxes.remove(name, { deleteBranch: ['1', 'true'].includes(url.searchParams.get('branch') ?? '') }));
+      }
 
       if (req.method === 'GET' && path === '/skills') {
         return json(res, 200, { skills: await listSkills(config.workspaceDir) });
       }
 
       if (path === '/git' || path.startsWith('/git/')) {
-        await gitRoute(req, res, path, url, config);
+        await gitRoute(req, res, path, url, config, dir);
         if (res.writableEnded) return;
       }
 
@@ -118,7 +146,7 @@ export function createServer(config, options = {}) {
 
       if (req.method === 'POST' && path === '/run') {
         const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 202, runs.start(body.command));
+        return json(res, 202, runs.start(body.command, { cwd: dir }));
       }
 
       if (req.method === 'GET' && path === '/run') {
@@ -185,8 +213,7 @@ export function createServer(config, options = {}) {
 }
 
 /** The git routes: what the Changes tab of Studio reads and does in the workspace's repository. */
-async function gitRoute(req, res, path, url, config) {
-  const dir = config.workspaceDir;
+async function gitRoute(req, res, path, url, config, dir) {
   const query = (name) => url.searchParams.get(name);
   const flag = (name) => ['1', 'true'].includes(query(name) ?? '');
   const body = req.method === 'POST' ? await readJson(req, config.maxBodyBytes) : {};

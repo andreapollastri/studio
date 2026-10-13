@@ -146,6 +146,7 @@
                 <flux:radio value="server" :label="__('Server')" />
                 <flux:radio value="access" :label="__('Access')" />
                 <flux:radio value="mcp" :label="__('MCP')" />
+                <flux:radio value="agent" :label="__('Agent')" />
             </flux:radio.group>
 
             @if ($settingsTab === 'server')
@@ -258,6 +259,18 @@
                         </div>
                         <flux:text class="text-xs">{{ __('Changes reach each chat with its next message. The value of the header is stored encrypted and shown only as its name.') }}</flux:text>
                     </div>
+                </div>
+            @endif
+
+            @if ($settingsTab === 'agent')
+                <div class="space-y-4">
+                    <div>
+                        <flux:heading size="sm">{{ __('What the agent gets in this project') }}</flux:heading>
+                        <flux:text class="mt-1 text-xs">{{ __('Every chat is Claude Code with its subagents; Studio adds its own code-reviewer and, with the browser, browser-qa.') }}</flux:text>
+                    </div>
+                    <flux:checkbox wire:model="agent_browser" :label="__('Browser for the agent')" :description="__('A headless Chromium (Playwright MCP) signed in to the preview as the person: Claude opens pages, takes screenshots, reads the console and failed requests. The screenshots show in the chat. It sees what the person may see, through the same access rules.')" />
+                    <flux:checkbox wire:model.live="agent_sandboxes" :label="__('Conversations in a sandbox')" :description="__('A git worktree of the person\'s workspace on its own branch, with a copy of its database and a preview of its own (<person>-<project>--c<id>). Several work at once without touching each other; the person merges or pushes the one they keep. Queues run inline there, and the scheduler and Reverb are off.')" />
+                    <flux:input type="number" min="1" max="10" wire:model="agent_sandbox_limit" :label="__('Sandboxes per person')" :description="__('Each one is a database, a build and a few hundred MB on disk.')" :disabled="! $agent_sandboxes" class="max-w-40" />
                 </div>
             @endif
 

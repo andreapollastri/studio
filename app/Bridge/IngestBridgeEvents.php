@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\PermissionRequest;
 use App\Models\Workspace;
+use App\Support\ConversationImages;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -50,6 +51,7 @@ final class IngestBridgeEvents
                 'text_delta' => ConversationUpdated::dispatch($conversation->uuid, 'text_delta', ['text' => (string) ($event['text'] ?? '')]),
                 'status' => $this->status($conversation, $event),
                 'plan_usage' => $this->planUsage($conversation, $event),
+                'task' => $this->task($conversation, $event),
                 default => $this->raw($conversation, $event),
             };
 
@@ -210,6 +212,8 @@ final class IngestBridgeEvents
                 'name' => $event['name'] ?? null,
                 'input' => $event['input'] ?? [],
                 'parent_tool_use_id' => $event['parent_tool_use_id'] ?? null,
+                // calls of one assistant message ran together: the chat shows parallel subagents side by side
+                'message_id' => $event['message_id'] ?? null,
             ],
         ]);
 
@@ -228,8 +232,70 @@ final class IngestBridgeEvents
             'kind' => Message::KIND_TOOL_RESULT,
             'content' => Str::limit(is_string($content) ? $content : (json_encode($content, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: ''), 20000, '…'),
             'tool_use_id' => $event['tool_use_id'] ?? null,
-            'payload' => ['is_error' => (bool) ($event['is_error'] ?? false)],
+            'payload' => array_filter([
+                'is_error' => (bool) ($event['is_error'] ?? false),
+                'parent_tool_use_id' => $event['parent_tool_use_id'] ?? null,
+                'images' => $this->images($conversation, $event['images'] ?? null),
+            ], fn ($value) => $value !== null && $value !== []),
         ]);
+    }
+
+    /**
+     * The screenshots of a tool result, stored on Studio's disk; one the bridge left out for its
+     * size is kept as a note of it.
+     *
+     * @return list<array{file?: string, type: string, bytes: int, omitted?: bool}>
+     */
+    private function images(Conversation $conversation, mixed $images): array
+    {
+        $kept = [];
+
+        foreach (array_slice(is_array($images) ? $images : [], 0, 4) as $image) {
+            if (! is_array($image) || ! is_string($image['media_type'] ?? null)) {
+                continue;
+            }
+
+            if (! is_string($image['data'] ?? null)) {
+                $kept[] = ['type' => $image['media_type'], 'bytes' => (int) ($image['omitted_bytes'] ?? 0), 'omitted' => true];
+
+                continue;
+            }
+
+            $stored = ConversationImages::store($conversation, $image['media_type'], $image['data']);
+
+            if ($stored !== null) {
+                $kept[] = $stored;
+            }
+        }
+
+        return $kept;
+    }
+
+    /**
+     * A subagent (or a background command) started or ended: kept on the tool call that
+     * started it, which the chat draws as the agent's card.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private function task(Conversation $conversation, array $event): void
+    {
+        $toolUseId = (string) ($event['tool_use_id'] ?? '');
+        $call = $toolUseId === '' ? null : $conversation->messages()->where('kind', Message::KIND_TOOL_USE)->where('tool_use_id', $toolUseId)->first();
+
+        if ($call === null) {
+            return;
+        }
+
+        $payload = (array) $call->payload;
+        $payload['task'] = array_filter([
+            ...(array) ($payload['task'] ?? []),
+            'id' => $event['task_id'] ?? null,
+            'status' => $event['status'] ?? null,
+            'summary' => $event['summary'] ?? null,
+            ($event['phase'] ?? '') === 'finished' ? 'finished_at' : 'started_at' => now()->toIso8601String(),
+        ], fn ($value) => $value !== null);
+
+        $call->forceFill(['payload' => $payload])->save();
     }
 
     /**
