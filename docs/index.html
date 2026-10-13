@@ -1958,8 +1958,10 @@
         <p>One wildcard record is enough: <code>*.&lt;domain&gt;</code> → the server. When a browser asks for
           <code>maria-shop.&lt;domain&gt;</code> for the first time, Caddy calls
           <code>http://127.0.0.1:8081/api/tls/ask?domain=…</code>; Studio answers 200 for its own host, a project slug or a
-          workspace preview it knows, 404 for anything else, and Caddy issues the certificate. A host nobody created is never
-          issued a certificate, which also keeps the rate limits quiet.</p>
+          workspace preview it knows, and Caddy issues the certificate. Any other name under the domain shows Studio's
+          welcome page; it gets a certificate too, but only for a few new names a day
+          (<code>STUDIO_WELCOME_CERTIFICATES_PER_DAY</code>, default 3), so that strangers typing random names cannot use up
+          the Let's Encrypt limits the real hosts need. Past that, an unknown name gets no certificate at all.</p>
 
 
         <details class="more">

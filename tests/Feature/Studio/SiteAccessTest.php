@@ -83,6 +83,17 @@ test('the gatekeeper sends a stranger to the Studio login, and turns away an add
     $this->withHeaders(['X-Forwarded-Host' => 'nobody.dev.example.test'])->get('/api/site-auth')->assertNotFound();
 });
 
+test('a name nobody configured gets Studio\'s welcome page, which links to Studio', function () {
+    config(['app.url' => 'https://studio.dev.example.test']);
+
+    $this->withHeaders(['X-Forwarded-Host' => 'fasfafas.dev.example.test', 'X-Forwarded-Uri' => '/any/path'])->get('/api/site-auth')
+        ->assertNotFound()
+        ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
+        ->assertSee('Nothing here yet')
+        ->assertSee('fasfafas.dev.example.test')
+        ->assertSee('href="https://studio.dev.example.test"', false);
+});
+
 test('a member goes from the Studio login back to the host with a one-time token, which becomes a pass for that host only', function () {
     $member = User::factory()->create();
     $project = Project::factory()->create(['slug' => 'shop', 'settings' => []]);

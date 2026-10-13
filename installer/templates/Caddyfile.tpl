@@ -52,7 +52,8 @@ https:// {
     }
 
     # Every project host (site, /larapilot, previews, unknown names) asks Studio first: a person
-    # logged in to Studio with access to the project, from an allowed address, or no page at all.
+    # logged in to Studio with access to the project, from an allowed address, or no page at all;
+    # a name nobody configured gets Studio's welcome page from it.
     # Here and not in each host's file, so that no host is ever served without it.
     forward_auth @not_studio 127.0.0.1:8081 {
         uri /api/site-auth

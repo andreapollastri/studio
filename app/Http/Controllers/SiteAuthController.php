@@ -22,8 +22,9 @@ class SiteAuthController extends Controller
         $host = strtolower((string) ($request->header('X-Forwarded-Host') ?: $request->getHost()));
         $target = $access->resolveHost($host);
 
+        // A name nobody configured: Caddy hands this answer to the visitor as is, so it is Studio's welcome page.
         if ($target === null) {
-            return response(__('Unknown host.'), 404);
+            return response()->view('site.welcome', ['host' => $host], 404);
         }
 
         $uri = (string) $request->header('X-Forwarded-Uri', '/');

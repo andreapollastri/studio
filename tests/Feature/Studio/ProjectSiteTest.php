@@ -173,14 +173,23 @@ test('deleting a person removes their workspaces from the server, with their tok
         ->and(Workspace::query()->where('user_id', $maria->id)->count())->toBe(0);
 });
 
-test('Caddy may issue certificates only for hosts Studio knows', function () {
+test('Caddy may issue certificates for hosts Studio knows, and for a few unknown names a day, once each', function () {
+    config(['studio.welcome_certificates_per_day' => 2]);
     $project = Project::factory()->create(['slug' => 'shop']);
     $workspace = Workspace::factory()->create(['project_id' => $project->id, 'app_url' => 'https://maria-shop.dev.example.test']);
 
     $this->get(route('api.tls.ask', ['domain' => 'studio.dev.example.test']))->assertOk();
     $this->get(route('api.tls.ask', ['domain' => 'shop.dev.example.test']))->assertOk();
     $this->get(route('api.tls.ask', ['domain' => 'maria-shop.dev.example.test']))->assertOk();
-    $this->get(route('api.tls.ask', ['domain' => 'evil.dev.example.test']))->assertNotFound();
+    // the welcome page's names: a retry of the same one is free, a third new one waits for tomorrow
+    $this->get(route('api.tls.ask', ['domain' => 'one.dev.example.test']))->assertOk();
+    $this->get(route('api.tls.ask', ['domain' => 'one.dev.example.test']))->assertOk();
+    $this->get(route('api.tls.ask', ['domain' => 'two.dev.example.test']))->assertOk();
+    $this->get(route('api.tls.ask', ['domain' => 'three.dev.example.test']))->assertNotFound();
+    // the real hosts never wait for that budget
+    $this->get(route('api.tls.ask', ['domain' => 'shop.dev.example.test']))->assertOk();
+    $this->get(route('api.tls.ask', ['domain' => 'a.b.dev.example.test']))->assertNotFound();
+    $this->get(route('api.tls.ask', ['domain' => '-bad.dev.example.test']))->assertNotFound();
     $this->get(route('api.tls.ask', ['domain' => 'shop.other.test']))->assertNotFound();
     $this->get(route('api.tls.ask'))->assertNotFound();
 });

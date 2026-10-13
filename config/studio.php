@@ -13,6 +13,11 @@ return [
     */
     'domain' => env('STUDIO_DOMAIN', 'localhost'),
 
+    // Any other <name>.<domain> shows Studio's welcome page. Its certificate is
+    // issued on demand like the others, but only for so many new names a day:
+    // Let's Encrypt allows 50 new certificates a week per registered domain.
+    'welcome_certificates_per_day' => (int) env('STUDIO_WELCOME_CERTIFICATES_PER_DAY', 3),
+
     /*
     |--------------------------------------------------------------------------
     | The git provider
