@@ -30,7 +30,7 @@ extract() {
         on { print; if (match($0, /<<.?[A-Z]+/)) { doc = substr($0, RSTART + 2, RLENGTH - 2); gsub(/[^A-Z]/, "", doc) } else if ($0 == "}") exit }
     ' "$ADMIN"
 }
-for fn in valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir ensure_claude_policy field has_field git_identity cmd_git_cli; do
+for fn in valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir ensure_claude_policy field has_field git_identity cmd_git_cli set_env unset_env write_workspace_env workspace_agent_env; do
     def=$(extract "$fn"); [ -n "$def" ] || fail "no function $fn in studio-admin"
     eval "$def"
 done
@@ -161,5 +161,28 @@ ok "git-cli installs the forge's CLI through the release's ensure_git_cli and an
 
 grep -qE '^    git-cli\)' "$ADMIN" && grep -qE '^    claude-forget\)' "$ADMIN" || fail "git-cli and claude-forget are dispatched"
 ok "the new commands are dispatched"
+
+# ---------------------------------------------------------------- the workspace's environment
+
+# Studio sends claude_api_key empty (a key goes with each turn): the helper ran under set -e and
+# stopped at the empty test that ended write_workspace_env ("stopped at: [ -n "$claude_api_key" ]").
+GIT_AGENT_VARS=(GITHUB_TOKEN GH_TOKEN); ASKPASS=/askpass; BROWSERS="$T/no-browsers"
+W_ENV="$T/ws.env"; W_USER=ws-maria; W_HOME="$T/home/ws-maria"; W_DIR="$T/ws"; W_SANDBOXES="$T/sandboxes"
+chown() { :; }
+# the helper runs on Ubuntu with GNU sed; BSD sed (macOS) wants the suffix of -i as an argument of its own
+if ! sed --version >/dev/null 2>&1; then
+    sed() { if [ "$1" = -i ]; then shift; command sed -i '' "$@"; else command sed "$@"; fi; }
+fi
+for input in '{"bridge_token":"b","bridge_port":"42001","claude_api_key":null}' '{"bridge_token":"b","claude_api_key":""}' '{"bridge_token":"b"}'; do
+    rm -f "$W_ENV"
+    ( set -euo pipefail; INPUT=$input; write_workspace_env ) || fail "write_workspace_env stopped with $input"
+    grep -q '^BRIDGE_TOKEN=b$' "$W_ENV" || fail "the bridge token is written with $input"
+    if grep -q STUDIO_ANTHROPIC_API_KEY "$W_ENV"; then fail "no key is written with $input"; fi
+done
+( set -euo pipefail; INPUT='{"claude_api_key":"sk-ant-x"}'; write_workspace_env ) || fail "write_workspace_env with a key"
+grep -q '^STUDIO_ANTHROPIC_API_KEY=sk-ant-x$' "$W_ENV" || fail "a key sent is written"
+( set -euo pipefail; INPUT='{"claude_api_key":null}'; write_workspace_env ) || fail "write_workspace_env dropping a key"
+if grep -q STUDIO_ANTHROPIC_API_KEY "$W_ENV"; then fail "a key sent empty is removed"; fi
+ok "the workspace's environment is written under set -e whether a Claude key is sent, sent empty or not sent"
 
 printf '\nall studio-admin tests passed\n'

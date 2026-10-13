@@ -1894,7 +1894,7 @@
             role on each project: a developer here may be the PM there and a client elsewhere. The chat, the presets, the MCP
             servers, the shared passwords, folders and SSH connections and the attached infrastructure all read it. See
             <a href="#roles-per-project">A role per project</a>.</dd></dl>
-          <dl><dt>The project is a hub</dt><dd>Tabs in its header: <em>Workspace</em>, <em>Repository</em> (pull requests,
+          <dl><dt>The project is a hub</dt><dd>Tabs on a row of their own under its header: <em>Workspace</em>, <em>Repository</em> (pull requests,
             issues, branches, pipelines and releases, with your own account), <em>Infrastructure</em>, <em>Access</em> and,
             for administrators, <em>Settings</em>, now a page of its own. See <a href="#work-project">The project's
             tabs</a>.</dd></dl>
@@ -1908,8 +1908,8 @@
             goes into a project's <em>Infrastructure</em> tab, with the roles that see it, the roles that act on it and the
             actions they may run. Members never see the account behind it. See <a href="#infra-projects">Attached to
             projects</a>.</dd></dl>
-          <dl><dt>Navigation</dt><dd><em>Home</em> and <em>Projects</em> on top; <em>Tools</em> (Git, SSH terminal, Password
-            manager, Drive); <em>Infrastructure</em> and <em>Administration</em> fold away. See <a href="#work-home">The
+          <dl><dt>Navigation</dt><dd>The menu keeps its groups: <em>Studio</em> (Home, Projects), <em>Infrastructure</em>,
+            <em>Tools</em> (Git, SSH terminal, Password manager, Drive) and <em>Administration</em>. See <a href="#work-home">The
             menu</a>.</dd></dl>
         </div>
 
@@ -3090,10 +3090,10 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <table>
             <thead><tr><th>Group</th><th>Entries</th><th>Who</th></tr></thead>
             <tbody>
-              <tr><td>—</td><td><em>Home</em>, <em>Projects</em></td><td>Everyone</td></tr>
+              <tr><td><strong>Studio</strong></td><td><em>Home</em>, <em>Projects</em></td><td>Everyone</td></tr>
+              <tr><td><strong>Infrastructure</strong></td><td>The connectors that are on</td><td>Administrators</td></tr>
               <tr><td><strong>Tools</strong></td><td><em>Git</em>, <em>SSH terminal</em>, <em>Password manager</em>, <em>Drive</em></td><td>Everyone; the SSH terminal as <a href="#tools-ssh">its section</a> says</td></tr>
-              <tr><td><strong>Infrastructure</strong></td><td>A folding group with the connectors that are on</td><td>Administrators</td></tr>
-              <tr><td><strong>Administration</strong></td><td>A folding group: <em>Projects</em>, <em>People</em>, <em>Connectors</em>, <em>System</em></td><td>Administrators</td></tr>
+              <tr><td><strong>Administration</strong></td><td><em>Projects</em>, <em>People</em>, <em>Connectors</em>, <em>System</em></td><td>Administrators</td></tr>
             </tbody>
           </table>
         </div>
@@ -3106,7 +3106,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="section-header">
           <span class="section-label">Work</span>
           <h2>The project's tabs</h2>
-          <p>A project opens on its workspace; the tabs in its header lead to the rest of it. A tab shows only to who has
+          <p>A project opens on its workspace; the tabs on the row under its header lead to the rest of it. A tab shows only to who has
             something there.</p>
         </div>
         <div class="table-card">
@@ -3146,8 +3146,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           password for it is set; the SSH group shows only to who may use the SSH terminal. A folder says whether you may
           view it or view and edit it.</p>
         <figure class="shot shot-phone">
-          <img src="img/phone-project.png" alt="The Access tab on a phone: the project's tabs folded into one menu in the header" loading="lazy" width="780" height="1688" />
-          <figcaption><strong>On a phone.</strong> The tabs fold into a menu next to the project's name.</figcaption>
+          <img src="img/phone-project.png" alt="The Access tab on a phone: the project's tabs on their own row, scrolling sideways" loading="lazy" width="780" height="1688" />
+          <figcaption><strong>On a phone.</strong> The tabs keep their row and scroll sideways; the edge fades where there are more.</figcaption>
         </figure>
       </section>
 

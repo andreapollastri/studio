@@ -28,15 +28,17 @@
                     </div>
                 </a>
                 @can('delete', $item)
-                    <flux:button
-                        size="xs"
-                        variant="ghost"
-                        icon="trash"
-                        class="touch-reveal absolute! end-1 top-1.5 opacity-0 group-hover:opacity-100 focus:opacity-100 max-md:top-3"
-                        wire:click="confirmDelete('{{ $item->uuid }}')"
-                        :tooltip="__('Delete')"
-                        :aria-label="__('Delete the conversation')"
-                    />
+                    {{-- Positioned around the button: its tooltip wraps it, and the wrapper would take a line of its own under the link. --}}
+                    <div class="touch-reveal absolute end-1 top-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 max-md:top-3">
+                        <flux:button
+                            size="xs"
+                            variant="ghost"
+                            icon="trash"
+                            wire:click="confirmDelete('{{ $item->uuid }}')"
+                            :tooltip="__('Delete')"
+                            :aria-label="__('Delete the conversation')"
+                        />
+                    </div>
                 @endcan
             </div>
         @empty

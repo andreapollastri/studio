@@ -5,7 +5,8 @@
         @vite('resources/js/editor.js')
     </head>
     <body class="h-screen overflow-hidden max-xl:h-dvh bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
-        <div class="flex h-full flex-col">
+        {{-- --studio-top: how far down the page starts, for the panes that slide over it (resources/css/app.css). --}}
+        <div class="flex h-full flex-col" style="--studio-top: {{ isset($subnav) ? 'calc(5.5rem + 1px)' : '3rem' }}">
             <header class="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 px-3 dark:border-zinc-700 max-md:gap-2 max-md:px-2">
                 <a href="{{ route('home') }}" class="flex items-center gap-2 max-md:shrink-0" wire:navigate>
                     <x-app-logo-icon class="size-6" />
@@ -38,6 +39,12 @@
                     </flux:menu>
                 </flux:dropdown>
             </header>
+
+            @isset($subnav)
+                <div class="shrink-0 border-b border-zinc-200 dark:border-zinc-700">
+                    {{ $subnav }}
+                </div>
+            @endisset
 
             <main class="min-h-0 flex-1">
                 {{ $slot }}

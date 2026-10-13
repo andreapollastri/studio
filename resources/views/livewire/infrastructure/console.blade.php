@@ -202,11 +202,11 @@
                                             @elseif ($column->format === 'bool')
                                                 <flux:badge size="sm" :color="$column->value($row) ? 'green' : 'zinc'">{{ $text }}</flux:badge>
                                             @elseif ($column->format === 'mono')
-                                                <span class="font-mono text-xs break-all">{{ \Illuminate\Support\Str::limit($text, 160) }}</span>
+                                                <span @class(['font-mono text-xs', 'whitespace-nowrap' => mb_strlen($text) <= 40, 'break-all' => mb_strlen($text) > 40])>{{ \Illuminate\Support\Str::limit($text, 160) }}</span>
                                             @elseif ($column->format === 'date')
                                                 <span class="whitespace-nowrap text-xs text-zinc-500" title="{{ $column->value($row) }}">{{ $text }}</span>
                                             @else
-                                                <span @class(['font-medium' => $loop->first])>{{ \Illuminate\Support\Str::limit($text, 160) }}</span>
+                                                <span @class(['font-medium' => $loop->first, 'xl:whitespace-nowrap' => $loop->first && mb_strlen($text) <= 32])>{{ \Illuminate\Support\Str::limit($text, 160) }}</span>
                                             @endif
                                         </td>
                                     @endforeach

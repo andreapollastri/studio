@@ -37,9 +37,9 @@
         </section>
     @endif
 
-    <div class="grid gap-8 lg:grid-cols-3">
+    <div class="grid min-w-0 gap-8 lg:grid-cols-3">
         {{-- Conversations --}}
-        <div class="space-y-8 lg:col-span-2">
+        <div class="min-w-0 space-y-8 lg:col-span-2">
             @foreach ([
                 ['list' => $asking, 'title' => __('Waiting for you'), 'empty' => __('No conversation asks you anything.'), 'always' => true],
                 ['list' => $done, 'title' => __('Finished, not opened yet'), 'empty' => null, 'always' => false],
@@ -135,7 +135,7 @@
                 <flux:heading size="lg">{{ __('On your git hosts') }}</flux:heading>
                 <flux:link :href="route('git')" wire:navigate class="text-sm">{{ __('Open Git') }}</flux:link>
             </div>
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div class="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 @foreach ($gitAccounts as $account)
                     <livewire:home.git-inbox :account="$account->uuid" :key="'git-inbox-'.$account->uuid" />
                 @endforeach

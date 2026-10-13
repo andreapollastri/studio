@@ -6,10 +6,12 @@
 # updater state for the System page. Needs Google Chrome, Node 20+, sqlite3 and built assets
 # (npm run build).
 #
-#   tools/screenshots/run.sh [work dir]      → docs/img/*.png
+#   tools/screenshots/run.sh [work dir] [jobs file] [out dir]   → docs/img/*.png by default
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 WORK=${1:-$(mktemp -d)}
+JOBS=$(cd "$(dirname "${2:-$ROOT/tools/screenshots/jobs.json}")" && pwd)/$(basename "${2:-jobs.json}")
+OUT=${3:-$ROOT/docs/img}
 mkdir -p "$WORK"
 DB="$WORK/demo.sqlite"; LOGS="$WORK/logs"; mkdir -p "$LOGS"
 PIDS=()
@@ -59,6 +61,6 @@ sed -e "s#\${BASE}#http://127.0.0.1:8767#g" -e "s#\${BASE2}#http://127.0.0.1:876
     -e "s#\${CONV_PLAN}#$(q "select uuid from conversations where title = 'Release 1.4: what is missing'")#g" \
     -e "s#\${PROJECT_SHOP}#$(q "select uuid from projects where slug = 'shop-acme'")#g" \
     -e "s#\${MCP_ERRORS}#$(q "select uuid from project_mcp_servers where name = 'errors'")#g" \
-    "$ROOT/tools/screenshots/jobs.json" >"$WORK/jobs.json"
+    "$JOBS" >"$WORK/jobs.json"
 
-(cd "$ROOT/tools/screenshots" && node shots.mjs "$WORK/jobs.json" "$ROOT/docs/img")
+(cd "$ROOT/tools/screenshots" && node shots.mjs "$WORK/jobs.json" "$OUT")

@@ -1,7 +1,7 @@
-<div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
-    <a href="{{ route('git', ['connector' => $item->connector, 'account' => $item->uuid]) }}" wire:navigate class="flex items-center gap-2">
+<div class="min-w-0 overflow-hidden rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+    <a href="{{ route('git', ['connector' => $item->connector, 'account' => $item->uuid]) }}" wire:navigate class="flex min-w-0 items-center gap-2">
         <flux:icon :name="$definition->icon()" class="size-5 text-zinc-400" />
-        <span class="font-medium hover:underline">{{ $item->name }}</span>
+        <span class="truncate font-medium hover:underline">{{ $item->name }}</span>
         <span class="truncate text-xs text-zinc-500">{{ $item->host }}</span>
     </a>
     @if ($error)
@@ -16,9 +16,9 @@
                     @else
                         <ul class="mt-1 space-y-0.5">
                             @foreach (array_slice($rows, 0, 5, true) as $ref => $title)
-                                <li class="flex gap-2 text-sm">
+                                <li class="flex min-w-0 items-baseline gap-2 text-sm max-sm:flex-col max-sm:gap-0">
                                     <span class="shrink-0 font-mono text-xs text-zinc-500">{{ is_int($ref) ? '' : $ref }}</span>
-                                    <span class="truncate">{{ is_scalar($title) ? $title : '' }}</span>
+                                    <span class="min-w-0 max-w-full truncate">{{ is_scalar($title) ? $title : '' }}</span>
                                 </li>
                             @endforeach
                         </ul>

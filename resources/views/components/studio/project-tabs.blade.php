@@ -1,10 +1,11 @@
 @props(['project', 'current' => 'workspace'])
 
 {{--
-    The tabs of a project, in the header of each of its pages: the workspace (chat,
-    preview, changes), its repository on the git host, the infrastructure attached
-    to it, the passwords, SSH connections and folders tied to it, its settings.
-    A tab shows only to who has something there.
+    The tabs of a project, on a row of their own under the header of each of its pages:
+    the workspace (chat, preview, changes), its repository on the git host, the
+    infrastructure attached to it, the passwords, SSH connections and folders tied to
+    it, its settings. A tab shows only to who has something there. Narrow screens
+    scroll the row sideways, with the open tab brought into view.
 --}}
 @php
     $user = auth()->user();
@@ -17,29 +18,26 @@
     ]);
 @endphp
 
-<nav class="flex min-w-0 items-center" aria-label="{{ __('Project') }}">
-    {{-- Desktop and tablet: the tabs in a row --}}
-    <div class="flex items-center gap-0.5 max-md:hidden">
-        @foreach ($tabs as $key => $tab)
-            <a href="{{ $tab['route'] }}" wire:navigate @class([
-                'flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap transition',
-                'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-white' => $key === $current,
-                'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-800 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-200' => $key !== $current,
-            ]) @if ($key === $current) aria-current="page" @endif>
-                <flux:icon :name="$tab['icon']" variant="micro" class="size-3.5" />{{ $tab['label'] }}
-            </a>
-        @endforeach
-    </div>
-
-    {{-- Phone: the tab open, and the others in a menu --}}
-    <div class="md:hidden">
-        <flux:dropdown position="bottom" align="start">
-            <flux:button size="xs" variant="ghost" :icon="$tabs[$current]['icon'] ?? 'squares-2x2'" icon:trailing="chevron-down">{{ $tabs[$current]['label'] ?? __('Project') }}</flux:button>
-            <flux:menu>
-                @foreach ($tabs as $key => $tab)
-                    <flux:menu.item :icon="$tab['icon']" :href="$tab['route']" wire:navigate>{{ $tab['label'] }}</flux:menu.item>
-                @endforeach
-            </flux:menu>
-        </flux:dropdown>
-    </div>
+<nav
+    class="studio-subnav flex h-10 items-stretch gap-1 overflow-x-auto px-3 max-md:px-1"
+    aria-label="{{ __('Project') }}"
+    x-data="{
+        edges() {
+            const start = this.$el.scrollLeft > 4, end = this.$el.scrollLeft + this.$el.clientWidth < this.$el.scrollWidth - 4;
+            this.$el.dataset.overflow = start && end ? 'both' : (start ? 'start' : (end ? 'end' : ''));
+        },
+    }"
+    x-init="$el.querySelector('[aria-current]')?.scrollIntoView({ inline: 'nearest', block: 'nearest' }); $nextTick(() => edges())"
+    x-on:scroll.passive="edges()"
+    x-on:resize.window.debounce.100ms="edges()"
+>
+    @foreach ($tabs as $key => $tab)
+        <a href="{{ $tab['route'] }}" wire:navigate @class([
+            '-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 text-sm whitespace-nowrap transition',
+            'border-zinc-900 font-medium text-zinc-900 dark:border-white dark:text-white' => $key === $current,
+            'border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-800 dark:hover:border-zinc-600 dark:hover:text-zinc-200' => $key !== $current,
+        ]) @if ($key === $current) aria-current="page" @endif>
+            <flux:icon :name="$tab['icon']" variant="micro" class="size-4 opacity-80" />{{ $tab['label'] }}
+        </a>
+    @endforeach
 </nav>

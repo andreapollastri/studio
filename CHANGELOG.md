@@ -37,8 +37,10 @@ server is in `installer/upgrades/<version>.sh`.
 - **Service accounts**: in *Administration → Connectors → Git hosting*, the team's own tokens create repositories,
   register webhooks and deploy sites, and keep doing it when an administrator leaves. A project says which account
   deploys it (*Settings → General → Deployed with*); the list of projects shows a personal token in amber.
-- **Navigation**: Home and Projects; Tools (Git, SSH terminal, Password manager, Drive); Infrastructure and
-  Administration fold away.
+- **Navigation**: the menu keeps its groups, with *Home* and *Projects* under Studio and one *Git* under
+  Tools. A project's tabs sit on a row of their own under its header and scroll sideways on a phone; the
+  button that slides the workspace pane over the chat on a tablet, and the phone's tab bar, say *Preview*.
+  The conversation list is as tight as in 1.0 again (the delete button's tooltip took a line under each).
 
 
 ### The agent sees, delegates and works apart
@@ -136,6 +138,12 @@ server is in `installer/upgrades/<version>.sh`.
   account; new `claude-forget` (removes one, never following its links) and `git-cli <provider>`;
   `workspace-env` also re-applies the commit identity. Claude Code's managed settings deny reading
   `~/.claude-*` too (patched in place on existing servers).
+
+### Fixed
+- Creating a workspace stopped on the server with `studio-admin stopped (exit 1) at: [ -n "$claude_api_key" ]`
+  for everyone without an API key: Studio sends the key empty since it goes with each turn, and the empty test
+  ended the helper's function under `set -e`. The helper of this release writes the workspace's environment
+  whether a key is sent, sent empty or not sent (`tests/installer/studio-admin.test.sh`).
 
 ### Upgrading from 1.1
 Nothing to do by hand: the update migrates (every membership keeps the role its person had, the

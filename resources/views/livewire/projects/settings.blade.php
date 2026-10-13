@@ -1,10 +1,11 @@
 <div class="h-full overflow-y-auto">
     <x-slot:header>
-        <div class="flex min-w-0 items-center gap-3">
-            <a href="{{ route('studio.show', $project) }}" class="truncate text-sm font-medium" wire:navigate>{{ $project->name }}</a>
-            <x-studio.project-tabs :project="$project" current="settings" />
-        </div>
+        <x-studio.project-title :project="$project" />
     </x-slot:header>
+
+    <x-slot:subnav>
+        <x-studio.project-tabs :project="$project" current="settings" />
+    </x-slot:subnav>
 
     <div class="mx-auto flex max-w-6xl gap-8 p-6 max-md:flex-col max-md:gap-4 max-md:p-4">
         {{-- Sections --}}

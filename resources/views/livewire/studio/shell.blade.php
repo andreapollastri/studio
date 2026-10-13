@@ -14,20 +14,22 @@
     x-on:studio-view.window="view = $event.detail.view === 'pane' && view === 'pane' ? 'chat' : $event.detail.view"
 >
     <x-slot:header>
-        <div class="flex min-w-0 items-center gap-3">
-            <span class="truncate text-sm font-medium">{{ $project->name }}</span>
+        <x-studio.project-title :project="$project">
             @can('chat', $project)
                 {{-- Its own component: the header is drawn by the layout, outside this page's component. --}}
                 <livewire:studio.workspace-status :workspace="$workspace" :key="'status-'.$workspace->uuid" />
             @endcan
-            <x-studio.project-tabs :project="$project" current="workspace" />
-        </div>
+        </x-studio.project-title>
     </x-slot:header>
+
+    <x-slot:subnav>
+        <x-studio.project-tabs :project="$project" current="workspace" />
+    </x-slot:subnav>
 
     <x-slot:actions>
         {{-- Tablet: the pane is hidden next to the chat, this slides it over; a phone has the tab bar. --}}
         <div class="hidden shrink-0 md:block xl:hidden" x-data="{ open: false }" x-on:studio-view-changed.window="open = $event.detail.view === 'pane'">
-            <flux:button size="sm" variant="ghost" icon="window" x-on:click="$dispatch('studio-view', { view: 'pane' })" x-bind:class="open && 'bg-zinc-100 dark:bg-zinc-800'" :aria-label="__('Preview, changes, terminal and files')">{{ __('Workspace') }}</flux:button>
+            <flux:button size="sm" variant="ghost" icon="window" x-on:click="$dispatch('studio-view', { view: 'pane' })" x-bind:class="open && 'bg-zinc-100 dark:bg-zinc-800'" :aria-label="__('Preview, changes, terminal and files')">{{ __('Preview') }}</flux:button>
         </div>
     </x-slot:actions>
 
@@ -54,7 +56,12 @@
         <livewire:studio.conversation-list :project="$project" :workspace="$workspace" :current="$conversation?->uuid" :key="'conversations-'.$workspace->uuid.'-'.$conversation?->uuid" />
         <div class="border-t border-zinc-200 p-3 text-xs text-zinc-500 dark:border-zinc-700">
             @if ($project->dashboardUrl())
-                <flux:link :href="$project->dashboardUrl()" target="_blank" class="text-xs">{{ __('Larapilot dashboard on :host', ['host' => $project->siteHost()]) }}</flux:link>
+                {{-- The project's Larapilot dashboard, on its site: the backlog, the board, the releases. --}}
+                <a href="{{ $project->dashboardUrl() }}" target="_blank" rel="noopener" class="group/larapilot -m-1 flex items-center gap-2 rounded-md p-1 text-zinc-900 transition hover:bg-zinc-100 dark:text-white dark:hover:bg-zinc-800" title="{{ __('Larapilot dashboard on :host', ['host' => $project->siteHost()]) }}">
+                    <x-larapilot-logo class="size-6 shrink-0" />
+                    <span class="text-[15px] leading-none font-bold tracking-tight">larapilot</span>
+                    <flux:icon.arrow-up-right variant="micro" class="ms-auto size-3.5 text-zinc-400 transition group-hover/larapilot:text-zinc-700 dark:group-hover/larapilot:text-zinc-200" />
+                </a>
             @else
                 {{ __('The project site is not online yet.') }}
             @endif
@@ -110,7 +117,7 @@
 
     {{-- Phone: one panel at a time --}}
     <nav class="studio-tabbar" aria-label="{{ __('Project') }}">
-        @foreach (['list' => ['icon' => 'queue-list', 'label' => __('Conversations')], 'chat' => ['icon' => 'chat-bubble-left-right', 'label' => __('Chat')], 'pane' => ['icon' => 'window', 'label' => __('Workspace')]] as $key => $entry)
+        @foreach (['list' => ['icon' => 'queue-list', 'label' => __('Conversations')], 'chat' => ['icon' => 'chat-bubble-left-right', 'label' => __('Chat')], 'pane' => ['icon' => 'window', 'label' => __('Preview')]] as $key => $entry)
             <button
                 type="button"
                 class="flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition"

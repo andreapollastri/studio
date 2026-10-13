@@ -831,9 +831,11 @@ write_workspace_env() { # after workspace_paths; reads tokens from INPUT, keeps 
     # token here. An API key is kept apart from Claude Code's own variable: the bridge hands it
     # over as ANTHROPIC_API_KEY only to the conversations that run on it.
     sed -i '/^CLAUDE_CODE_OAUTH_TOKEN=/d; /^ANTHROPIC_API_KEY=/d' "$W_ENV"
+    # Studio sends the field empty since a key goes with each turn instead: an `if`, not `[ … ] &&`,
+    # or the empty test would be the function's last status and set -e would stop the caller.
     if has_field claude_api_key; then
         unset_env "$W_ENV" STUDIO_ANTHROPIC_API_KEY
-        [ -n "$claude_api_key" ] && set_env "$W_ENV" STUDIO_ANTHROPIC_API_KEY "$claude_api_key"
+        if [ -n "$claude_api_key" ]; then set_env "$W_ENV" STUDIO_ANTHROPIC_API_KEY "$claude_api_key"; fi
     fi
 }
 

@@ -103,6 +103,28 @@ select:focus[data-flux-control] {
 
 /* ---- Project area (layouts/studio + livewire/studio/shell) ---------------- */
 
+/* The project's tabs scroll sideways on a narrow screen, without a scrollbar in the way. */
+.studio-subnav {
+    scrollbar-width: none;
+}
+
+.studio-subnav::-webkit-scrollbar {
+    display: none;
+}
+
+/* When the tabs do not fit, the edge they continue past fades: there is more to swipe to. */
+.studio-subnav[data-overflow='end'] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+}
+
+.studio-subnav[data-overflow='both'] {
+    mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+
+.studio-subnav[data-overflow='start'] {
+    mask-image: linear-gradient(to right, transparent, #000 2.5rem);
+}
+
 .studio-backdrop,
 .studio-tabbar {
     display: none;
@@ -114,7 +136,7 @@ select:focus[data-flux-control] {
         display: flex;
         position: fixed;
         z-index: 40;
-        inset-block: 3rem 0;
+        inset-block: var(--studio-top, 3rem) 0;
         inset-inline-end: 0;
         width: min(40rem, calc(100% - 3rem));
         background: var(--color-white);
@@ -138,7 +160,7 @@ select:focus[data-flux-control] {
         display: block;
         position: fixed;
         z-index: 30;
-        inset: 3rem 0 0;
+        inset: var(--studio-top, 3rem) 0 0;
         background: rgb(0 0 0 / 0.4);
         animation: studio-fade-in 0.18s ease-out;
     }
