@@ -212,7 +212,7 @@
                                 <span @class(['text-green-400' => ($run['status'] ?? '') === 'done', 'text-red-400' => ($run['status'] ?? '') === 'failed'])>{{ $run['status'] ?? '' }}@if (isset($run['exit_code'])) · exit {{ $run['exit_code'] }}@endif</span>
                             @endif
                         </div>
-                        <pre class="whitespace-pre-wrap">{{ $run['output'] ?? '' }}@if ($run['truncated'] ?? false)
+                        <pre class="whitespace-pre-wrap">{{ \App\Support\Ansi::toHtml($run['output'] ?? '') }}@if ($run['truncated'] ?? false)
 [output truncated]@endif</pre>
                     @else
                         <div class="text-zinc-500">{{ __('Pick a shortcut or type a command.') }}</div>
@@ -220,7 +220,7 @@
                     @foreach ($runs as $earlier)
                         <details class="mt-3 text-zinc-400">
                             <summary class="cursor-pointer">$ {{ $earlier['command'] ?? '' }} · {{ $earlier['status'] ?? '' }}</summary>
-                            <pre class="mt-1 whitespace-pre-wrap">{{ $earlier['output'] ?? '' }}</pre>
+                            <pre class="mt-1 whitespace-pre-wrap">{{ \App\Support\Ansi::toHtml($earlier['output'] ?? '') }}</pre>
                         </details>
                     @endforeach
                 </div>

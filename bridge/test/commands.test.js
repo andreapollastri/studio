@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { parseCommand, RunManager, CommandError } from '../src/commands.js';
 import { testConfig, waitFor } from './helpers.js';
 
 test('useful commands pass, dangerous or shell-shaped ones do not', () => {
-  assert.deepEqual(parseCommand('php artisan larapilot:doctor --human').args, ['artisan', 'larapilot:doctor', '--human']);
+  assert.deepEqual(parseCommand('php artisan larapilot:doctor --human').args, ['artisan', '--ansi', 'larapilot:doctor', '--human']);
   assert.equal(parseCommand('vendor/bin/pest --compact').bin, 'php');
   assert.equal(parseCommand('git log --oneline -20').bin, 'git');
   assert.equal(parseCommand('composer install --no-dev').bin, 'composer');
@@ -17,6 +18,54 @@ test('useful commands pass, dangerous or shell-shaped ones do not', () => {
   ]) {
     assert.throws(() => parseCommand(bad), CommandError, bad);
   }
+});
+
+test('tools are asked for colours, unless the command already says', () => {
+  assert.deepEqual(parseCommand('composer install').args, ['--ansi', 'install']);
+  assert.deepEqual(parseCommand('composer install --no-ansi').args, ['install', '--no-ansi']);
+  assert.deepEqual(parseCommand('vendor/bin/pest --compact').args, ['vendor/bin/pest', '--colors=always', '--compact']);
+  assert.deepEqual(parseCommand('vendor/bin/pint --test').args, ['vendor/bin/pint', '--ansi', '--test']);
+  assert.deepEqual(parseCommand('git status').args, ['status']);
+  assert.deepEqual(parseCommand('npm run build').args, ['run', 'build']);
+});
+
+test('git runs coloured and NO_COLOR does not reach the command', async () => {
+  let seen;
+  const fake = (bin, args, options) => {
+    seen = options.env;
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    setImmediate(() => { child.stdout.emit('end'); child.stderr.emit('end'); child.emit('close', 0); });
+    return child;
+  };
+  process.env.NO_COLOR = '1';
+  try {
+    new RunManager(testConfig({ workspaceDir: process.cwd() }), { spawn: fake }).start('git status');
+  } finally {
+    delete process.env.NO_COLOR;
+  }
+  assert.equal(seen.NO_COLOR, undefined);
+  assert.equal(seen.GIT_CONFIG_KEY_0, 'color.ui');
+  assert.equal(seen.GIT_CONFIG_VALUE_0, 'always');
+});
+
+test('a character split across two chunks arrives whole', async () => {
+  let child;
+  const fake = () => {
+    child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    return child;
+  };
+  const runs = new RunManager(testConfig({ workspaceDir: process.cwd() }), { spawn: fake });
+  const started = runs.start('git status');
+  const bytes = Buffer.from('⇂ done');
+  child.stdout.emit('data', bytes.subarray(0, 1));
+  child.stdout.emit('data', bytes.subarray(1));
+  child.stdout.emit('end');
+  child.emit('close', 0);
+  assert.equal(runs.get(started.id).output, '⇂ done');
 });
 
 test('a run captures output, status and exit code, and is remembered', async () => {

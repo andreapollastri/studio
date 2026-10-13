@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { StringDecoder } from 'node:string_decoder';
 
 /**
  * The project terminal: a short list of binaries, each with the subcommands a
@@ -39,7 +40,7 @@ export function parseCommand(input) {
   if (bin.startsWith('vendor/bin/')) {
     const tool = bin.slice('vendor/bin/'.length);
     if (!['pest', 'pint', 'phpstan', 'phpunit', 'rector'].includes(tool)) throw new CommandError(`${bin} is not in the list.`);
-    return { bin: 'php', args: [bin, ...args], display: text };
+    return { bin: 'php', args: [bin, ...withColor(tool, args)], display: text };
   }
 
   const rule = RULES[bin];
@@ -49,7 +50,26 @@ export function parseCommand(input) {
   for (const pattern of rule.deny ?? []) {
     if (pattern.test(rest)) throw new CommandError(`${text} is not allowed from the terminal.`);
   }
-  return { bin, args, display: text };
+  return { bin, args: withColor(bin, args), display: text };
+}
+
+/**
+ * Output is piped, not a TTY, so most tools would print plain text; the pane
+ * renders ANSI colours, so ask for them unless the person chose otherwise.
+ * Symfony Console takes --ansi before the command name, PHPUnit and Pest
+ * --colors=always; git gets color.ui through the environment (see start).
+ */
+function withColor(tool, args) {
+  if (args.some((arg) => /^--(no-)?ansi$|^--colors(=|$)/.test(arg))) return args;
+  if (tool === 'pest' || tool === 'phpunit') return ['--colors=always', ...args];
+  if (tool === 'composer' || tool === 'pint' || tool === 'phpstan' || tool === 'rector') return ['--ansi', ...args];
+  if (tool === 'php') return [args[0], '--ansi', ...args.slice(1)];
+  return args;
+}
+
+function withoutNoColor(env) {
+  const { NO_COLOR, ...rest } = env;
+  return rest;
 }
 
 export class CommandError extends Error {
@@ -76,18 +96,32 @@ export class RunManager {
 
     const child = this.#spawn(bin, args, {
       cwd: this.#config.workspaceDir,
-      env: { ...process.env, CI: '1', NO_COLOR: '1', TERM: 'dumb', COMPOSER_NO_INTERACTION: '1' },
+      env: {
+        ...withoutNoColor(process.env),
+        CI: '1',
+        TERM: 'dumb',
+        FORCE_COLOR: '1',
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'color.ui',
+        GIT_CONFIG_VALUE_0: 'always',
+        COMPOSER_NO_INTERACTION: '1',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     run.child = child;
 
     const limit = this.#config.runOutputLimit ?? 200 * 1024;
-    const append = (chunk) => {
+    const append = (text) => {
+      if (text === '') return;
       if (run.output.length >= limit) { run.truncated = true; return; }
-      run.output += chunk.toString('utf8').slice(0, limit - run.output.length);
+      run.output += text.slice(0, limit - run.output.length);
     };
-    child.stdout.on('data', append);
-    child.stderr.on('data', append);
+    // One decoder per stream, so a character split across two chunks stays whole.
+    for (const stream of [child.stdout, child.stderr]) {
+      const decoder = new StringDecoder('utf8');
+      stream.on('data', (chunk) => append(decoder.write(chunk)));
+      stream.on('end', () => append(decoder.end()));
+    }
 
     const timer = setTimeout(() => {
       if (run.status === 'running') {
