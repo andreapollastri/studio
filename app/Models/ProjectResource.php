@@ -39,17 +39,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property list<string> $view_roles
  * @property list<string> $act_roles
  * @property list<string> $actions
+ * @property array<string, mixed>|null $settings what the project does with it (a Cipi app's MCP servers, tokens): encrypted
  * @property int|null $added_by
  * @property-read Project $project
  * @property-read ConnectorAccount $account
  */
-#[Fillable(['project_id', 'connector_account_id', 'section', 'resource_id', 'label', 'scope', 'view_roles', 'act_roles', 'actions', 'added_by'])]
+#[Fillable(['project_id', 'connector_account_id', 'section', 'resource_id', 'label', 'scope', 'view_roles', 'act_roles', 'actions', 'settings', 'added_by'])]
 class ProjectResource extends Model
 {
     /** @use HasFactory<ProjectResourceFactory> */
     use HasFactory;
 
     use HasPublicUuid;
+
+    protected $hidden = ['settings'];
 
     /** @return array<string, string> */
     protected function casts(): array
@@ -59,7 +62,41 @@ class ProjectResource extends Model
             'view_roles' => 'array',
             'act_roles' => 'array',
             'actions' => 'array',
+            'settings' => 'encrypted:array',
         ];
+    }
+
+    public function setting(string $key, mixed $default = null): mixed
+    {
+        return ($this->settings ?? [])[$key] ?? $default;
+    }
+
+    /** A Cipi app: the apps of a Cipi server's account. */
+    public function isCipiApp(): bool
+    {
+        return $this->section === 'apps' && $this->account->connector === 'cipi';
+    }
+
+    /**
+     * Whether this person's chats get the MCP servers that come with this resource: those who
+     * act on it (administrators always), when the administrators turned that server on.
+     *
+     * @param  'app'|'server'  $which
+     */
+    public function givesMcpTo(User $user, string $which): bool
+    {
+        // the app's agent is on unless turned off; the whole server only when turned on
+        if (! (bool) $this->setting('mcp_'.$which, $which === 'app')) {
+            return false;
+        }
+
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        $role = $user->roleIn($this->project);
+
+        return $role !== null && in_array($role->value, $this->act_roles, true);
     }
 
     /** @return BelongsTo<Project, $this> */

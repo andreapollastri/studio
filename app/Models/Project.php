@@ -365,7 +365,7 @@ class Project extends Model
     /**
      * The feature switches and the timezone as the server helper reads them.
      *
-     * @return array{scheduler: string, queues: string, reverb: string, reverb_port: int, horizon: string, pulse: string, timezone: string}
+     * @return array{scheduler: string, queues: string, reverb: string, reverb_port: int, horizon: string, pulse: string, timezone: string, public: string}
      */
     public function serviceInput(): array
     {
@@ -379,6 +379,8 @@ class Project extends Model
             'horizon' => $features['horizon'] ? '1' : '0',
             'pulse' => $features['pulse'] ? '1' : '0',
             'timezone' => $this->timezone(),
+            // a public site never shows a debug page
+            'public' => $this->isPublic('site') ? '1' : '0',
         ];
     }
 
@@ -390,17 +392,19 @@ class Project extends Model
 
     /**
      * Where the project hosts may be opened from. Every host (the deploy site, each workspace
-     * preview) always wants a person logged in to Studio with access to the project; an address
-     * list narrows that to people coming from those addresses, for the site, the previews, or a
-     * single branch. An old "public" mode in the settings is ignored.
+     * preview) wants a person logged in to Studio with access to the project, unless an
+     * administrator made the site, or the site and the previews, public; an address list narrows
+     * either to people coming from those addresses, for the site, the previews, or a single
+     * branch. Public previews come only with a public site. An old "public" mode is ignored.
      *
-     * @return array{site: array{ips: list<string>}, previews: array{ips: list<string>}, branches: list<array{branch: string, ips: list<string>}>}
+     * @return array{site: array{ips: list<string>}, previews: array{ips: list<string>}, branches: list<array{branch: string, ips: list<string>}>, public: array{site: bool, previews: bool}}
      */
     public function access(): array
     {
         $stored = (array) ($this->settings['access'] ?? []);
         $ips = fn (mixed $raw): array => array_values(array_filter(array_map(fn ($ip) => trim((string) $ip), (array) (((array) $raw)['ips'] ?? [])), fn (string $ip) => $ip !== ''));
         $branches = [];
+        $public = ['site' => (((array) ($stored['public'] ?? []))['site'] ?? false) === true, 'previews' => (((array) ($stored['public'] ?? []))['previews'] ?? false) === true];
 
         foreach ((array) ($stored['branches'] ?? []) as $override) {
             $branch = trim((string) (((array) $override)['branch'] ?? ''));
@@ -414,6 +418,10 @@ class Project extends Model
             'site' => ['ips' => $ips($stored['site'] ?? [])],
             'previews' => ['ips' => $ips($stored['previews'] ?? [])],
             'branches' => $branches,
+            'public' => [
+                'site' => $public['site'],
+                'previews' => $public['site'] && $public['previews'],
+            ],
         ];
     }
 
@@ -475,6 +483,17 @@ class Project extends Model
         }
 
         return $kind === 'site' ? $access['site'] : $access['previews'];
+    }
+
+    /**
+     * Whether a host of that kind opens without the Studio login. Previews (sandboxes included)
+     * are public only along with the site.
+     *
+     * @param  'site'|'preview'  $kind
+     */
+    public function isPublic(string $kind): bool
+    {
+        return $this->access()['public'][$kind === 'site' ? 'site' : 'previews'];
     }
 
     /** The repository path on its git host (`owner/repo`…), or null when no enabled host knows the address. */

@@ -3,6 +3,7 @@
 namespace App\Bridge;
 
 use App\Accounts\Accounts;
+use App\Mcp\NativeServers;
 use App\Models\Conversation;
 use App\Models\PermissionRequest;
 use App\Models\ProjectMcpServer;
@@ -765,19 +766,23 @@ final class BridgeClient
 
     /**
      * The project's MCP servers this person may use, for Claude Code in the
-     * workspace. The repository's own .mcp.json still applies on top.
+     * workspace: those that come with what is attached to the project (a Cipi
+     * app's agent, its server), then those added in its settings, which win on
+     * the same name. The repository's own .mcp.json still applies on top.
      *
      * @return array<string, array{type: string, url: string, headers: array<string, string>}>|null
      */
     public function mcpServers(Conversation $conversation): ?array
     {
-        $servers = $this->workspace->project->mcpServers()
+        $project = $this->workspace->project;
+        $servers = $project->mcpServers()
             ->where('enabled', true)
             ->orderBy('name')
             ->get()
             ->filter(fn (ProjectMcpServer $server) => $server->allows($conversation->user))
             ->mapWithKeys(fn (ProjectMcpServer $server) => [$server->name => $server->forBridge()])
             ->all();
+        $servers = [...NativeServers::for($project, $conversation->user), ...$servers];
 
         return $servers === [] ? null : $servers;
     }

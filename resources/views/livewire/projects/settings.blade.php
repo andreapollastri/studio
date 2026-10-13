@@ -178,7 +178,18 @@
                     @if ($tab === 'access')
                         <div>
                             <flux:heading size="lg">{{ __('Who opens the hosts') }}</flux:heading>
-                            <flux:text class="mt-1">{{ __('Every address of the project (the site, its /larapilot dashboard, every workspace preview) asks for a person logged in to Studio who is on the project, in any role, or an administrator. An address list narrows it further: one IP or CIDR per line, and from anywhere else nobody gets in. HTTPS is automatic on every host, previews included.') }}</flux:text>
+                            <flux:text class="mt-1">{{ __('Every address of the project (the site, its /larapilot dashboard, every workspace preview) asks for a person logged in to Studio who is on the project, in any role, or an administrator, unless you make it public below. An address list narrows it further: one IP or CIDR per line, and from anywhere else nobody gets in. HTTPS is automatic on every host, previews included.') }}</flux:text>
+                        </div>
+                        <div class="space-y-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                            <div>
+                                <flux:heading>{{ __('Public access') }}</flux:heading>
+                                <flux:text class="mt-1 text-sm">{{ __('Off by default. A public host skips the Studio login: anyone with the address opens it, as a real public website. The address lists still apply, and /larapilot always asks for the login.') }}</flux:text>
+                            </div>
+                            <flux:switch wire:model.live="site_public" :label="__('Public site')" :description="__('The site of the deploy branch, at :host and at every address of it. It runs with APP_ENV=staging and APP_DEBUG=false while public.', ['host' => $project->site_host ?: $project->defaultSiteHost()])" />
+                            <flux:switch wire:model.live="previews_public" :disabled="! $site_public" :label="__('Public workspace previews too')" :description="__('Every developer\'s preview and every sandbox of the project. While public they switch to APP_ENV=staging and APP_DEBUG=false, so no debug page or local-only tool reaches the open internet; behind the login again, they go back to APP_ENV=local and APP_DEBUG=true.')" />
+                            @if ($site_public)
+                                <flux:callout variant="warning" icon="globe-alt" :heading="$previews_public ? __('The site and every preview open to anyone, without the login.') : __('The site opens to anyone, without the login.')" :text="__('Saving applies it to the server: the hosts that change get their new APP_ENV and APP_DEBUG.')" />
+                            @endif
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <flux:textarea wire:model="site_ips" :label="__('Site (deploy branch): only from')" :description="__('Empty: from anywhere, after the login.')" rows="3" placeholder="203.0.113.0/24" class="font-mono text-xs" />
@@ -196,7 +207,7 @@
                                     <flux:button size="sm" variant="ghost" icon="trash" wire:click="removeBranchRule({{ $i }})">{{ __('Remove') }}</flux:button>
                                 </div>
                             @endforeach
-                            <flux:text class="text-xs">{{ __('A branch rule replaces the address list of the site when that is the deploy branch, and of every workspace that is on that branch. The login is always asked.') }}</flux:text>
+                            <flux:text class="text-xs">{{ __('A branch rule replaces the address list of the site when that is the deploy branch, and of every workspace that is on that branch. The login is asked unless the host is public.') }}</flux:text>
                         </div>
                     @endif
 

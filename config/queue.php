@@ -44,6 +44,16 @@ return [
             'after_commit' => false,
         ],
 
+        // Tools → Backups: a worker of its own (studio-backups), hours allowed per run
+        'backups' => [
+            'driver' => env('QUEUE_CONNECTION', 'database') === 'sync' ? 'sync' : 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'backups',
+            'retry_after' => 22500,
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),

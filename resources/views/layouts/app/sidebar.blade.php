@@ -46,6 +46,11 @@
                     <flux:sidebar.item icon="cloud" :href="route('drive')" :current="request()->routeIs('drive')" wire:navigate>
                         {{ __('Drive') }}
                     </flux:sidebar.item>
+                    @can('admin')
+                        <flux:sidebar.item icon="archive-box-arrow-down" :href="route('backups')" :current="request()->routeIs('backups')" wire:navigate>
+                            {{ __('Backups') }}
+                        </flux:sidebar.item>
+                    @endcan
                 </flux:sidebar.group>
 
                 @if (auth()->user()->isAdmin())

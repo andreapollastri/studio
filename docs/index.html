@@ -2728,18 +2728,26 @@
         <h3 id="setup-settings-access">Who opens the hosts</h3>
         <figure class="shot">
           <img src="img/project-settings-access.png" alt="The Who opens the hosts section: address lists for the site and for the previews, and branch overrides" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Settings → Who opens the hosts.</strong> Always the Studio login and the project; address lists
-            narrow it, per site, previews and branch.</figcaption>
+          <figcaption><strong>Settings → Who opens the hosts.</strong> The Studio login and the project, unless the site (and
+            the previews) are made public; address lists narrow it, per site, previews and branch.</figcaption>
         </figure>
         <p>Every address of a project is behind the Studio login: the site, its <code>/larapilot</code> dashboard and API,
           each workspace preview, any path. The visitor must be logged in to Studio and assigned to the project, in any
           role (developer, PM, client), or be an administrator; anyone else is sent to the Studio login page and comes back
-          after it, and a logged-in person who is not on the project gets a 403. There is no public mode: a preview runs
-          with <code>APP_DEBUG</code> on, a site with work not yet released, and neither is for the open internet.</p>
+          after it, and a logged-in person who is not on the project gets a 403. That is the default, and the right one: a
+          preview runs with <code>APP_DEBUG</code> on, a site with work not yet released.</p>
+        <p>When a project is meant for the open internet, an administrator turns on <em>Public site</em>: the site opens to
+          anyone, with no login, as a real public website. <em>Public workspace previews too</em> does the same for every
+          preview and sandbox of the project, and only along with the site; both are off by default. The address lists still
+          apply to a public host, and <code>/larapilot</code> always asks for the login. A public host never shows a debug
+          page: the site gets <code>APP_DEBUG=false</code>, and public previews and sandboxes switch from
+          <code>APP_ENV=local</code>, <code>APP_DEBUG=true</code> to <code>APP_ENV=staging</code>,
+          <code>APP_DEBUG=false</code> (in their <code>.env</code> and in their Caddy host), and back when they return behind
+          the login.</p>
         <div class="walkthrough-grid">
           <dl><dt>Only from</dt><dd>An address list for the site, one for the previews: one IP or CIDR per line. It narrows the
-            login, it never replaces it: from a listed address the visitor still logs in, from any other nobody gets in.
-            Empty means from anywhere, after the login.</dd></dl>
+            login, it never replaces it: from a listed address the visitor still logs in (or walks in, on a public host),
+            from any other nobody gets in. Empty means from anywhere.</dd></dl>
           <dl><dt>Branch overrides</dt><dd>A list for <code>feature/secret</code> replaces the site's list while that is the
             deploy branch, and the previews' list for every workspace that is on that branch. Studio remembers each
             workspace's branch from its Changes tab.</dd></dl>

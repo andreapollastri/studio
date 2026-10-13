@@ -88,6 +88,12 @@ class Settings extends Component
 
     // ---- Who may open the hosts
 
+    /** The site opens without the Studio login (its /larapilot dashboard still asks for it). */
+    public bool $site_public = false;
+
+    /** The workspace previews too; only along with the site. */
+    public bool $previews_public = false;
+
     public string $site_ips = '';
 
     public string $previews_ips = '';
@@ -166,6 +172,8 @@ class Settings extends Component
         $this->agent_browser = $agent['browser'];
         $this->agent_sandboxes = $agent['sandboxes'];
         $this->agent_sandbox_limit = $agent['sandbox_limit'];
+        $this->site_public = $access['public']['site'];
+        $this->previews_public = $access['public']['previews'];
         $this->site_ips = implode("\n", $access['site']['ips']);
         $this->previews_ips = implode("\n", $access['previews']['ips']);
         $this->branch_rules = array_map(fn (array $rule) => ['branch' => $rule['branch'], 'ips' => implode(', ', $rule['ips'])], $access['branches']);
@@ -259,6 +267,14 @@ class Settings extends Component
 
     /* ---------------------------------------------------------------- server, access, agent */
 
+    /** Previews are public only along with the site: a private site takes them back. */
+    public function updatedSitePublic(): void
+    {
+        if (! $this->site_public) {
+            $this->previews_public = false;
+        }
+    }
+
     public function addBranchRule(): void
     {
         $this->branch_rules[] = ['branch' => '', 'ips' => ''];
@@ -320,6 +336,7 @@ class Settings extends Component
                 'site' => ['ips' => $this->ipList($this->site_ips)],
                 'previews' => ['ips' => $this->ipList($this->previews_ips)],
                 'branches' => array_map(fn (array $rule) => ['branch' => trim($rule['branch']), 'ips' => $this->ipList($rule['ips'])], $this->branch_rules),
+                'public' => ['site' => $this->site_public, 'previews' => $this->site_public && $this->previews_public],
             ],
         ])]);
 

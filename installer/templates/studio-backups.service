@@ -1,0 +1,16 @@
+[Unit]
+Description=Studio backups worker
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=studio
+Group=studio
+WorkingDirectory=__STUDIO_DIR__
+# Tools → Backups: one run at a time, hours allowed for each (rclone and ssh do the copying)
+ExecStart=/usr/bin/__PHP__ artisan queue:work backups --queue=backups --sleep=5 --tries=1 --timeout=21600 --max-time=86400
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -11,8 +11,9 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
- * Caddy's `forward_auth` target for protected project hosts: 2xx lets the
- * request through to the app, anything else goes back to the visitor as is.
+ * Caddy's `forward_auth` target for every project host: 2xx lets the request
+ * through to the app (a public host, or a member), anything else goes back to
+ * the visitor as is.
  * It runs without a session; the visitor proves membership with the pass
  * cookie of that host (see SitePass), never with Studio's own cookie.
  */
@@ -29,14 +30,15 @@ class SiteAuthController extends Controller
         }
 
         $uri = (string) $request->header('X-Forwarded-Uri', '/');
-        $path = (string) parse_url($uri, PHP_URL_PATH);
+        // not parse_url: `//larapilot` would read as a host, with no path at all
+        $path = explode('?', $uri, 2)[0];
 
         if ($path === SitePass::CALLBACK) {
             return $this->redeem($uri, $host, $passes, $target['project']);
         }
 
         $user = $passes->userFromPass($request->cookies->get(SitePass::COOKIE), $host);
-        $decision = $access->decide($target['project'], $target['kind'], $target['workspace'], $this->clientIp($request), $user, $target['branch'] ?? null);
+        $decision = $access->decide($target['project'], $target['kind'], $target['workspace'], $this->clientIp($request), $user, $target['branch'] ?? null, $path);
 
         if ($decision === SiteAccess::ALLOW) {
             return response('', 204);

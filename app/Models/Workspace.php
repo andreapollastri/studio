@@ -130,11 +130,12 @@ class Workspace extends Model
     /**
      * The project's server features as the helper reads them, with this host's own Reverb port.
      *
-     * @return array{scheduler: string, queues: string, reverb: string, reverb_port: int, horizon: string, pulse: string}
+     * @return array{scheduler: string, queues: string, reverb: string, reverb_port: int, horizon: string, pulse: string, timezone: string, public: string}
      */
     public function serviceInput(): array
     {
-        return [...$this->project->serviceInput(), 'reverb_port' => $this->reverbPort()];
+        // a public preview runs as staging, without debug pages; behind the login, as local
+        return [...$this->project->serviceInput(), 'reverb_port' => $this->reverbPort(), 'public' => $this->project->isPublic('preview') ? '1' : '0'];
     }
 
     /**

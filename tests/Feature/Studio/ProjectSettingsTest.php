@@ -19,8 +19,9 @@ test('a project starts with the scheduler and the default queue on, Reverb off, 
         ->and($project->access()['site'])->toBe(['ips' => []])
         ->and($project->access()['previews'])->toBe(['ips' => []])
         ->and($project->access()['branches'])->toBe([])
+        ->and($project->access()['public'])->toBe(['site' => false, 'previews' => false])
         ->and($project->timezone())->toBe('UTC')
-        ->and($project->serviceInput())->toBe(['scheduler' => '1', 'queues' => 'default', 'reverb' => '0', 'reverb_port' => 9000 + $project->id, 'horizon' => '0', 'pulse' => '0', 'timezone' => 'UTC'])
+        ->and($project->serviceInput())->toBe(['scheduler' => '1', 'queues' => 'default', 'reverb' => '0', 'reverb_port' => 9000 + $project->id, 'horizon' => '0', 'pulse' => '0', 'timezone' => 'UTC', 'public' => '0'])
         // every host of a project runs its own Reverb: the preview never shares the site's port
         ->and($workspace->serviceInput()['reverb_port'])->toBe(20000 + $workspace->id)
         ->and($workspace->serviceInput()['queues'])->toBe('default');
@@ -143,4 +144,31 @@ test('applying the settings runs project-configure for the site and workspace-co
         ->toContain('"preview_host":"maria-shop.dev.example.test"')
         ->not->toContain('site_auth')
         ->not->toContain('preview_auth');
+});
+
+test('an administrator makes the site public, then the previews too; a private site takes the previews back', function () {
+    Queue::fake();
+    $admin = User::factory()->admin()->create();
+    $project = Project::factory()->online()->create(['slug' => 'shop']);
+
+    $settings = Livewire::actingAs($admin)
+        ->test(ProjectSettings::class, ['project' => $project, 'tab' => 'access'])
+        ->assertSet('site_public', false)
+        ->assertSet('previews_public', false)
+        ->assertSee('Public access')
+        ->set('site_public', true)
+        ->set('previews_public', true)
+        ->call('saveSettings')
+        ->assertHasNoErrors();
+
+    expect($project->fresh()->access()['public'])->toBe(['site' => true, 'previews' => true]);
+
+    $settings->set('site_public', false)
+        ->assertSet('previews_public', false)
+        ->set('previews_public', true)
+        ->call('saveSettings')
+        ->assertHasNoErrors();
+
+    expect($project->fresh()->access()['public'])->toBe(['site' => false, 'previews' => false]);
+    Queue::assertPushed(ConfigureProjectSite::class);
 });

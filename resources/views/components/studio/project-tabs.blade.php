@@ -4,7 +4,7 @@
     The tabs of a project, on a row of their own under the header of each of its pages:
     the workspace (chat, preview, changes), its repository on the git host, the
     infrastructure attached to it, the passwords, SSH connections and folders tied to
-    it, its settings. A tab shows only to who has something there. Narrow screens
+    it, its backups and its settings. A tab shows only to who has something there. Narrow screens
     scroll the row sideways, with the open tab brought into view.
 --}}
 @php
@@ -14,6 +14,7 @@
         'repository' => $user->can('chat', $project) ? ['label' => __('Repository'), 'icon' => 'code-bracket-square', 'route' => route('projects.repository', $project)] : null,
         'infrastructure' => $user->isAdmin() || $project->resources()->visibleTo($user)->exists() ? ['label' => __('Infrastructure'), 'icon' => 'server-stack', 'route' => route('projects.infrastructure', $project)] : null,
         'access' => ['label' => __('Access'), 'icon' => 'key', 'route' => route('projects.access', $project)],
+        'backups' => $user->isAdmin() ? ['label' => __('Backups'), 'icon' => 'archive-box-arrow-down', 'route' => route('projects.backups', $project)] : null,
         'settings' => $user->can('manage', $project) ? ['label' => __('Settings'), 'icon' => 'cog-6-tooth', 'route' => route('projects.settings', $project)] : null,
     ]);
 @endphp

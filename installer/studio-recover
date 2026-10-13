@@ -88,7 +88,7 @@ cmd_reload() {
     [ $# -eq 0 ] || usage
     echo "Rebuilding Studio's caches from $STUDIO_HOME/shared/.env…"
     artisan optimize --quiet
-    systemctl restart studio-queue studio-scheduler studio-reverb
+    systemctl restart studio-queue studio-backups studio-scheduler studio-reverb
     for v in /etc/php/*/fpm; do systemctl reload "php$(basename "$(dirname "$v")")-fpm" 2>/dev/null || true; done
     logger -t studio-recover -p auth.notice "Studio reloaded after a change to .env" 2>/dev/null || true
     echo "Done. Studio, its queue and its scheduler run on the new settings."

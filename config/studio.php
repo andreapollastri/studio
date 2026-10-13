@@ -109,6 +109,21 @@ return [
         'ticket_ttl' => (int) env('STUDIO_SSH_TICKET_TTL', 60),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Backups
+    |--------------------------------------------------------------------------
+    | Tools → Backups and the projects' Backups tab: rclone moves the data (S3
+    | and SFTP, any direction), ssh makes the archives on the source host. The
+    | runs go to the backups queue, which the studio-backups worker serves.
+    */
+    'backups' => [
+        'rclone' => env('STUDIO_RCLONE', 'rclone'),
+        'ssh' => env('STUDIO_SSH_BINARY', 'ssh'),
+        'ssh_keyscan' => env('STUDIO_SSH_KEYSCAN', 'ssh-keyscan'),
+        'timeout' => (int) env('STUDIO_BACKUP_TIMEOUT', 21600),
+    ],
+
     // The drive (Tools → Drive): files on the local disk under storage/app/private/drive.
     'drive' => [
         'max_upload_mb' => (int) env('STUDIO_DRIVE_MAX_UPLOAD_MB', 100),

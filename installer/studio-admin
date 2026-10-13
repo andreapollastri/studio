@@ -320,6 +320,17 @@ write_env() {
     set_env "$app/.env" SESSION_DRIVER redis
 }
 
+# preview_env — the APP_ENV of a preview or a sandbox: staging while the project opens its previews
+# to anyone (input field public=1), local behind the Studio login
+preview_env() { if [ "$(field public)" = 1 ]; then echo staging; else echo local; fi; }
+
+# apply_preview_env APPDIR ENV — APP_ENV and APP_DEBUG of a preview's .env: a public preview
+# (staging) never shows a debug page to the open internet, one behind the login (local) always does
+apply_preview_env() {
+    set_env "$1/.env" APP_ENV "$2"
+    if [ "$2" = staging ]; then set_env "$1/.env" APP_DEBUG false; else set_env "$1/.env" APP_DEBUG true; fi
+}
+
 # build USER APPDIR ENVFILE PHP MODE — MODE 1: a workspace (dev dependencies);
 # staging: the project site (dev dependencies too, since Larapilot and Boost are
 # dev dependencies and the site serves Larapilot's dashboard and API; autoloader
@@ -611,6 +622,8 @@ cmd_project_configure() {
     render_site "$P_SITE" "prj_$(dbname "$slug")" "$(site_hosts "$host")" "$P_APP" "$P_POOL" staging "$(reverb_port_if_on)"
     # the site may have moved to an address of its own (or back): its URL follows, apply_services re-caches it
     set_env "$P_APP/.env" APP_URL "https://$host"
+    # a public site is staging with no debug page, whatever its .env said; behind the login it is left as it is
+    if [ "$(field public)" = 1 ]; then set_env "$P_APP/.env" APP_ENV staging; set_env "$P_APP/.env" APP_DEBUG false; fi
     apply_services "$P_BASE" "$P_USER" "$P_APP" "$php" "$P_HOME" "$host"
     echo '{"ok":true}'
 }
@@ -895,6 +908,7 @@ cmd_workspace_create() {
     local seeded=0
     if db_clone "$engine" "prj_$(dbname "$slug")" "$W_DB" 2>/dev/null; then seeded=1; log "database seeded from the project site"; fi
     write_env "$W_DIR" "https://$host" local true "$engine" "$W_DB" "$dbpass" "ws_${handle}_${slug}_"
+    apply_preview_env "$W_DIR" "$(preview_env)"
     set_env "$W_DIR/.env" SESSION_COOKIE "ws_${handle}_${slug}_session"
     chown "$W_USER:$W_USER" "$W_DIR/.env"; chmod 600 "$W_DIR/.env"
 
@@ -905,7 +919,7 @@ cmd_workspace_create() {
 
     render "$TPL/fpm-pool.conf.tpl" "/etc/php/$php/fpm/pool.d/$W_POOL.conf" NAME="$W_POOL" USER="$W_USER" GROUP="$W_USER" MAX=4 LOG="$W_HOME/php-$slug.log"
     reload_fpm "$php"
-    render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"
+    render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" "$(preview_env)" "$(reverb_port_if_on)"
     apply_services "$W_BASE" "$W_USER" "$W_DIR" "$php" "$W_HOME" "$host"
     render "$TPL/bridge.service.tpl" "/etc/systemd/system/$W_UNIT.service" HANDLE="$handle" SLUG="$slug" USER="$W_USER" WORKSPACE_DIR="$W_DIR" ENV_FILE="$W_ENV" STUDIO_DIR="$STUDIO_DIR"
     systemctl daemon-reload
@@ -958,7 +972,7 @@ cmd_workspace_env() {
 cmd_workspace_start() {
     local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
     [ -f "/etc/systemd/system/$W_UNIT.service" ] || fail "workspace $handle/$slug does not exist"
-    if [ -f "$W_SITE" ]; then reload_caddy; else render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$(grep -E '^APP_URL=' "$W_DIR/.env" | cut -d= -f2- | sed 's#https://##')" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"; fi
+    if [ -f "$W_SITE" ]; then reload_caddy; else render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$(grep -E '^APP_URL=' "$W_DIR/.env" | cut -d= -f2- | sed 's#https://##')" "$W_DIR" "$W_POOL" "$(preview_env)" "$(reverb_port_if_on)"; fi
     [ -f "$W_ENV" ] && workspace_agent_env
     systemctl start "$W_UNIT"
     restart_services "$W_BASE"
@@ -983,9 +997,12 @@ cmd_workspace_configure() {
     local handle=$1 slug=$2; valid_name "$handle"; valid_name "$slug"; workspace_paths "$handle" "$slug"
     [ -d "$W_DIR/.git" ] || fail "workspace $handle/$slug does not exist"
     local php host; php=$(require_field php_version); host=$(require_field preview_host); valid_php "$php"; valid_host "$host"
-    render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"
-    # the previews may have moved to another domain: the app's URL follows
+    local env; env=$(preview_env)
+    render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" "$env" "$(reverb_port_if_on)"
+    # the previews may have moved to another domain: the app's URL follows; public or not, its environment too
     set_env "$W_DIR/.env" APP_URL "https://$host"
+    apply_preview_env "$W_DIR" "$env"
+    preview_env_of_sandboxes "$handle" "$slug" "$env"
     apply_services "$W_BASE" "$W_USER" "$W_DIR" "$php" "$W_HOME" "$host"
     # Claude and the terminal: from the next start of the workspace, a running chat is not cut off
     local tz; tz=$(project_timezone); [ -f "$W_ENV" ] && set_env "$W_ENV" TZ "$tz"
@@ -1052,6 +1069,7 @@ cmd_sandbox_create() {
     if db_clone "$engine" "$W_DB" "$S_DB" 2>/dev/null; then seeded=1; log "sandbox database copied from the workspace"; fi
     [ -f "$W_DIR/.env" ] && [ ! -f "$S_DIR/.env" ] && install -o "$W_USER" -g "$W_USER" -m 600 "$W_DIR/.env" "$S_DIR/.env"
     write_env "$S_DIR" "https://$host" local true "$engine" "$S_DB" "$dbpass" "sb_${id}_${handle}_${slug}_"
+    apply_preview_env "$S_DIR" "$(preview_env)"
     set_env "$S_DIR/.env" SESSION_COOKIE "sb_${id}_${handle}_${slug}_session"
     set_env "$S_DIR/.env" QUEUE_CONNECTION sync
     set_env "$S_DIR/.env" BROADCAST_CONNECTION log
@@ -1062,9 +1080,25 @@ cmd_sandbox_create() {
     grant_web "$S_DIR"
     [ "$seeded" = 1 ] || run_as "$W_USER" "$S_DIR" "$W_ENV" "php$php" artisan migrate --force --quiet || log "migrate failed"
     # the pool exists while the workspace does; the host reloads Caddy, or puts the old file back
-    render_site "$S_SITE" "$S_MATCHER" "$host" "$S_DIR" "$W_POOL" local ""
+    render_site "$S_SITE" "$S_MATCHER" "$host" "$S_DIR" "$W_POOL" "$(preview_env)" ""
 
     jq -n --arg u "https://$host" --arg p "$S_DIR" --arg d "$S_DB" '{ok:true, app_url:$u, path:$p, database:$d}'
+}
+
+# preview_env_of_sandboxes HANDLE SLUG ENV — the sandboxes of a workspace follow it, public or not: their
+# .env, and the APP_ENV line of their host's file (Studio's own file, never rendered again from a value
+# the workspace could have written)
+preview_env_of_sandboxes() {
+    local sb id changed=0
+    for sb in "$W_SANDBOXES"/c*; do
+        id=${sb##*/c}; [[ "$id" =~ ^[0-9]+$ ]] || continue
+        sandbox_paths "$1" "$2" "$id"
+        [ -f "$S_SITE" ] && [ -f "$S_DIR/.env" ] && [ ! -L "$S_DIR/.env" ] || continue
+        apply_preview_env "$S_DIR" "$3"
+        sed -i "s|^\( *env APP_ENV \).*|\1$3|" "$S_SITE"
+        changed=1
+    done
+    [ "$changed" = 0 ] || reload_caddy
 }
 
 cmd_sandbox_delete() {

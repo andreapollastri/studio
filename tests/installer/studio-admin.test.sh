@@ -203,4 +203,48 @@ touch "$T/x.test"
 if ( cd "$T" && fail() { admin_fail "$@"; }; INPUT='{"site_aliases":"*.test"}'; site_hosts a.test ) >/dev/null 2>&1; then fail "site_hosts globbed an alias"; fi
 ok "site_hosts: the site's host, then its aliases, each one checked"
 
+# ---------------------------------------------------------------- public previews
+
+# the helper's `sed -i` is GNU's; BSD sed (macOS) wants a suffix after -i
+if ! sed --version >/dev/null 2>&1; then sed() { if [ "$1" = -i ]; then shift; command sed -i '' "$@"; else command sed "$@"; fi; }; fi
+for fn in preview_env apply_preview_env preview_env_of_sandboxes; do
+    def=$(extract "$fn"); [ -n "$def" ] || fail "no function $fn in studio-admin"
+    eval "$def"
+done
+
+[ "$(INPUT='{"public":"1"}'; preview_env)" = staging ] || fail "a public preview is staging"
+[ "$(INPUT='{"public":"0"}'; preview_env)" = local ] || fail "a preview behind the login is local"
+[ "$(INPUT='{}'; preview_env)" = local ] || fail "a preview is local when nothing is said"
+ok "preview_env: staging when public, local otherwise"
+
+A="$T/preview"; mkdir -p "$A"; printf 'APP_NAME=Shop\nAPP_ENV=local\nAPP_DEBUG=true\n' > "$A/.env"
+apply_preview_env "$A" staging
+grep -qx 'APP_ENV=staging' "$A/.env" && grep -qx 'APP_DEBUG=false' "$A/.env" && grep -qx 'APP_NAME=Shop' "$A/.env" || fail "a public preview is staging without debug: $(cat "$A/.env")"
+apply_preview_env "$A" local
+grep -qx 'APP_ENV=local' "$A/.env" && grep -qx 'APP_DEBUG=true' "$A/.env" || fail "back behind the login, local with debug: $(cat "$A/.env")"
+[ "$(grep -c '^APP_' "$A/.env")" = 3 ] || fail "each key once: $(cat "$A/.env")"
+ok "apply_preview_env: staging without debug, local with debug"
+
+# the sandboxes' paths, under the test directory
+W_SANDBOXES="$T/sandboxes"
+sandbox_paths() { S_DIR="$W_SANDBOXES/c$3"; S_SITE="$T/caddy/sb-$3.caddy"; }
+reload_caddy() { RELOADS=$((RELOADS + 1)); }
+mkdir -p "$T/caddy" "$W_SANDBOXES/c7" "$W_SANDBOXES/c8" "$W_SANDBOXES/c9" "$W_SANDBOXES/cx"
+for n in 7 8 9; do printf 'APP_ENV=local\nAPP_DEBUG=true\n' > "$W_SANDBOXES/c$n/.env"; done
+for n in 7 9; do printf 'handle @sb {\n    php_fastcgi unix//run/php/p.sock {\n        env APP_ENV local\n    }\n}\n' > "$T/caddy/sb-$n.caddy"; done
+# c9's .env is a link the workspace could have planted: left alone
+rm "$W_SANDBOXES/c9/.env"; printf 'SECRET=1\n' > "$T/elsewhere"; ln -s "$T/elsewhere" "$W_SANDBOXES/c9/.env"
+RELOADS=0
+preview_env_of_sandboxes maria shop staging
+grep -qx 'APP_ENV=staging' "$W_SANDBOXES/c7/.env" && grep -qx 'APP_DEBUG=false' "$W_SANDBOXES/c7/.env" || fail "a sandbox follows its workspace: $(cat "$W_SANDBOXES/c7/.env")"
+grep -qx '        env APP_ENV staging' "$T/caddy/sb-7.caddy" || fail "its host's APP_ENV follows: $(cat "$T/caddy/sb-7.caddy")"
+grep -qx 'APP_ENV=local' "$W_SANDBOXES/c8/.env" || fail "a sandbox with no host is left as it is"
+{ [ "$(cat "$T/elsewhere")" = 'SECRET=1' ] && grep -qx '        env APP_ENV local' "$T/caddy/sb-9.caddy"; } || fail "a linked .env is not followed"
+[ "$RELOADS" = 1 ] || fail "Caddy reloads once, not $RELOADS times"
+preview_env_of_sandboxes maria shop local
+{ grep -qx 'APP_DEBUG=true' "$W_SANDBOXES/c7/.env" && grep -qx '        env APP_ENV local' "$T/caddy/sb-7.caddy"; } || fail "and back to local"
+RELOADS=0; W_SANDBOXES="$T/none"; preview_env_of_sandboxes maria shop staging
+[ "$RELOADS" = 0 ] || fail "no sandbox, no reload"
+ok "preview_env_of_sandboxes: every sandbox with a host follows the workspace, Caddy reloaded once"
+
 printf '\nall studio-admin tests passed\n'

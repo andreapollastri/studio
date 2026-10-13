@@ -3,6 +3,7 @@
 namespace App\Infrastructure\Connectors;
 
 use App\Infrastructure\Action;
+use App\Infrastructure\Cipi\CipiApp;
 use App\Infrastructure\ApiClient;
 use App\Infrastructure\Column;
 use App\Infrastructure\Connector;
@@ -14,7 +15,8 @@ use Illuminate\Support\Sleep;
 /**
  * Cipi servers (https://cipi.sh), one account per server with the Cipi API
  * installed (`cipi api`): the server's status, its apps (create, deploy,
- * rollback, SSL, aliases, .env, Artisan, logs, suspend), databases,
+ * rollback, releases, SSL, aliases, .env, Artisan, logs, disk, the anonymized
+ * database copy of the Cipi agent, suspend), databases,
  * services, SSH keys and PHP versions. Most changes run as background jobs
  * on the server: Studio waits a few seconds, then offers to check again.
  */
@@ -55,6 +57,12 @@ final class Cipi extends Connector
             Field::password('token', __('API token'))->required()
                 ->help(__('`cipi api token create` on the server, with the abilities to allow (all of them for full control). Add Studio\'s address to `cipi api ip-whitelist` if it is on.')),
         ];
+    }
+
+    /** The address of the Cipi API as typed: https://, no trailing slash. */
+    public static function address(mixed $url): string
+    {
+        return self::instanceUrl($url);
     }
 
     public function client(array $credentials): ApiClient
@@ -198,6 +206,12 @@ final class Cipi extends Connector
                 $this->appJob('deploy', __('Deploy'), 'rocket-launch', '/deploy'),
                 $this->appJob('rollback', __('Roll back'), 'arrow-uturn-left', '/deploy/rollback')->confirm(__('Go back to the previous release?')),
                 $this->appJob('unlock', __('Unlock the deploy'), 'lock-open', '/deploy/unlock')->confirm(__('Only when a deploy is stuck. Unlock?')),
+                Action::make('releases', __('Releases'))->icon('rectangle-stack')
+                    ->run(function (ApiClient $api, array $row) {
+                        $app = new CipiApp($api, (string) $row['app'], '', '');
+
+                        return Outcome::show(__('Releases of :app', ['app' => $row['app']]), $app->releases() ?? $app->agent()['reason'] ?? __('The Cipi agent\'s MCP server is off.'));
+                    }),
                 Action::make('audit', __('Deploy history'))->icon('clock')->run(fn (ApiClient $api, array $row) => Outcome::show(__('Deploys of :app', ['app' => $row['app']]), $api->get('/apps/'.$row['app'].'/deploy/audit')['data'] ?? [])),
                 Action::make('aliases', __('Aliases'))->icon('link')->opens('aliases', fn ($row) => ['app' => $row['app']]),
                 $this->appJob('ssl', __('Install SSL'), 'lock-closed', '/ssl')->fields([
@@ -249,6 +263,24 @@ final class Cipi extends Connector
                     ? Outcome::show(__('Password protection of :app', ['app' => $row['app']]), $api->post('/apps/'.$row['app'].'/basicauth/enable', array_filter(['user' => $data['user'], 'password' => $data['password']]))['data'] ?? [], __('Protected.'))
                     : tap(__('Protection removed.'), fn () => $api->post('/apps/'.$row['app'].'/basicauth/disable'))),
                 Action::make('health', __('Health check'))->icon('heart')->run(fn (ApiClient $api, array $row) => Outcome::show(__('Health of :app', ['app' => $row['app']]), $api->post('/apps/'.$row['app'].'/health/check')['data'] ?? [])),
+                Action::make('disk', __('Disk usage'))->icon('circle-stack')
+                    ->run(fn (ApiClient $api, array $row) => Outcome::show(__('Disk of :app', ['app' => $row['app']]), (new CipiApp($api, (string) $row['app'], '', ''))->disk() ?? __('This Cipi has no disk report (5.5.2 or later).'))),
+                Action::make('db-backup', __('Back up the database'))->icon('archive-box')->confirm(__('Dump the app\'s database on the server now?'))
+                    ->run(fn (ApiClient $api, array $row) => $this->job($api, 'POST', '/dbs/'.$row['app'].'/backup')),
+                Action::make('anonymize', __('Anonymized database copy'))->icon('eye-slash')->fields([
+                    Field::text('email', __('Send the download link to'))->required()->rules(['email'])->default(fn () => auth()->user()?->email),
+                    Field::checkbox('gzip', __('Compressed (.sql.gz)'))->default(true),
+                ])->run(function (ApiClient $api, array $row, array $data) {
+                    $app = new CipiApp($api, (string) $row['app'], '', '');
+                    $app->requestAnonymizedDump((string) $data['email'], (bool) $data['gzip']);
+
+                    return __('Queued in the app: a link to the anonymized dump reaches :email within minutes, valid :ttl minutes.', ['email' => $data['email'], 'ttl' => $app->anonymizer()['ttl']]);
+                }),
+                Action::make('anonymizer-config', __('Generate anonymization.json'))->icon('document-plus')
+                    ->confirm(__('Write ~/.db/anonymization.json on the server from the live schema (cipi:init-anonymize --scan)? An existing file is replaced.'))
+                    ->run(fn (ApiClient $api, array $row) => $this->job($api, 'POST', '/apps/'.$row['app'].'/artisan', ['command' => 'cipi:init-anonymize --scan --force'])),
+                Action::make('anonymizer-audit', __('Anonymizer audit'))->icon('shield-check')
+                    ->run(fn (ApiClient $api, array $row) => Outcome::show(__('Anonymization of :app', ['app' => $row['app']]), (new CipiApp($api, (string) $row['app'], '', ''))->anonymizerTool('audit'))),
                 Action::make('limits', __('Limits'))->icon('adjustments-horizontal')->run(fn (ApiClient $api, array $row) => Outcome::show(__('Limits of :app', ['app' => $row['app']]), $api->get('/apps/'.$row['app'].'/limits')['data'] ?? [])),
                 Action::make('details', __('Details'))->icon('eye')->run(fn (ApiClient $api, array $row) => Outcome::show($row['app'], $api->get('/apps/'.$row['app'])['data'] ?? $row)),
                 $this->appJob('fix-permissions', __('Fix permissions'), 'wrench-screwdriver', '/fix-permissions')->confirm(__('Restore the permissions of the app\'s home?')),

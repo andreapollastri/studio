@@ -20,6 +20,7 @@ use App\Livewire\Projects\Repository as ProjectRepository;
 use App\Livewire\Projects\Settings as ProjectSettings;
 use App\Livewire\Ssh\Terminal as SshTerminal;
 use App\Livewire\Studio\Shell;
+use App\Livewire\Tools\Backups;
 use App\Livewire\Tools\Drive;
 use App\Livewire\Tools\Git;
 use App\Livewire\Tools\Vault;
@@ -44,12 +45,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('p/{project:slug}/repository', ProjectRepository::class)->name('projects.repository');
     Route::get('p/{project:slug}/infrastructure', ProjectInfrastructure::class)->name('projects.infrastructure');
     Route::get('p/{project:slug}/access', ProjectAccess::class)->name('projects.access');
+    Route::get('p/{project:slug}/backups', Backups::class)->middleware('can:admin')->name('projects.backups');
     Route::get('p/{project:slug}/settings', ProjectSettings::class)->name('projects.settings');
 
     // Sessions from this server to any host: asks for the password again, as Settings → Security does.
     Route::get('ssh', SshTerminal::class)->middleware(['can:ssh', 'password.confirm'])->name('ssh');
     Route::get('passwords', Vault::class)->middleware('password.confirm')->name('vault');
     Route::get('drive', Drive::class)->name('drive');
+    // Every backup: SSH and S3, any direction, on schedules, with their snapshots; for the administrators.
+    Route::get('backups', Backups::class)->middleware('can:admin')->name('backups');
     Route::get('drive/files/{file}', DriveFileController::class)->name('drive.file');
     // Git hosts, each person with their own accounts.
     Route::get('git/{connector?}', Git::class)->whereIn('connector', array_keys(Forges::ALL))->name('git');

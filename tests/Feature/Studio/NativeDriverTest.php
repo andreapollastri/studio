@@ -284,3 +284,29 @@ test('no Claude key is left in a workspace: the account of the project goes with
         ->and($sent['claude_api_key'])->toBeNull()
         ->and($line)->not->toContain('sk-ant-api03-key');
 });
+
+test('a public preview is configured as staging without debug, and goes back to local behind the login', function () {
+    $user = connectedUser();
+    $project = Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $user->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/shop']);
+    $driver = app(NativeDriver::class);
+    $sent = function (): array {
+        $line = Str::afterLast(trim(file_get_contents($this->log)), 'workspace-configure maria shop ');
+
+        return json_decode($line, true);
+    };
+
+    // only the site is public: the previews keep their debug pages behind the login
+    $driver->configure($workspace);
+    expect($sent()['public'])->toBe('0')
+        ->and($project->serviceInput()['public'])->toBe('1');
+
+    $project->update(['settings' => ['access' => ['public' => ['site' => true, 'previews' => true]]]]);
+    $driver->configure($workspace->fresh());
+    expect($sent()['public'])->toBe('1');
+
+    $project->update(['settings' => ['access' => ['public' => ['site' => false, 'previews' => true]]]]);
+    $driver->configure($workspace->fresh());
+    expect($sent()['public'])->toBe('0')
+        ->and($project->fresh()->serviceInput()['public'])->toBe('0');
+});

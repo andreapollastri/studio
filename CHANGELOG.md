@@ -172,6 +172,11 @@ server is in `installer/upgrades/<version>.sh`.
   domain or a subdomain of it (`staging.client.com`), with `<key>.<domain>` kept for the team, and the previews and
   sandboxes under it (`<person>-<key>.client.com`); the server moves the site, every workspace and their `APP_URL`.
   Studio now finds a host by the addresses it keeps, on whatever domain, and the helper checks every host it is given.
+- **Public sites**: a project's *Settings → Who opens the hosts* makes the site public, or the site and every
+  workspace preview and sandbox: no Studio login, anyone with the address gets in. Off by default; the address lists
+  still apply, and `/larapilot` always asks for the login. A public host shows no debug page: the site gets
+  `APP_DEBUG=false`, public previews and sandboxes run as `APP_ENV=staging`, `APP_DEBUG=false`, and go back to
+  `local` with debug behind the login.
 
 ### Fixed
 - Creating a workspace stopped on the server with `studio-admin stopped (exit 1) at: [ -n "$claude_api_key" ]`

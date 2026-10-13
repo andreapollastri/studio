@@ -228,7 +228,9 @@ test('on a server the sandbox gets its own host, which the gatekeeper and the ce
     expect($conversation->sandbox_host)->toBe($host)
         ->and($conversation->sandbox['url'])->toBe('https://'.$host)
         ->and($conversation->previewUrl())->toBe('https://'.$host)
-        ->and(file_get_contents($log))->toContain('sandbox-create maria shop '.$conversation->id)->toContain('"preview_host":"'.$host.'"');
+        ->and(file_get_contents($log))->toContain('sandbox-create maria shop '.$conversation->id)->toContain('"preview_host":"'.$host.'"')
+        // behind the login, a sandbox runs as local with its debug pages
+        ->toContain('"public":"0"');
 
     // the gatekeeper: a preview of the project, on the sandbox's branch
     $target = app(SiteAccess::class)->resolveHost($host);

@@ -140,3 +140,56 @@ test('someone who is not a member is stopped at the Studio hop, and an outside p
     parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
     expect($query['r'])->toBe('/');
 });
+
+test('a public site opens to anybody but its dashboard; its previews stay behind the login until they are public too', function () {
+    $member = User::factory()->create();
+    $project = Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    $project->members()->attach($member);
+    $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $member->id]);
+    $access = new SiteAccess;
+
+    expect($access->decide($project, 'site', null, '198.51.100.7', null, path: '/orders'))->toBe(SiteAccess::ALLOW)
+        ->and($access->decide($project, 'site', null, '198.51.100.7', User::factory()->create(), path: '/'))->toBe(SiteAccess::ALLOW)
+        ->and($access->decide($project, 'preview', $workspace, '198.51.100.7', null, path: '/'))->toBe(SiteAccess::LOGIN);
+
+    foreach (['/larapilot', '/larapilot/board', '/LaraPilot/', '/%6carapilot', '//larapilot', '/index.php/larapilot', '/assets/../larapilot', '/./larapilot/api'] as $path) {
+        expect($access->decide($project, 'site', null, '198.51.100.7', null, path: $path))->toBe(SiteAccess::LOGIN, $path);
+    }
+
+    expect(SiteAccess::isDashboard('/larapilotx'))->toBeFalse()
+        ->and(SiteAccess::isDashboard('/docs/larapilot'))->toBeFalse()
+        ->and($access->decide($project, 'site', null, '198.51.100.7', $member, path: '/larapilot'))->toBe(SiteAccess::ALLOW);
+
+    $project->update(['settings' => ['access' => ['public' => ['site' => true, 'previews' => true]]]]);
+
+    expect($access->decide($project->fresh(), 'preview', $workspace, '198.51.100.7', null, path: '/'))->toBe(SiteAccess::ALLOW)
+        ->and($access->decide($project->fresh(), 'preview', $workspace, '198.51.100.7', null, path: '/larapilot'))->toBe(SiteAccess::LOGIN);
+});
+
+test('public previews need a public site, and an address list still narrows a public host', function () {
+    $project = Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => [
+        'public' => ['site' => false, 'previews' => true],
+        'previews' => ['ips' => []],
+    ]]]);
+    $workspace = Workspace::factory()->running()->create(['project_id' => $project->id]);
+    $access = new SiteAccess;
+
+    expect($project->access()['public'])->toBe(['site' => false, 'previews' => false])
+        ->and($access->decide($project, 'preview', $workspace, '198.51.100.7', null))->toBe(SiteAccess::LOGIN);
+
+    $project->update(['settings' => ['access' => ['public' => ['site' => true], 'site' => ['ips' => ['203.0.113.0/24']]]]]);
+
+    expect($access->decide($project->fresh(), 'site', null, '203.0.113.9', null))->toBe(SiteAccess::ALLOW)
+        ->and($access->decide($project->fresh(), 'site', null, '198.51.100.7', null))->toBe(SiteAccess::FORBIDDEN);
+});
+
+test('the gatekeeper lets anybody through to a public site, and sends them to the login for /larapilot', function () {
+    config(['app.url' => 'https://studio.dev.example.test']);
+    Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    $headers = ['X-Forwarded-Host' => 'shop.dev.example.test', 'X-Forwarded-Method' => 'GET', 'X-Forwarded-For' => '198.51.100.7'];
+
+    $this->withHeaders([...$headers, 'X-Forwarded-Uri' => '/orders?page=2'])->get('/api/site-auth')->assertNoContent();
+    $this->withHeaders([...$headers, 'X-Forwarded-Uri' => '/larapilot?page=2'])->get('/api/site-auth')
+        ->assertRedirect('https://studio.dev.example.test/site-login?host=shop.dev.example.test&r='.urlencode('/larapilot?page=2'));
+    $this->withHeaders([...$headers, 'X-Forwarded-Uri' => '//larapilot?page=2'])->get('/api/site-auth')->assertRedirect();
+});
