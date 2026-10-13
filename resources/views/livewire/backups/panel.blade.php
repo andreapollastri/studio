@@ -63,12 +63,14 @@
         </div>
     </div>
 
-    <flux:radio.group wire:model.live="tab" variant="segmented" class="max-sm:w-full">
+    <div class="-mx-1 overflow-x-auto px-1">
+    <flux:radio.group wire:model.live="tab" variant="segmented" class="min-w-max">
         <flux:radio value="jobs" :label="__('Backups')" icon="archive-box-arrow-down" />
         <flux:radio value="schedule" :label="__('Schedule')" icon="calendar-days" />
         <flux:radio value="runs" :label="__('Runs')" icon="queue-list" />
         <flux:radio value="storage" :label="__('Storage')" icon="circle-stack" />
     </flux:radio.group>
+    </div>
 
     @if ($this->targets->isEmpty() && $tab !== 'storage')
         <div class="rounded-xl border border-dashed border-zinc-300 p-6 dark:border-zinc-700">
@@ -130,7 +132,7 @@
                                 </td>
                                 <td class="px-4 py-3 align-top text-xs" data-cell="wide" data-label="{{ __('When') }}">
                                     @forelse ($job->schedules->where('enabled', true) as $schedule)
-                                        <div>{{ $schedule->label() }}</div>
+                                        <div class="whitespace-nowrap">{{ $schedule->label() }}</div>
                                     @empty
                                         <div class="text-zinc-500">{{ __('only when started') }}</div>
                                     @endforelse
@@ -139,7 +141,7 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 align-top text-xs" data-cell="wide" data-label="{{ __('Keeps') }}">
-                                    <div>{{ $job->retentionLabel() }}</div>
+                                    <div class="min-w-36">{{ $job->retentionLabel() }}</div>
                                     @if ($job->keepsVersions())
                                         <div class="mt-1 text-zinc-500">{{ trans_choice(':count snapshot|:count snapshots', $job->snapshots_count) }}@if ($job->snapshots_bytes) · {{ \Illuminate\Support\Number::fileSize((int) $job->snapshots_bytes, 1) }}@endif</div>
                                     @endif
@@ -156,7 +158,7 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 text-end align-top whitespace-nowrap" data-cell="actions">
-                                    <flux:button size="xs" icon="play" wire:click="runNow('{{ $job->uuid }}')" :disabled="in_array($last?->status, ['queued', 'running'], true)">{{ __('Run now') }}</flux:button>
+                                    <flux:button size="xs" icon="play" wire:click="runNow('{{ $job->uuid }}')" :disabled="in_array($last?->status, ['queued', 'running'], true)" :tooltip="__('Run now')" :aria-label="__('Run now')" />
                                     <flux:dropdown position="bottom" align="end">
                                         <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" />
                                         <flux:menu>
@@ -234,17 +236,17 @@
                                     @php([$schedule, $job, $nextAt] = [$row['schedule'], $row['job'], $row['next']])
                                     <tr wire:key="schedule-{{ $schedule->uuid }}" @class(['opacity-60' => ! $schedule->enabled || ! $job->enabled])>
                                         <td class="px-4 py-2" data-cell="main">
-                                            <button type="button" class="font-medium hover:underline" wire:click="editJob('{{ $job->uuid }}')">{{ $job->name }}</button>
+                                            <button type="button" class="text-start font-medium hover:underline" wire:click="editJob('{{ $job->uuid }}')">{{ $job->name }}</button>
                                             <div class="text-xs text-zinc-500">{{ \App\Models\BackupJob::modeLabel($job->mode) }} · {{ $job->retentionLabel() }}</div>
                                         </td>
                                         <td class="px-4 py-2" data-cell="wide" data-label="{{ __('When') }}">
                                             {{ $schedule->label() }}
                                             @if ($job->timezone !== config('app.timezone'))<span class="text-xs text-zinc-500">· {{ $job->timezone }}</span>@endif
                                         </td>
-                                        <td class="px-4 py-2 font-mono text-xs" data-cell="wide" data-label="{{ __('Cron') }}">{{ $schedule->expression() }}</td>
+                                        <td class="px-4 py-2 font-mono text-xs whitespace-nowrap" data-cell="wide" data-label="{{ __('Cron') }}">{{ $schedule->expression() }}</td>
                                         <td class="px-4 py-2 text-xs" data-cell="wide" data-label="{{ __('Next run') }}">
                                             @if ($nextAt)
-                                                <div class="font-medium">{{ $nextAt->translatedFormat('D j M, H:i') }}</div>
+                                                <div class="font-medium whitespace-nowrap">{{ $nextAt->translatedFormat('D j M, H:i') }}</div>
                                                 <div class="text-zinc-500">{{ $nextAt->diffForHumans() }}</div>
                                             @else
                                                 <span class="text-zinc-500">{{ __('off') }}</span>
@@ -319,7 +321,7 @@
                         @foreach ($this->runs as $run)
                             <tr wire:key="run-{{ $run->uuid }}">
                                 <td class="px-4 py-2 text-xs" data-cell="main">
-                                    <div class="font-medium">{{ ($run->started_at ?? $run->created_at)->translatedFormat('D j M, H:i') }}</div>
+                                    <div class="font-medium whitespace-nowrap">{{ ($run->started_at ?? $run->created_at)->translatedFormat('D j M, H:i') }}</div>
                                     <div class="text-zinc-500">
                                         {{ match ($run->trigger) { 'schedule' => __('scheduled'), 'restore' => __('restore'), default => __('started by :name', ['name' => $run->user?->name ?? __('someone')]) } }}@if ($run->duration()) · {{ $run->duration() }}@endif
                                     </div>
@@ -475,7 +477,7 @@
                             <flux:select.option value="{{ $target->uuid }}">{{ $target->isSsh() ? 'SSH' : 'S3' }} · {{ $target->name }}</flux:select.option>
                         @endforeach
                     </flux:select>
-                    <flux:input wire:model="job_source_path" :label="__('Folder or prefix')" class="font-mono" placeholder="current" :description="__('On a host: under the user\'s home unless it starts with /. In a bucket: a prefix, empty for all of it.')" />
+                    <flux:input wire:model="job_source_path" :label="__('Folder or prefix')" class="font-mono" placeholder="current" :description:trailing="__('On a host: under the user\'s home unless it starts with /. In a bucket: a prefix, empty for all of it.')" />
                 </div>
                 <div class="space-y-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
                     <flux:heading size="sm">{{ __('To') }}</flux:heading>
@@ -485,7 +487,7 @@
                             <flux:select.option value="{{ $target->uuid }}">{{ $target->isSsh() ? 'SSH' : 'S3' }} · {{ $target->name }}</flux:select.option>
                         @endforeach
                     </flux:select>
-                    <flux:input wire:model="job_destination_path" :label="__('Folder or prefix')" class="font-mono" placeholder="shop" :description="__('Each run goes under it: shop/shop-files-2026-10-13_030000.tar.gz')" />
+                    <flux:input wire:model="job_destination_path" :label="__('Folder or prefix')" class="font-mono" placeholder="shop" :description:trailing="__('Each run goes under it: shop/shop-files-2026-10-13_030000.tar.gz')" />
                 </div>
             </div>
 
@@ -500,8 +502,8 @@
                 <div class="grid gap-4 sm:grid-cols-2">
                     <flux:textarea wire:model="job_pre_command" :label="__('First, run on the source (SSH)')" rows="2" class="font-mono text-xs"
                         placeholder="mysqldump --single-transaction shop > ~/current/storage/db.sql"
-                        :description="__('Optional: a database dump into the folder, so it lands in the backup. It must succeed for the copy to start.')" />
-                    <flux:textarea wire:model="job_excludes" :label="__('Leave out')" rows="2" class="font-mono text-xs" placeholder="storage/logs&#10;node_modules&#10;*.tmp" :description="__('One pattern per line')" />
+                        :description:trailing="__('Optional: a database dump into the folder, so it lands in the backup. It must succeed for the copy to start.')" />
+                    <flux:textarea wire:model="job_excludes" :label="__('Leave out')" rows="2" class="font-mono text-xs" placeholder="storage/logs&#10;node_modules&#10;*.tmp" :description:trailing="__('One pattern per line')" />
                 </div>
             </div>
 

@@ -8,6 +8,7 @@ use App\Git\GitAccount;
 use App\Infrastructure\Git\Forges;
 use App\Jobs\ConfigureProjectSite;
 use App\Mcp\McpProbe;
+use App\Mcp\NativeServers;
 use App\Models\ConnectorAccount;
 use App\Models\Domain;
 use App\Models\Project;
@@ -541,6 +542,7 @@ class Settings extends Component
             'domains' => $this->tab === 'server' ? Domain::query()->where(fn ($q) => $q->where('status', 'verified')
                 ->orWhereKey(array_filter([$this->project->site_domain_id, $this->project->preview_domain_id])))->orderBy('name')->get() : collect(),
             'mcpServers' => $this->tab === 'mcp' ? $this->project->mcpServers()->orderBy('name')->get() : collect(),
+            'nativeMcp' => $this->tab === 'mcp' ? NativeServers::describe($this->project) : [],
         ]);
     }
 }

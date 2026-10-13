@@ -31,6 +31,11 @@ use Throwable;
  * its row of the connector's list. Shown to the roles that see it, with the actions handed to
  * the roles that act on it. Administrators attach things from here or from the connectors'
  * pages, change who sees what, and take things off.
+ *
+ * @property-read Collection<int, ConnectorAccount> $attachAccounts
+ * @property-read list<Section> $attachSections
+ * @property-read array{rows: array<string, array{0: string, 1: string}>, error: string|null} $attachRows
+ * @property-read array<string, array{label: string, danger: bool, list: string}> $attachActionChoices
  */
 #[Layout('layouts::studio')]
 class Infrastructure extends Component
@@ -192,7 +197,13 @@ class Infrastructure extends Component
 
     private function attachSection(): ?Section
     {
-        return collect($this->attachSections)->first(fn (Section $s) => $s->key === $this->attachSection);
+        foreach ($this->attachSections as $section) {
+            if ($section->key === $this->attachSection) {
+                return $section;
+            }
+        }
+
+        return null;
     }
 
     /** @return array<string, string> the list's filters at their defaults (a region…) */
@@ -200,7 +211,7 @@ class Infrastructure extends Component
     {
         $scope = [];
 
-        foreach ($this->attachSection()?->filters ?? [] as $field) {
+        foreach ($this->attachSection()->filters ?? [] as $field) {
             $scope[$field->name] = (string) ($field->defaultFor([]) ?? '');
         }
 

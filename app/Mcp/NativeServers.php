@@ -67,7 +67,7 @@ final class NativeServers
                 'url' => $agent['url'] ?? '',
                 'on' => (bool) $resource->setting('mcp_app', true),
                 'ready' => $agent !== null && $agent['enabled'] && $agent['token'] !== null,
-                'reason' => $agent === null ? __('The app could not be read.') : $agent['reason'],
+                'reason' => $agent === null ? self::unreadable() : $agent['reason'],
             ];
             $rows[] = [
                 'name' => self::serverName($resource),
@@ -86,9 +86,14 @@ final class NativeServers
     /** @return list<ProjectResource> */
     private static function cipiApps(Project $project): array
     {
-        return $project->resources()->with(['account', 'project'])->where('section', 'apps')
+        return array_values($project->resources()->with(['account', 'project'])->where('section', 'apps')
             ->whereHas('account', fn ($q) => $q->where('connector', 'cipi'))
-            ->orderBy('label')->get()->all();
+            ->orderBy('label')->get()->all());
+    }
+
+    private static function unreadable(): string
+    {
+        return __('The app could not be read.');
     }
 
     /**

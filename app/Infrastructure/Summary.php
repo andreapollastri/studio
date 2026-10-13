@@ -5,6 +5,7 @@ namespace App\Infrastructure;
 use App\Infrastructure\Cipi\CipiApp;
 use App\Models\ProjectResource;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Number;
 use Throwable;
@@ -42,8 +43,8 @@ final class Summary
         $section = $resource->definition();
         $card = [
             'title' => $resource->label,
-            'subtitle' => ($connector?->label() ?? '?').' · '.($section?->label ?? $resource->section),
-            'icon' => $section?->icon ?? $connector?->icon() ?? 'squares-2x2',
+            'subtitle' => ($connector?->label() ?? '?').' · '.($section->label ?? $resource->section),
+            'icon' => $section->icon ?? $connector?->icon() ?? 'squares-2x2',
             'connector' => $connector?->key() ?? '',
             'status' => null,
             'facts' => [],
@@ -53,7 +54,7 @@ final class Summary
         ];
 
         if ($connector === null || $section === null || $section->list === null) {
-            return ['error' => __('This connector is gone.')] + $card;
+            return self::failed($card, __('This connector is gone.'));
         }
 
         try {
@@ -62,7 +63,7 @@ final class Summary
             $row = collect(is_array($rows) ? $rows : [])->first(fn ($r) => is_array($r) && $section->rowId($r) === $resource->resource_id);
 
             if ($row === null) {
-                return ['error' => __('It is no longer at :provider.', ['provider' => $connector->label()])] + $card;
+                return self::failed($card, __('It is no longer at :provider.', ['provider' => $connector->label()]));
             }
 
             // the list's columns, but the first, which names it
@@ -80,16 +81,16 @@ final class Summary
 
             $card = match ($connector->key().'.'.$section->key) {
                 'cipi.apps' => self::cipi($resource, $row, $card),
-                'cloudflare.zones' => self::zone($api, $row, $card),
-                'boogle.projects' => self::boogle($api, $row, $card),
-                'johnny.buckets' => self::bucket($api, $row, $card),
+                'cloudflare.zones' => $api instanceof ApiClient ? self::zone($api, $row, $card) : $card,
+                'boogle.projects' => $api instanceof ApiClient ? self::boogle($api, $row, $card) : $card,
+                'johnny.buckets' => $api instanceof ApiClient ? self::bucket($api, $row, $card) : $card,
                 default => $card,
             };
         } catch (ConnectorException $e) {
             $card['error'] = $e->getMessage();
         } catch (Throwable $e) {
             report($e);
-            $card['error'] = __('Studio could not make sense of the answer: :reason', ['reason' => $e->getMessage()]);
+            $card = self::failed($card, __('Studio could not make sense of the answer: :reason', ['reason' => $e->getMessage()]));
         }
 
         $card['facts'] = array_slice($card['facts'], 0, 8, true);
@@ -127,11 +128,11 @@ final class Summary
 
         $server = self::quietly(fn () => $app->server()) ?? [];
 
-        foreach ([__('CPU') => 'cpu', __('Memory') => 'memory', __('Disk') => 'disk'] as $label => $key) {
+        foreach (['cpu' => __('Server CPU'), 'memory' => __('Server memory'), 'disk' => __('Server disk')] as $key => $label) {
             $percent = data_get($server, "resources.{$key}.usage_percent");
 
             if (is_numeric($percent)) {
-                $card['meters'][] = ['label' => __('Server :what', ['what' => mb_strtolower($label)]), 'percent' => (float) $percent, 'text' => round((float) $percent).'%'];
+                $card['meters'][] = ['label' => $label, 'percent' => (float) $percent, 'text' => round((float) $percent).'%'];
             }
         }
 
@@ -146,7 +147,7 @@ final class Summary
             $card['facts'][__('App on disk')] = __(':files GB files · :db GB database', ['files' => $share['files_gb'] ?? '?', 'db' => $share['database_gb'] ?? '?']);
 
             if (is_numeric($share['limit_percent'] ?? null)) {
-                $card['meters'][] = ['label' => __('Of its disk limit (:limit GB)', ['limit' => $share['limit_gb'] ?? '?']), 'percent' => (float) $share['limit_percent'], 'text' => round((float) $share['limit_percent']).'%'];
+                $card['meters'][] = ['label' => __('App disk limit (:limit GB)', ['limit' => $share['limit_gb'] ?? '?']), 'percent' => (float) $share['limit_percent'], 'text' => round((float) $share['limit_percent']).'%'];
             }
 
             if (! empty($share['over_limit'])) {
@@ -217,7 +218,7 @@ final class Summary
 
         foreach (['objects' => __('Objects'), 'object_count' => __('Objects')] as $key => $label) {
             if (is_numeric($bucket[$key] ?? null)) {
-                $card['facts'][$label] = Number::format((int) $bucket[$key]);
+                $card['facts'][$label] = Number::format((int) $bucket[$key]) ?: (string) $bucket[$key];
             }
         }
 
@@ -231,6 +232,17 @@ final class Summary
         if (is_array($bucket['keys'] ?? null)) {
             $card['facts'][__('Keys')] = (string) count($bucket['keys']);
         }
+
+        return $card;
+    }
+
+    /**
+     * @param  Card  $card
+     * @return Card
+     */
+    private static function failed(array $card, string $error): array
+    {
+        $card['error'] = $error;
 
         return $card;
     }
@@ -253,7 +265,7 @@ final class Summary
     private static function ago(mixed $when): string
     {
         try {
-            return is_string($when) && $when !== '' ? \Illuminate\Support\Carbon::parse($when)->diffForHumans() : '';
+            return is_string($when) && $when !== '' ? Carbon::parse($when)->diffForHumans() : '';
         } catch (Throwable) {
             return (string) $when;
         }

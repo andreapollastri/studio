@@ -3,6 +3,7 @@
 use App\Enums\ConversationStatus;
 use App\Enums\UserRole;
 use App\Enums\WorkspaceStatus;
+use App\Models\BackupJob;
 use App\Models\Conversation;
 use App\Models\Project;
 use App\Models\ProjectResource;
@@ -61,7 +62,7 @@ test('an administrator sees every project', function () {
         ->assertSee('Beta');
 });
 
-test('the demo seeds an agency with roles per project, a service account and an attached Droplet, twice over', function () {
+test('the demo seeds an agency with roles per project, a service account, the shop\'s infrastructure and its backups, twice over', function () {
     $this->seed(DemoSeeder::class);
     $this->seed(DemoSeeder::class);
 
@@ -72,5 +73,8 @@ test('the demo seeds an agency with roles per project, a service account and an 
         ->and($apis[0])->not->toBe($apis[1])
         ->and($luca->roleIn(Project::query()->where('slug', 'shop-acme')->sole()))->toBe(UserRole::Dev)
         ->and($luca->roleIn(Project::query()->where('slug', 'loyalty')->sole()))->toBe(UserRole::Pm)
-        ->and(ProjectResource::query()->visibleTo($luca)->count())->toBe(1);
+        // the Droplet, the Cipi app, the zone, the Boogle project and the bucket of the shop
+        ->and(ProjectResource::query()->visibleTo($luca)->count())->toBe(5)
+        ->and(BackupJob::query()->count())->toBe(3)
+        ->and(BackupJob::query()->where('name', 'Shop Acme · site and database')->sole()->schedules()->count())->toBe(3);
 });

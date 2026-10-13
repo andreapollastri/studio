@@ -31,6 +31,12 @@ use Throwable;
  * (a backup on the server, an anonymized copy for developers and the anonymizer's config), the
  * Cipi agent's MCP servers the project's chats get, and every other action of the connector.
  * Each part shows to whom the resource's actions allow it; administrators see everything.
+ *
+ * @property-read array{enabled: bool, token: string|null, url: string, users_table: string, ttl: int, reason: string|null} $anonymizer
+ * @property-read Collection<int, SshConnection> $sshConnections
+ * @property-read Collection<int, SshKey> $systemKeys
+ * @property-read array<string, mixed> $details
+ * @property-read array<string, string> $env
  */
 class CipiAppHub extends Component
 {
@@ -274,7 +280,7 @@ class CipiAppHub extends Component
             return;
         }
 
-        $this->job = ['id' => $this->job['id'], 'label' => $this->job['label'], ...$status];
+        $this->job = ['id' => $this->job['id'], 'label' => $this->job['label'], 'status' => $status['status'], 'output' => $status['output'], 'result' => $status['result']];
 
         if (in_array($status['status'], ['completed', 'failed'], true)) {
             $this->forget();
@@ -473,8 +479,7 @@ class CipiAppHub extends Component
 
     public function removeAnonRule(int $index): void
     {
-        unset($this->anonRules[$index]);
-        $this->anonRules = array_values($this->anonRules);
+        array_splice($this->anonRules, $index, 1);
     }
 
     public function anonymizationJson(): string

@@ -234,6 +234,24 @@
                         <flux:text class="mt-1">{{ __('Remote MCP servers (HTTP) that every chat of this project gets, for the roles you tick: documentation, error tracking, a CRM, your own tools. Their tools appear as mcp__name__tool and ask for permission like any other tool. Servers that run as a command belong in the repository\'s .mcp.json, which Claude Code loads in every workspace.') }}</flux:text>
                     </div>
 
+                    @if ($nativeMcp !== [])
+                        <div>
+                            <flux:heading size="sm">{{ __('From the infrastructure, automatic') }}</flux:heading>
+                            <flux:text class="mt-1 text-xs">{{ __('A Cipi app attached to the project brings the Cipi agent\'s MCP server, and the server\'s own when turned on: those who act on the app get them. Change them in Infrastructure → the app → Agent & access. A server below with the same name wins.') }}</flux:text>
+                            <ul class="mt-2 divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
+                                @foreach ($nativeMcp as $row)
+                                    <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-xs" wire:key="native-{{ $row['name'] }}">
+                                        <span @class(['font-mono font-semibold', 'text-zinc-400 line-through' => ! $row['on']])>{{ $row['name'] }}</span>
+                                        <span class="min-w-0 flex-1 truncate font-mono text-zinc-500" title="{{ $row['url'] }}">{{ $row['url'] }}</span>
+                                        <flux:badge size="sm" :color="! $row['on'] ? 'zinc' : ($row['ready'] ? 'green' : 'amber')">{{ ! $row['on'] ? __('off') : ($row['ready'] ? __('on') : __('not ready')) }}</flux:badge>
+                                        <flux:button size="xs" variant="ghost" icon="arrow-top-right-on-square" :href="route('projects.infrastructure', ['project' => $project, 'resource' => $row['resource']->uuid, 'view' => 'agent'])" wire:navigate>{{ $row['resource']->label }}</flux:button>
+                                        @if ($row['on'] && $row['reason'])<span class="w-full text-amber-700 dark:text-amber-400">{{ $row['reason'] }}</span>@endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
                     @if ($mcpServers->isNotEmpty())
                         <ul class="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
                             @foreach ($mcpServers as $server)

@@ -248,14 +248,30 @@ final class CipiApp
             'enabled' => $enabled || filled($this->overrides['mcp_token'] ?? null),
             'url' => $url,
             'token' => $token,
-            'reason' => match (true) {
-                $env === null => __('The app\'s .env could not be read: the API token needs the apps-env ability.'),
-                ! $installed => __('The Cipi agent is not in the app: composer require cipi/agent.'),
-                ! $enabled && ! filled($this->overrides['mcp_token'] ?? null) => __('Its MCP server is off: php artisan cipi:service mcp --enable, then cipi:generate-token mcp.'),
-                $token === null => __('No MCP token: php artisan cipi:generate-token mcp, or type it in.'),
-                default => null,
-            },
+            'reason' => self::agentReason($env !== null, $installed, $enabled || filled($this->overrides['mcp_token'] ?? null), $token !== null),
         ];
+    }
+
+    /** Why the agent's MCP server cannot be used, or null when it can. */
+    private static function agentReason(bool $readable, bool $installed, bool $enabled, bool $token): ?string
+    {
+        if (! $readable) {
+            return __('The app\'s .env could not be read: the API token needs the apps-env ability.');
+        }
+
+        if (! $installed) {
+            return __('The Cipi agent is not in the app: composer require cipi/agent.');
+        }
+
+        if (! $enabled) {
+            return __('Its MCP server is off: php artisan cipi:service mcp --enable, then cipi:generate-token mcp.');
+        }
+
+        if (! $token) {
+            return __('No MCP token: php artisan cipi:generate-token mcp, or type it in.');
+        }
+
+        return null;
     }
 
     /** The agent's MCP server, ready to call; null while it is off. */
@@ -335,12 +351,21 @@ final class CipiApp
             'url' => $this->agentBase().'/db',
             'users_table' => (string) ($env['CIPI_ANONYMIZER_USERS_TABLE'] ?? 'users'),
             'ttl' => (int) ($env['CIPI_ANONYMIZER_TTL'] ?? 15),
-            'reason' => match (true) {
-                ! $enabled => __('The anonymizer is off: php artisan cipi:service anonymize --enable, then cipi:generate-token anonymize.'),
-                $token === null => __('No anonymizer token: php artisan cipi:generate-token anonymize, or type it in.'),
-                default => null,
-            },
+            'reason' => self::anonymizerReason($enabled, $token !== null),
         ];
+    }
+
+    private static function anonymizerReason(bool $enabled, bool $token): ?string
+    {
+        if (! $enabled) {
+            return __('The anonymizer is off: php artisan cipi:service anonymize --enable, then cipi:generate-token anonymize.');
+        }
+
+        if (! $token) {
+            return __('No anonymizer token: php artisan cipi:generate-token anonymize, or type it in.');
+        }
+
+        return null;
     }
 
     /**
@@ -377,6 +402,8 @@ final class CipiApp
     /**
      * The anonymizer tool of the agent: audit (what the config covers and misses), config (the
      * file in use), scan (a config proposed from the live schema), transformations (the rules).
+     *
+     * @param  array<string, mixed>  $arguments
      */
     public function anonymizerTool(string $action, array $arguments = []): mixed
     {

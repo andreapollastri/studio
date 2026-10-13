@@ -1856,6 +1856,7 @@
       <a href="#infra-hetzner">Hetzner</a>
       <a href="#infra-cloudflare">Cloudflare</a>
       <a href="#infra-cipi">Cipi</a>
+      <a class="sub" href="#infra-cipi-project">In a project</a>
       <a href="#infra-boogle">Boogle</a>
       <a href="#infra-hackly">Hackly</a>
       <a href="#infra-johnny">Johnny</a>
@@ -1864,6 +1865,7 @@
       <a href="#tools-ssh">SSH terminal</a>
       <a href="#tools-passwords">Password manager</a>
       <a href="#tools-drive">Drive</a>
+      <a href="#tools-backups">Backups</a>
       <a href="#git">Git</a>
       <a class="sub" href="#git-github">GitHub</a>
       <a class="sub" href="#git-gitlab">GitLab</a>
@@ -3209,8 +3211,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             <tbody>
               <tr><td><strong>Workspace</strong></td><td>The conversations, the chat and the right pane: preview, changes, terminal, files. The sections below.</td><td>Everyone on the project; clients get the preview</td></tr>
               <tr><td><strong>Repository</strong></td><td>The pull requests, issues, branches, pipelines and releases of the project's repository, with your own git account on its host.</td><td>The roles that chat: PMs, developers, administrators</td></tr>
-              <tr><td><strong>Infrastructure</strong></td><td>The servers, zones, apps and services attached to the project for your role; see <a href="#infra-projects">Attached to projects</a>.</td><td>Who has something there for their role; administrators</td></tr>
+              <tr><td><strong>Infrastructure</strong></td><td>An overview of everything attached to the project, then each one: a Cipi app with its releases, logs, .env, database and agent, anything else as its row; see <a href="#infra-projects">Attached to projects</a>.</td><td>Who has something there for their role; administrators</td></tr>
               <tr><td><strong>Access</strong></td><td>The passwords, SSH connections and drive folders tied to the project that your role opens.</td><td>Everyone on the project</td></tr>
+              <tr><td><strong>Backups</strong></td><td>The project's backups, schedules, runs and storage; see <a href="#tools-backups">Backups</a>.</td><td>Administrators</td></tr>
               <tr><td><strong>Settings</strong></td><td>General, members and roles, server, who opens the hosts, agent, MCP servers; see <a href="#setup-settings">Project settings</a>.</td><td>Administrators</td></tr>
             </tbody>
           </table>
@@ -3510,6 +3513,11 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           colours instead of their escape codes. Output is kept to 200 KB and a command is killed after ten minutes. The shortcuts come from
           <code>config/studio.php</code>; the allowlist lives in the bridge (<code>bridge/src/commands.js</code>), so what the
           dashboard sends is checked where it runs. Clients have no terminal.</p>
+        <p><strong>Remote.</strong> The switch at the top turns the tab into a real shell on the project's SSH hosts: each
+          SSH connection tied to the project (the app's user on its Cipi server, a staging box) is a button, and opens a
+          terminal through the SSH gateway, as on the <a href="#tools-ssh">SSH page</a>, with your own key or password and
+          its host key checked. As there, your password is asked again first. The sessions stay open while you look at
+          the preview or the changes; those who may not use SSH see no switch.</p>
         <figure class="shot">
           <img src="img/terminal-refused.png" alt="The Terminal refusing a command that is not on the allowlist, with the reason under the field" loading="lazy" width="2880" height="1920" />
           <figcaption><strong>Refused.</strong> A command that is not on the list, or looks like shell syntax, never runs; the
@@ -3731,6 +3739,83 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             workspace</em> sends a file, a selection or the whole folder into your workspace of that project, where you
             choose; a move removes from the drive only what arrived.</li>
         </ul>
+      </section>
+
+<!-- Tools: backups -->
+      <section class="doc-section" id="tools-backups">
+        <div class="section-header">
+          <span class="section-label">Tools</span>
+          <h2>Backups</h2>
+          <p><em>Tools → Backups</em>, for administrators: every backup in one place, from a folder over SSH or a bucket, to
+            a bucket or a folder on another host, in any direction, on as many schedules as you like. Each project has the
+            same panel, filtered to its own, in its <em>Backups</em> tab.</p>
+        </div>
+        <ol>
+          <li><strong>Storage.</strong> <em>Add storage</em>: an <strong>S3 bucket</strong> (Amazon S3, a Johnny bucket,
+            MinIO, Garage, any S3-compatible storage: endpoint, region, bucket, a key that reads, writes and deletes in it;
+            the keys of an AWS account of <em>Administration → Connectors</em> fill the form), a <strong>folder over
+            SSH</strong> (host, port, user and one of the system keys of <em>Administration → System</em>, the keys shared
+            with projects: add its public half to the user's <code>authorized_keys</code>), or <strong>a new Johnny
+            bucket</strong> made with a key of its own on a Johnny panel of the connectors. Studio checks it on saving; an
+            SSH host's key is accepted then and required on every connection after (<em>Accept a new host key</em> when
+            the server was reinstalled).</li>
+          <li><strong>A backup.</strong> <em>New backup</em>: what (a source and a folder or prefix), where to (a destination
+            and a folder or prefix under which each run goes), how, when, what to keep.</li>
+          <li><strong>Run it</strong> with <em>Run now</em>, or let the schedules do it. <em>Runs</em> follows it live.</li>
+        </ol>
+        <figure class="shot">
+          <img src="img/backups.png" alt="Tools → Backups: three backups with their source and destination, schedules, retention and last run, one failed with its reason" loading="lazy" width="2880" height="2200" />
+          <figcaption><strong>Every backup.</strong> From → to, when, what is kept and how much, the last run; <em>Run now</em> on each.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/backups-new.png" alt="The New backup dialog: source and destination with their folders, archive, snapshot or mirror, a command before the copy, schedules with ready-made plans, retention" loading="lazy" width="2880" height="3000" />
+          <figcaption><strong>A backup.</strong> What, where, how, as many schedules as you like, and how many daily, weekly and monthly snapshots to keep.</figcaption>
+        </figure>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>How</th><th>From</th><th>Each run leaves</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Archive</strong></td><td>a folder over SSH</td><td>one <code>.tar.gz</code>, made with tar on the
+                host and streamed to the destination: nothing lands on Studio's disk. Downloadable from a bucket with a link
+                valid one hour.</td></tr>
+              <tr><td><strong>Snapshot</strong></td><td>SSH or a bucket</td><td>a dated folder with a copy of every file
+                (<code>2026-10-13_030000/</code>)</td></tr>
+              <tr><td><strong>Mirror</strong></td><td>SSH or a bucket</td><td>nothing of its own: the destination is kept
+                identical to the source, no history</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="walkthrough-grid">
+          <dl><dt>Schedules, as many as you like</dt><dd>Every hour at a minute, every day at a time, some weekdays, a day of
+            the month, or any cron expression, in the backup's timezone. Ready-made: nightly, twice a day, hourly, daily +
+            weekly + monthly. The <em>Schedule</em> tab shows every schedule with its cron and its next run, the coming
+            seven days hour by hour, and what starts next.</dd></dl>
+          <dl><dt>What is kept</dt><dd>The latest <em>n</em> runs, plus the newest of each of the last days, weeks, months
+            and years that have one (a day without a backup does not use up a slot). After each run Studio deletes, at the
+            destination, the snapshots no rule keeps; each kept one says which rules keep it. The newest always
+            stays.</dd></dl>
+          <dl><dt>Before the copy</dt><dd>A command run on the SSH source first, a database dump into the folder for
+            instance (<code>mysqldump --single-transaction shop &gt; ~/current/storage/db.sql</code>): the copy starts only
+            if it succeeds. Patterns to leave out (<code>storage/logs</code>, <code>node_modules</code>).</dd></dl>
+          <dl><dt>Restore</dt><dd>From <em>Runs</em>, any snapshot still kept: an archive is unpacked into a folder of an
+            SSH host, or copied as it is into a bucket; a snapshot's files are copied anywhere. A new folder is safest:
+            compare, then swap.</dd></dl>
+        </div>
+        <figure class="shot">
+          <img src="img/backups-schedule.png" alt="The Schedule tab: the coming seven days hour by hour, every schedule with its cron, next run and switch, and what starts next" loading="lazy" width="2880" height="2500" />
+          <figcaption><strong>Schedule.</strong> The week ahead at a glance, every schedule with its cron expression and next run, and what starts next.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/backups-runs.png" alt="The Runs tab for one backup: each run with its size, the snapshot path and the retention rules that keep it, older ones pruned" loading="lazy" width="2880" height="2200" />
+          <figcaption><strong>Runs.</strong> Each snapshot says which rules keep it; the ones no rule keeps were pruned. Log, download, restore, delete.</figcaption>
+        </figure>
+        <p>Studio runs the backups from its own server: <code>studio:backups</code> starts the schedules due every minute,
+          and the runs go to a queue of their own served by the <code>studio-backups</code> worker, one run at a time per
+          backup, hours allowed each, so a long copy never holds up workspaces or deploys. The copying is
+          <a href="https://rclone.org/" target="_blank" rel="noopener">rclone</a> (installed with Studio) and
+          <code>ssh</code>; the bucket keys travel in the command's environment, the SSH key in a file only Studio reads, both
+          gone when the command ends. A run whose worker stopped answering is marked failed after twenty minutes of
+          silence. Every run keeps its log.</p>
       </section>
 
 <!-- Tools: git -->
@@ -3974,9 +4059,10 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             their role may run.</p>
         </div>
         <ol>
-          <li><strong>Attach.</strong> On the connector's page, find the row and choose <em>Attach to a project…</em> in its
-            <em>…</em> menu. The filters and the region the list was read with are kept, so the project reads it the same
-            way.</li>
+          <li><strong>Attach.</strong> From the project: <em>Infrastructure → Attach → Pick from an account…</em>, then the
+            account, the kind (apps, zones, buckets, projects…) and the row, searched. Or on the connector's page, find the
+            row and choose <em>Attach to a project…</em> in its <em>…</em> menu. The filters and the region the list was
+            read with are kept, so the project reads it the same way.</li>
           <li><strong>The dialog.</strong> The project; the name shown in the project; <em>Who sees it</em> (PM, Developer,
             Client); <em>Who acts on it</em>; and <em>What they may do</em>: the row's own actions, plus the row and list
             actions of the lists it opens (the DNS records of a zone, the exceptions of a project), each with its list and
@@ -3986,15 +4072,23 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             opens the dialog again: change it, or <em>Detach</em>. Nothing changes at the provider either way.</li>
         </ol>
         <figure class="shot">
+          <img src="img/project-overview.png" alt="The Infrastructure tab of Shop Acme on its overview: a card for the Cipi app, the Boogle project, the Johnny bucket, the Droplet and the Cloudflare zone, then the MCP servers, the remote terminal and the backups" loading="lazy" width="2880" height="2500" />
+          <figcaption><strong>Overview.</strong> Everything the project runs on at a glance, with what needs attention.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/project-attach.png" alt="Attach to Shop Acme: the Cipi account Web 1, its apps, the portal app picked, the roles and the actions with everything but destructive ticked" loading="lazy" width="2880" height="3000" />
+          <figcaption><strong>Attach from the project.</strong> An account, a kind, a row; the roles and the actions.</figcaption>
+        </figure>
+        <figure class="shot">
           <img src="img/infra-attach.png" alt="The Attach to a project dialog: project, name in the project, who sees it, who acts on it, and the actions they may run with destructive ones marked" loading="lazy" width="2880" height="2200" />
           <figcaption><strong>Attach to a project.</strong> The Droplet goes to Shop Acme as "Shop Acme · production": PMs,
             developers and the client see it, developers act on it, and may reboot it and take a snapshot.</figcaption>
         </figure>
         <figure class="shot">
           <img src="img/project-infrastructure.png" alt="Luca, a developer, on the Infrastructure tab of Shop Acme: only the attached Droplet Shop Acme · production, with the actions handed to his role" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>What a member sees.</strong> Luca, a developer on Shop Acme, sees that one Droplet in the
-            project's <em>Infrastructure</em> tab, with the actions handed to developers, and nothing else of the
-            account.</figcaption>
+          <figcaption><strong>What a member sees.</strong> Luca, a developer on Shop Acme, sees in the project's
+            <em>Infrastructure</em> tab what is attached for developers (here the Droplet, with the actions handed to
+            developers), and nothing else of the accounts.</figcaption>
         </figure>
         <div class="walkthrough-grid">
           <dl><dt>What members see</dt><dd>The project's <em>Infrastructure</em> tab lists what is attached for their role.
@@ -4005,7 +4099,11 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             never handed over.</dd></dl>
           <dl><dt>From the project</dt><dd>Administrators see everything attached in the tab, with a bar that says who
             <em>Sees it</em>, who <em>Acts on it</em> and how many actions are handed over; <em>Who sees and does what</em>
-            changes it, or detaches it. The tab's <em>Attach</em> menu leads to the connectors' pages.</dd></dl>
+            changes it, or detaches it. <em>Attach</em> picks a row of any account from there.</dd></dl>
+          <dl><dt>The overview</dt><dd>The tab opens on a card for each thing attached, read after the page: a Cipi app's
+            release, load, disk and agent, a zone's records and nameservers, a Boogle project's open exceptions, a Hackly
+            target's findings, a bucket's size, any other row's columns, with what needs attention. Under them, the MCP
+            servers your chats get from them, the project's SSH hosts and its backups.</dd></dl>
           <dl><dt>Logged</dt><dd>Every action is written to Studio's log, as on a connector's page, with who did it and the
             project resource. <em>Administration → Connectors</em> shows how many things each connector has
             attached.</dd></dl>
@@ -4249,6 +4347,53 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </ul>
         <p>Most changes run as jobs on the server: Studio waits a few seconds and shows the result; for longer ones (a first
           deploy, an SSL certificate) the window offers <em>Check again</em>.</p>
+
+        <h3 id="infra-cipi-project">A Cipi app in a project</h3>
+        <p>Attach the app to its project (<a href="#infra-projects">Attached to projects</a>) and it opens there as one place,
+          each part shown to the roles its actions are handed to:</p>
+        <figure class="shot">
+          <img src="img/cipi-hub.png" alt="A Cipi app in its project: releases on the server with the live one and Roll back here, the deploy history, the server load and the app’s disk" loading="lazy" width="2880" height="2300" />
+          <figcaption><strong>Releases.</strong> What runs, what ran before, who deployed it, and the server it runs on.</figcaption>
+        </figure>
+        <div class="walkthrough-grid">
+          <dl><dt>Releases</dt><dd>The releases on disk with their commits and which one is live (read from the Cipi agent),
+            the deploy history (published, failed, rolled back, by whom), <em>Deploy</em> and <em>Roll back</em> (Cipi goes
+            back one release at a time), the job's output as it runs, the server's CPU, memory and disk, the app's share of
+            the disk and its limit, stopped services.</dd></dl>
+          <dl><dt>Logs and .env</dt><dd>Laravel, nginx, PHP-FPM, workers and deploy logs, page by page, filtered, refreshed
+            every ten seconds if you like. The <code>.env</code> with secrets hidden until shown, and a form that sets and
+            removes keys.</dd></dl>
+          <dl><dt>An anonymized database</dt><dd>With the <a href="https://cipi.sh/docs/agent#agent-anonymizer" target="_blank" rel="noopener">Cipi
+            agent's anonymizer</a> on, a developer asks for a copy of the production database with names, emails, phones
+            and passwords replaced: the app dumps it, transforms it and mails a download link, valid a few minutes. Real
+            data never leaves the server as it is.</dd></dl>
+          <dl><dt>The anonymization file</dt><dd><code>~/.db/anonymization.json</code>, edited in a table: start from the
+            file on the server, from a proposal read from the live schema, or from a Laravel start; pick each column's
+            transformation (fakeEmail, mask:3,2, password…, unique, consistent), the tables to empty, the locale; write it
+            back over SFTP as the app's user, or download it, or let Cipi write one from the schema; then the agent's
+            audit says what is covered and what is not.</dd></dl>
+          <dl><dt>MCP in the chats</dt><dd>The Cipi agent's MCP server (<code>/cipi/mcp</code>: health, deploys and releases,
+            logs, Artisan, database queries and schema, the anonymizer) reaches the chats of the project as
+            <code>cipi-&lt;app&gt;</code> with no setup, for those who act on the app; its token is read from the app's
+            <code>.env</code>, or typed in. The server's own MCP server (<code>/mcp</code> on the API host, every app of
+            the server) is off unless an administrator turns it on, and needs a token with the <code>mcp-access</code>
+            ability. They show in <em>Settings → MCP servers</em> too.</dd></dl>
+          <dl><dt>SSH</dt><dd>An administrator adds the app's user (<code>&lt;app&gt;@&lt;server&gt;</code>, with its password
+            or a system key) as an SSH connection of the project: its developers open it from the workspace's terminal
+            (<em>Remote</em>) and the SSH page, each with a credential of their own.</dd></dl>
+        </div>
+        <figure class="shot">
+          <img src="img/cipi-anonymizer.png" alt="The Database tab of a Cipi app: an anonymized copy requested by email, a backup on the server, and the anonymization file proposed from the schema in an editable table" loading="lazy" width="2880" height="3000" />
+          <figcaption><strong>Database.</strong> An anonymized copy for developers, and the anonymization file from the live schema, edited and written back.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/cipi-agent.png" alt="Agent and access of a Cipi app: the agent’s MCP server on, the server’s off, tokens for administrators, the app’s user as an SSH connection of the project" loading="lazy" width="2880" height="2300" />
+          <figcaption><strong>Agent &amp; access.</strong> The MCP servers the chats get, and SSH as the app’s user.</figcaption>
+        </figure>
+        <p>In the app, the agent: <code>composer require cipi/agent</code>, then <code>php artisan cipi:service mcp --enable</code>
+          and <code>cipi:generate-token mcp</code>, and the same with <code>anonymize</code>; the API token needs
+          <code>apps-env</code> for Studio to read their tokens. <em>Check the MCP server</em> lists the tools the agent
+          answers with.</p>
       </section>
 
       <section class="doc-section" id="infra-boogle">

@@ -3,8 +3,8 @@
 namespace App\Infrastructure\Connectors;
 
 use App\Infrastructure\Action;
-use App\Infrastructure\Cipi\CipiApp;
 use App\Infrastructure\ApiClient;
+use App\Infrastructure\Cipi\CipiApp;
 use App\Infrastructure\Column;
 use App\Infrastructure\Connector;
 use App\Infrastructure\Field;

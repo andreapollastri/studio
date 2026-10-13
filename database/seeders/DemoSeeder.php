@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Backups\Retention;
 use App\Enums\ClaudeAuthMode;
 use App\Enums\ConversationStatus;
 use App\Enums\DomainStatus;
@@ -9,6 +10,9 @@ use App\Enums\PermissionStatus;
 use App\Enums\SiteStatus;
 use App\Enums\UserRole;
 use App\Enums\WorkspaceStatus;
+use App\Models\BackupJob;
+use App\Models\BackupRun;
+use App\Models\BackupTarget;
 use App\Models\ClaudeAccount;
 use App\Models\ConnectorAccount;
 use App\Models\ConnectorSetting;
@@ -20,11 +24,15 @@ use App\Models\ProjectGroup;
 use App\Models\ProjectMcpServer;
 use App\Models\ProjectPreference;
 use App\Models\ProjectResource;
+use App\Models\SshConnection;
+use App\Models\SshKey;
 use App\Models\User;
 use App\Models\VaultFolder;
 use App\Models\VaultItem;
 use App\Models\Workspace;
+use App\Ssh\Keys;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 
 /**
  * A believable agency: five projects (two of them called "API", for two
@@ -143,6 +151,7 @@ class DemoSeeder extends Seeder
         ProjectResource::query()->updateOrCreate(['project_id' => $shop->id, 'connector_account_id' => $cloud->id, 'section' => 'droplets', 'resource_id' => '424242'], [
             'label' => 'Shop Acme · production', 'view_roles' => ['pm', 'dev', 'client'], 'act_roles' => ['dev'], 'actions' => ['reboot', 'snapshot'], 'added_by' => $andrea->id,
         ]);
+        $this->operations($shop, $andrea);
 
         // Andrea's list: the clients' projects in their group, on the agency's Team plan
         foreach ([$shop, $portale] as $project) {
@@ -296,5 +305,107 @@ class DemoSeeder extends Seeder
         }
 
         return $account;
+    }
+
+    /**
+     * The rest of the shop's infrastructure (its Cipi app with the agent, its zone, its exception
+     * tracker, its bucket) and its backups, with a few weeks of runs.
+     */
+    private function operations(Project $shop, User $andrea): void
+    {
+        $account = function (string $connector, string $name, array $credentials, string $status) {
+            ConnectorSetting::query()->updateOrCreate(['connector' => $connector], ['enabled' => true]);
+
+            return ConnectorAccount::query()->updateOrCreate(['user_id' => null, 'connector' => $connector, 'name' => $name], [
+                'credentials' => $credentials, 'status' => $status, 'checked_at' => now(),
+            ]);
+        };
+        $attach = fn (ConnectorAccount $account, string $section, string $id, string $label, array $actions) => ProjectResource::query()->updateOrCreate(
+            ['project_id' => $shop->id, 'connector_account_id' => $account->id, 'section' => $section, 'resource_id' => $id],
+            ['label' => $label, 'view_roles' => ['pm', 'dev'], 'act_roles' => ['dev'], 'actions' => $actions, 'added_by' => $andrea->id],
+        );
+
+        $cipi = $account('cipi', 'Web 1', ['url' => 'https://api.web1.agency.test', 'token' => 'demo-cipi-token'], 'ok · web1 · Cipi 5.6');
+        $attach($cipi, 'apps', 'shopacme', 'Shop Acme · Cipi', ['deploy', 'rollback', 'releases', 'audit', 'logs', 'env', 'env-set', 'disk', 'anonymize', 'anonymizer-audit']);
+        $attach($account('cloudflare', 'Agency', ['token' => 'demo-cf-token'], 'ok · Agency'), 'zones', 'zone-acme', 'acme.test', ['purge']);
+        $attach($account('boogle', 'Boogle', ['url' => 'https://boogle.agency.test', 'token' => 'demo-boogle'], 'ok · 6 projects'), 'projects', '12', 'Shop Acme · errors', []);
+        $johnny = $account('johnny', 'Johnny EU', ['url' => 'https://panel.johnny.agency.test', 'token' => 'demo-johnny'], 'ok · 4 buckets');
+        $attach($johnny, 'buckets', 'shop-acme-media', 'Shop Acme · media', ['details']);
+
+        // the app's user on its server, for the remote terminal; a system key for the backups, shared with the shop
+        SshConnection::query()->updateOrCreate(['user_id' => $andrea->id, 'project_id' => $shop->id, 'name' => 'Shop Acme · Cipi'], [
+            'host' => '203.0.113.9', 'port' => 22, 'username' => 'shopacme', 'auth' => 'password', 'password' => 'demo', 'host_key' => 'SHA256:'.str_repeat('q', 43),
+        ]);
+        $key = SshKey::query()->updateOrCreate(['user_id' => null, 'name' => 'backups'], Keys::generate('ed25519', 'studio@dev.agency.test'));
+        $shop->sshKeys()->syncWithoutDetaching([$key->id => ['developers' => false]]);
+
+        $server = BackupTarget::query()->updateOrCreate(['name' => 'web1 · shopacme'], [
+            'kind' => 'ssh', 'project_id' => $shop->id, 'user_id' => $andrea->id, 'status' => 'ok · Linux 6.8.0-45-generic · 61G free', 'checked_at' => now()->subHours(2),
+            'config' => ['host' => '203.0.113.9', 'port' => 22, 'username' => 'shopacme', 'ssh_key_id' => $key->id, 'known_hosts' => ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl'], 'fingerprint' => 'SHA256:2tDz9hY7m0d4c3l8s5Qk1nVb6wXr0pF3eGa9uJ7iK2o'],
+        ]);
+        $bucket = BackupTarget::query()->updateOrCreate(['name' => 'Johnny · agency-backups'], [
+            'kind' => 's3', 'user_id' => $andrea->id, 'status' => 'ok · 14 items at the top', 'checked_at' => now()->subHours(2),
+            'config' => ['provider' => 'johnny', 'endpoint' => 'https://s3.johnny.agency.test', 'region' => 'garage', 'bucket' => 'agency-backups', 'access_key_id' => 'GKdemo', 'secret_access_key' => 'demo', 'path_style' => true],
+        ]);
+        $media = BackupTarget::query()->updateOrCreate(['name' => 'Johnny · shop-acme-media'], [
+            'kind' => 's3', 'project_id' => $shop->id, 'user_id' => $andrea->id, 'status' => 'ok · 3 items at the top', 'checked_at' => now()->subHours(2),
+            'config' => ['provider' => 'johnny', 'endpoint' => 'https://s3.johnny.agency.test', 'region' => 'garage', 'bucket' => 'shop-acme-media', 'access_key_id' => 'GKmedia', 'secret_access_key' => 'demo', 'path_style' => true],
+        ]);
+        $offsite = BackupTarget::query()->updateOrCreate(['name' => 'AWS · agency-offsite'], [
+            'kind' => 's3', 'user_id' => $andrea->id, 'status' => 'ok · 2 items at the top', 'checked_at' => now()->subHours(5),
+            'config' => ['provider' => 'aws', 'endpoint' => '', 'region' => 'eu-central-1', 'bucket' => 'agency-offsite', 'access_key_id' => 'AKIADEMO', 'secret_access_key' => 'demo', 'path_style' => false],
+        ]);
+
+        $job = function (array $attributes, array $schedules, int $days, int $bytes, ?string $failed = null) use ($andrea) {
+            $job = BackupJob::query()->updateOrCreate(['name' => $attributes['name']], [...$attributes, 'timezone' => 'Europe/Rome', 'user_id' => $andrea->id]);
+            $job->schedules()->delete();
+
+            foreach ($schedules as $schedule) {
+                $job->schedules()->create($schedule + ['last_dispatched_at' => now()->subHours(8)]);
+            }
+
+            $job->runs()->delete();
+
+            for ($day = $days; $day >= 0; $day--) {
+                $at = now()->subDays($day)->setTime(3, 0);
+                $status = $day === 0 && $failed ? 'failed' : 'success';
+                $job->runs()->create([
+                    'trigger' => 'schedule', 'status' => $status, 'started_at' => $at, 'finished_at' => $at->copy()->addSeconds(70 + $day * 3),
+                    'destination_id' => $job->destination_id,
+                    'path' => match ($job->mode) {
+                        'archive' => $job->destination_path.'/'.Str::slug($job->name).'-'.$at->format('Y-m-d_His').'.tar.gz',
+                        'snapshot' => $job->destination_path.'/'.$at->format('Y-m-d_His'),
+                        default => $job->destination_path,
+                    },
+                    'bytes' => $status === 'success' ? $bytes + $day * 1_048_576 : null,
+                    'files' => $status === 'success' ? ($job->mode === 'archive' ? 1 : 1240 + $day) : null,
+                    'error' => $status === 'failed' ? $failed : null,
+                    'output' => $status === 'failed' ? $failed : "Archiving shopacme:current\nTransferred: 412.5 MiB / 412.5 MiB, 100%, 38 MiB/s\n",
+                ]);
+            }
+
+            // what the retention keeps and what it pruned, as it would have after each run
+            if ($job->keepsVersions()) {
+                $runs = $job->runs()->where('status', 'success')->get()->keyBy('id');
+                $keep = Retention::keep($runs->map(fn (BackupRun $run) => $run->started_at)->all(), $job->retentionPolicy(), $job->timezone);
+
+                foreach ($runs as $id => $run) {
+                    $run->update(isset($keep[$id]) ? ['kept_by' => $keep[$id]] : ['pruned_at' => $run->started_at->copy()->addDays(8)]);
+                }
+            }
+
+            $job->update(['last_run_at' => now()->setTime(3, 0), 'last_status' => $failed ? 'failed' : 'success']);
+        };
+
+        $job(['name' => 'Shop Acme · site and database', 'project_id' => $shop->id, 'source_id' => $server->id, 'source_path' => 'current', 'destination_id' => $bucket->id, 'destination_path' => 'shop-acme', 'mode' => 'archive',
+            'options' => ['pre_command' => 'mysqldump --single-transaction shopacme > ~/current/storage/app/db.sql', 'excludes' => ['storage/logs', 'node_modules']],
+            'retention' => ['last' => 3, 'daily' => 7, 'weekly' => 5, 'monthly' => 12, 'yearly' => 2]],
+            [['frequency' => 'daily', 'hour' => 2, 'minute' => 30], ['frequency' => 'weekly', 'hour' => 4, 'minute' => 0, 'weekdays' => [0]], ['frequency' => 'monthly', 'hour' => 5, 'minute' => 0, 'monthday' => 1]],
+            30, 432_013_312);
+        $job(['name' => 'Shop Acme · media to AWS', 'project_id' => $shop->id, 'source_id' => $media->id, 'source_path' => '', 'destination_id' => $offsite->id, 'destination_path' => 'shop-acme-media', 'mode' => 'mirror'],
+            [['frequency' => 'hourly', 'minute' => 15]], 3, 2_147_483_648, 'ERROR : uploads/2026/10/banner.jpg: Failed to copy: AccessDenied: Access Denied');
+        $job(['name' => 'Agency backups · off-site copy', 'source_id' => $bucket->id, 'source_path' => '', 'destination_id' => $offsite->id, 'destination_path' => 'johnny', 'mode' => 'snapshot',
+            'retention' => ['last' => 2, 'daily' => 0, 'weekly' => 4, 'monthly' => 6, 'yearly' => 0]],
+            [['frequency' => 'weekly', 'hour' => 23, 'minute' => 0, 'weekdays' => [6]], ['frequency' => 'cron', 'cron' => '0 12 1 * *']], 14, 9_663_676_416);
     }
 }

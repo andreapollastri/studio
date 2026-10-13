@@ -4,11 +4,15 @@ namespace App\Livewire\Studio;
 
 use App\Bridge\BridgeClient;
 use App\Bridge\BridgeException;
+use App\Models\SshConnection;
 use App\Models\Workspace;
+use App\Ssh\Gateway;
 use Closure;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Collection;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -114,6 +118,12 @@ class SidePane extends Component
 
     /** The Files tab mounts on first use and then stays alive, hidden, so open editors survive tab switches. */
     public bool $filesMounted = false;
+
+    /** The terminal runs commands in the workspace (local) or opens the project's SSH hosts (remote). */
+    public string $terminalMode = 'local';
+
+    /** The remote terminals mount on first use and stay, hidden, so their sessions survive tab switches. */
+    public bool $remoteMounted = false;
 
     /** The open conversation's sandbox, when it has one ready: git, terminal and files work in its worktree. */
     #[Locked]
@@ -805,6 +815,97 @@ class SidePane extends Component
         }
     }
 
+    public function setTerminalMode(string $mode): void
+    {
+        $this->terminalMode = $mode === 'remote' && $this->canUseRemote() ? 'remote' : 'local';
+
+        if ($this->terminalMode === 'remote') {
+            $this->remoteMounted = true;
+        }
+    }
+
+    /** SSH from the pane, as on the SSH page: who may use SSH at all. */
+    public function canUseRemote(): bool
+    {
+        return $this->canUseTerminal() && auth()->user()->canUseSsh();
+    }
+
+    /** The SSH page asks for the password again; so does the pane, for as long as the page would. */
+    public function remoteConfirmed(): bool
+    {
+        return time() - (int) session('auth.password_confirmed_at', 0) < (int) config('auth.password_timeout', 10800);
+    }
+
+    /** The password page, then back to this workspace. */
+    public function confirmPassword(): void
+    {
+        session()->put('url.intended', route('studio.show', $this->workspace->project));
+        $this->redirect(route('password.confirm'));
+    }
+
+    /**
+     * The project's SSH connections this person sees, with whether they can open each.
+     *
+     * @return Collection<int, array{connection: SshConnection, ready: bool}>
+     */
+    #[Computed]
+    public function remoteConnections(): Collection
+    {
+        $user = auth()->user();
+
+        return SshConnection::query()->visibleTo($user)->where('project_id', $this->workspace->project_id)->with('key')->orderBy('name')->get()
+            ->map(fn (SshConnection $connection) => ['connection' => $connection, 'ready' => $connection->canConnect($user)]);
+    }
+
+    /**
+     * A one-time ticket for the SSH gateway, as the SSH page gives (resources/js/ssh.js calls it).
+     *
+     * @return array{ticket: string, url: string, name: string, address: string, connection_id: string}|null
+     */
+    public function open(string $id): ?array
+    {
+        abort_unless($this->canUseRemote(), 403);
+
+        if (! $this->remoteConfirmed()) {
+            Flux::toast(variant: 'warning', text: __('Confirm your password first.'));
+
+            return null;
+        }
+
+        $user = auth()->user();
+        $connection = SshConnection::query()->visibleTo($user)->where('project_id', $this->workspace->project_id)->where('uuid', $id)->firstOrFail();
+
+        if (! $connection->canConnect($user)) {
+            Flux::toast(variant: 'warning', text: __('Set your own key or password for :name on the SSH page first.', ['name' => $connection->name]));
+
+            return null;
+        }
+
+        return [
+            'ticket' => Gateway::issue($connection, $user),
+            'url' => Gateway::url(),
+            'name' => $connection->name,
+            'address' => $connection->address(),
+            'connection_id' => $connection->uuid,
+        ];
+    }
+
+    /** The person accepted the key a new host showed: later connections, of anybody, expect the same one. */
+    public function trustHostKey(string $id, string $fingerprint): void
+    {
+        abort_unless($this->canUseRemote(), 403);
+
+        if (! preg_match('/^SHA256:[A-Za-z0-9+\/]{43}$/', $fingerprint)) {
+            return;
+        }
+
+        $connection = SshConnection::query()->visibleTo(auth()->user())->where('project_id', $this->workspace->project_id)->where('uuid', $id)->firstOrFail();
+
+        if ($connection->host_key === null) {
+            $connection->update(['host_key' => $fingerprint]);
+        }
+    }
+
     public function canUseTerminal(): bool
     {
         $user = auth()->user();
@@ -816,6 +917,7 @@ class SidePane extends Component
     {
         return view('livewire.studio.side-pane', [
             'canUseTerminal' => $this->canUseTerminal(),
+            'canUseRemote' => $this->canUseRemote(),
             'hasWorkspace' => auth()->user()->can('chat', $this->workspace->project),
             'shortcuts' => (array) config('studio.terminal', []),
             // Without a running workspace the staging site is the next best thing to look at.

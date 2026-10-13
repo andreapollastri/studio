@@ -2,11 +2,11 @@
 
 namespace App\Mcp;
 
+use App\Infrastructure\ConnectorException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use App\Infrastructure\ConnectorException;
 
 /**
  * Studio calling a remote MCP server itself, over the streamable HTTP transport: `initialize`

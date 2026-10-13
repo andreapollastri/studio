@@ -63,6 +63,10 @@ sed -e "s#\${BASE}#http://127.0.0.1:8767#g" -e "s#\${BASE2}#http://127.0.0.1:876
     -e "s#\${MCP_ERRORS}#$(q "select uuid from project_mcp_servers where name = 'errors'")#g" \
     -e "s#\${VAULT_TOOLS}#$(q "select uuid from vault_folders where name = 'Agency tools'")#g" \
     -e "s#\${VAULT_SHOP}#$(q "select uuid from vault_folders where name = 'Shop Acme'")#g" \
+    -e "s#\${RES_CIPI}#$(q "select uuid from project_resources where resource_id = 'shopacme'")#g" \
+    -e "s#\${RES_DROPLET}#$(q "select uuid from project_resources where resource_id = '424242'")#g" \
+    -e "s#\${ACCOUNT_CIPI}#$(q "select uuid from connector_accounts where connector = 'cipi'")#g" \
+    -e "s#\${JOB_SITE}#$(q "select uuid from backup_jobs where name = 'Shop Acme · site and database'")#g" \
     "$JOBS" >"$WORK/jobs.json"
 
 (cd "$ROOT/tools/screenshots" && node shots.mjs "$WORK/jobs.json" "$OUT")

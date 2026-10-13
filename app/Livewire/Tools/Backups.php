@@ -4,6 +4,7 @@ namespace App\Livewire\Tools;
 
 use App\Backups\Backups as Starter;
 use App\Backups\Engine;
+use App\Infrastructure\ApiClient;
 use App\Infrastructure\ConnectorException;
 use App\Infrastructure\Connectors;
 use App\Models\BackupJob;
@@ -32,6 +33,16 @@ use Throwable;
  * schedules as wanted, with the snapshots each keeps (so many daily, weekly, monthly); the
  * schedule of the coming week; every run with its log, to download or put back; the buckets
  * and hosts they use. For the administrators: it holds the keys of the storage.
+ *
+ * @property-read Collection<int, BackupJob> $jobs
+ * @property-read Collection<int, BackupTarget> $targets
+ * @property-read Collection<int, BackupRun> $runs
+ * @property-read \Illuminate\Support\Collection<int, array{schedule: BackupSchedule, job: BackupJob, next: Carbon|null}> $schedules
+ * @property-read array{days: list<array{date: Carbon, hours: array<int, list<string>>}>, max: int, upcoming: list<array{at: Carbon, job: BackupJob, schedule: BackupSchedule}>} $week
+ * @property-read array{jobs: int, failing: int, kept: int, bytes: int, last24: int, failed24: int} $stats
+ * @property-read Collection<int, SshKey> $systemKeys
+ * @property-read Collection<int, SshConnection> $sshConnections
+ * @property-read Collection<int, ConnectorAccount> $connectorAccounts
  */
 class Backups extends Component
 {
@@ -78,7 +89,7 @@ class Backups extends Component
 
     public bool $job_enabled = true;
 
-    /** @var list<array{uuid: string|null, frequency: string, hour: int|string, minute: int|string, weekdays: list<string>, monthday: int|string, cron: string, enabled: bool}> */
+    /** @var list<array<string, mixed>> uuid, frequency, hour, minute, weekdays, monthday, cron, enabled: as the form sends them */
     public array $job_schedules = [];
 
     // ---- the storage in the form
@@ -187,7 +198,7 @@ class Backups extends Component
                 ? $q->where('status', 'success')->whereNull('pruned_at')->whereNotNull('path')->where('trigger', '!=', 'restore')
                 : $q->where('status', $this->runsStatus))
             ->with(['job.destination', 'user', 'schedule', 'restoreOf'])
-            ->latest('id')->limit(200)->get();
+            ->orderByRaw('coalesce(started_at, created_at) desc')->orderByDesc('id')->limit(200)->get();
     }
 
     /**
@@ -233,9 +244,10 @@ class Backups extends Component
                 if (isset($days[$key])) {
                     $days[$key]['hours'][(int) $at->format('G')][] = $row['job']->name;
                 }
-
-                $upcoming[] = ['at' => $at, 'job' => $row['job'], 'schedule' => $row['schedule']];
             }
+
+            // what starts next: each schedule once, so an hourly one does not fill the list
+            $upcoming[] = ['at' => $row['next'], 'job' => $row['job'], 'schedule' => $row['schedule']];
         }
 
         usort($upcoming, fn (array $a, array $b) => $a['at']->getTimestamp() <=> $b['at']->getTimestamp());
@@ -262,9 +274,15 @@ class Backups extends Component
             'failing' => $this->jobs->where('last_status', 'failed')->count(),
             'kept' => (int) $this->jobs->sum('snapshots_count'),
             'bytes' => (int) $this->jobs->sum('snapshots_bytes'),
-            'last24' => (clone $runs)->where('created_at', '>=', $since)->count(),
-            'failed24' => (clone $runs)->where('created_at', '>=', $since)->where('status', 'failed')->count(),
+            'last24' => (clone $runs)->where(fn (Builder $q) => $this->since($q, $since))->count(),
+            'failed24' => (clone $runs)->where(fn (Builder $q) => $this->since($q, $since))->where('status', 'failed')->count(),
         ];
+    }
+
+    /** @param  Builder<BackupRun>  $query  runs started since then, or queued since then */
+    private function since(Builder $query, Carbon $since): void
+    {
+        $query->where('started_at', '>=', $since)->orWhere(fn (Builder $q) => $q->whereNull('started_at')->where('created_at', '>=', $since));
     }
 
     public function hasActiveRuns(): bool
@@ -308,7 +326,7 @@ class Backups extends Component
         $this->job_retention = $job->retentionPolicy();
         $this->job_timezone = $job->timezone;
         $this->job_enabled = $job->enabled;
-        $this->job_schedules = $job->schedules->sortBy('id')->map(fn (BackupSchedule $s) => [
+        $this->job_schedules = array_values($job->schedules->sortBy('id')->map(fn (BackupSchedule $s) => [
             'uuid' => $s->uuid,
             'frequency' => $s->frequency,
             'hour' => $s->hour,
@@ -317,7 +335,7 @@ class Backups extends Component
             'monthday' => $s->monthday,
             'cron' => (string) $s->cron,
             'enabled' => $s->enabled,
-        ])->values()->all();
+        ])->all());
 
         Flux::modal('backup-job')->show();
     }
@@ -350,8 +368,7 @@ class Backups extends Component
 
     public function removeSchedule(int $index): void
     {
-        unset($this->job_schedules[$index]);
-        $this->job_schedules = array_values($this->job_schedules);
+        array_splice($this->job_schedules, $index, 1);
     }
 
     /** A ready-made plan: hourly, daily at night, weekly on Sunday, monthly on the 1st. */
@@ -714,7 +731,7 @@ class Backups extends Component
             ]),
         ], [], ['ssh_key' => __('key')]);
 
-        $old = $editing?->config ?? [];
+        $old = $editing->config ?? [];
         $fromAccount = $this->s3_from_account !== '' ? ConnectorAccount::query()->whereNull('user_id')->where('connector', 'aws')->where('uuid', $this->s3_from_account)->first() : null;
 
         if ($fromAccount !== null && $this->s3_secret_access_key === '') {
@@ -869,7 +886,8 @@ class Backups extends Component
         $account = $this->connectorAccounts->firstWhere('uuid', $this->johnny_account);
 
         try {
-            $made = $account->client()->post('/buckets/provision', array_filter(['bucket' => $this->johnny_bucket ?: null]));
+            $client = $account->client();
+            $made = $client instanceof ApiClient ? $client->post('/buckets/provision', array_filter(['bucket' => $this->johnny_bucket ?: null])) : [];
         } catch (ConnectorException $e) {
             $this->addError('johnny_bucket', $e->getMessage());
 

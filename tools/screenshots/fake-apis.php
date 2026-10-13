@@ -91,4 +91,87 @@ return [
         $droplet(424250, 'agency-ci-runner', 's-4vcpu-8gb', '203.0.113.50', 'off'),
     ], 'links' => []]),
     'api.digitalocean.com/*' => Http::response(['links' => []]),
+
+    // Cipi: the server web1 and the shop's app, with the Cipi agent in it
+    'api.web1.agency.test/api/apps/shopacme/env' => Http::response(['data' => ['app' => 'shopacme', 'vars' => [
+        'APP_NAME' => 'Shop Acme', 'APP_ENV' => 'production', 'APP_KEY' => 'base64:demo', 'APP_DEBUG' => 'false', 'APP_URL' => 'https://shop.acme.test',
+        'DB_CONNECTION' => 'mariadb', 'DB_DATABASE' => 'shopacme', 'DB_USERNAME' => 'shopacme', 'DB_PASSWORD' => 'demo-secret',
+        'MAIL_MAILER' => 'smtp', 'MAIL_FROM_ADDRESS' => 'shop@acme.test', 'QUEUE_CONNECTION' => 'redis', 'CACHE_STORE' => 'redis',
+        'CIPI_APP_USER' => 'shopacme', 'CIPI_WEBHOOK_TOKEN' => 'demo', 'CIPI_MCP' => 'true', 'CIPI_MCP_TOKEN' => 'demo-mcp', 'CIPI_ANONYMIZER' => 'true', 'CIPI_ANONYMIZER_TOKEN' => 'demo-anon',
+    ]]]),
+    'api.web1.agency.test/api/apps/shopacme/deploy/audit*' => Http::response(['data' => ['app' => 'shopacme', 'records' => [
+        ['ts' => $ago('9 days'), 'event' => 'published', 'release' => 41, 'commit' => 'a1b2c3d4e5f6', 'trigger' => 'webhook', 'claimed' => ['actor' => 'lucabianchi']],
+        ['ts' => $ago('4 days'), 'event' => 'failed', 'release' => 42, 'commit' => '0f9e8d7c6b5a', 'trigger' => 'webhook', 'claimed' => ['actor' => 'mariarossi']],
+        ['ts' => $ago('4 days'), 'event' => 'published', 'release' => 43, 'commit' => '1a2b3c4d5e6f', 'trigger' => 'api', 'operator' => 'studio', 'claimed' => ['actor' => 'lucabianchi']],
+        ['ts' => $ago('2 hours'), 'event' => 'published', 'release' => 44, 'commit' => '9c8b7a6d5e4f', 'trigger' => 'webhook', 'claimed' => ['actor' => 'mariarossi']],
+    ]]]),
+    'api.web1.agency.test/api/apps/shopacme/logs*' => Http::response(['data' => ['app' => 'shopacme', 'type' => 'laravel', 'available_types' => ['all', 'laravel', 'nginx', 'php', 'worker', 'deploy'], 'files' => [
+        ['path' => '/home/shopacme/shared/storage/logs/laravel.log', 'total_lines' => 1840, 'page' => 1, 'per_page' => 200, 'total_pages' => 10, 'lines' => [
+            '[2026-10-13 09:41:07] production.INFO: Order #10482 paid {"amount":"129.00","gateway":"stripe"}',
+            '[2026-10-13 09:41:12] production.INFO: Shipment label created for order #10482',
+            '[2026-10-13 09:44:30] production.WARNING: Slow query (1.8s) on orders by created_at range',
+            '[2026-10-13 09:52:03] production.ERROR: Stripe webhook signature mismatch {"exception":"[object] (Stripe\\Exception\\SignatureVerificationException(code: 0))"}',
+            '[2026-10-13 09:52:03] production.INFO: Retrying webhook evt_3Q8 in 60s',
+            '[2026-10-13 10:05:44] production.INFO: Order #10483 paid {"amount":"42.50","gateway":"paypal"}',
+        ]],
+    ]]]),
+    'api.web1.agency.test/api/apps/shopacme' => Http::response(['data' => ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.5', 'branch' => 'main', 'repository' => 'git@github.com:agency/shop-acme.git', 'suspended' => false, 'force_https' => true]]),
+    'api.web1.agency.test/api/apps' => Http::response(['data' => [
+        ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.5', 'branch' => 'main', 'suspended' => false, 'force_https' => true],
+        ['app' => 'portal', 'domain' => 'suppliers.acme.test', 'type' => 'laravel', 'php' => '8.4', 'branch' => 'main', 'suspended' => false, 'force_https' => true],
+    ]]),
+    'api.web1.agency.test/api/status' => Http::response(['data' => ['system' => ['ip' => '203.0.113.9', 'hostname' => 'web1', 'os' => 'Ubuntu 24.04', 'cipi' => '5.6.1', 'uptime' => '41 days'], 'apps' => 2,
+        'resources' => ['cpu' => ['usage_percent' => 23], 'memory' => ['used_mb' => 5120, 'total_mb' => 8192, 'usage_percent' => 62], 'disk' => ['usage_percent' => 71, 'display' => '113G / 160G']],
+        'services' => ['nginx' => 'running', 'mariadb' => 'running', 'redis' => 'running', 'supervisor' => 'running']]]),
+    'api.web1.agency.test/api/disk' => Http::response(['data' => ['disk' => ['size_gb' => 160, 'used_gb' => 113, 'used_percent' => 71], 'apps' => [
+        ['app' => 'shopacme', 'files_gb' => 6.4, 'database_gb' => 1.9, 'total_gb' => 8.3, 'limit_gb' => 20, 'limit_percent' => 42, 'over_limit' => false],
+    ]]]),
+    'api.web1.agency.test/*' => Http::response(['data' => []]),
+    'shop.acme.test/cipi/mcp' => function (Request $request) use ($ago) {
+        $call = json_decode($request->body(), true);
+        $answer = fn (array $result) => Http::response(['jsonrpc' => '2.0', 'id' => $call['id'] ?? null, 'result' => $result]);
+        $text = fn ($data) => $answer(['content' => [['type' => 'text', 'text' => json_encode($data)]]]);
+
+        return match ($call['method'] ?? '') {
+            'initialize' => $answer(['protocolVersion' => '2025-06-18', 'serverInfo' => ['name' => 'cipi-agent', 'version' => '2.0.0'], 'capabilities' => ['tools' => new stdClass]]),
+            'tools/list' => $answer(['tools' => array_map(fn ($n) => ['name' => $n], ['health', 'app_info', 'deploy', 'deploy_status', 'logs', 'artisan', 'db_query', 'db_schema', 'env_check', 'cipi_yml', 'anonymizer'])]),
+            'tools/call' => match ($call['params']['name'] ?? '') {
+                'deploy_status' => $text(['release' => '44', 'commit' => '9c8b7a6d5e4f', 'deploy_branch' => 'main', 'pending' => false, 'in_progress' => false, 'releases' => [
+                    ['name' => '44', 'commit' => '9c8b7a6d5e4f3a2b', 'current' => true, 'created_at' => $ago('2 hours')],
+                    ['name' => '43', 'commit' => '1a2b3c4d5e6f7a8b', 'current' => false, 'created_at' => $ago('4 days')],
+                    ['name' => '41', 'commit' => 'a1b2c3d4e5f6a7b8', 'current' => false, 'created_at' => $ago('9 days')],
+                    ['name' => '40', 'commit' => '5f4e3d2c1b0a9f8e', 'current' => false, 'created_at' => $ago('16 days')],
+                    ['name' => '39', 'commit' => 'c0ffee12345678ab', 'current' => false, 'created_at' => $ago('23 days')],
+                ]]),
+                'anonymizer' => $text(($call['params']['arguments']['action'] ?? '') === 'audit'
+                    ? ['valid' => true, 'covered' => ['users.name', 'users.email', 'users.password', 'customers.email', 'customers.phone', 'addresses.street'], 'uncovered' => ['customers.notes', 'orders.billing_name'], 'truncated' => ['sessions', 'jobs', 'failed_jobs']]
+                    : ['transformations' => [
+                        'users' => ['name' => 'fakeName', 'email' => ['type' => 'fakeEmail', 'unique' => true, 'consistent' => true], 'password' => 'password', 'remember_token' => 'null'],
+                        'customers' => ['first_name' => 'fakeFirstName', 'last_name' => 'fakeLastName', 'email' => ['type' => 'fakeEmail', 'consistent' => true], 'phone' => 'mask:3,2', 'tax_code' => 'redact'],
+                        'addresses' => ['street' => 'fakeStreetAddress', 'city' => 'fakeCity', 'postcode' => 'fakePostcode'],
+                        'orders' => ['billing_name' => 'fakeName', 'card_last_four' => 'numerify:####'],
+                    ], 'truncate' => ['sessions', 'jobs', 'failed_jobs', 'password_reset_tokens'], 'options' => ['faker_locale' => 'it_IT', 'password' => 'password', 'consistent' => true]]),
+                default => $text([]),
+            },
+            default => Http::response('', 202),
+        };
+    },
+    'shop.acme.test/cipi/db' => Http::response(['status' => 'queued', 'link_valid_minutes' => 15]),
+
+    // Cloudflare, Boogle, Johnny
+    'api.cloudflare.com/client/v4/zones/zone-acme/dns_records*' => Http::response(['result' => [], 'result_info' => ['total_count' => 14, 'total_pages' => 1]]),
+    'api.cloudflare.com/client/v4/zones*' => Http::response(['result' => [
+        ['id' => 'zone-acme', 'name' => 'acme.test', 'status' => 'active', 'paused' => false, 'plan' => ['name' => 'Pro Website'], 'name_servers' => ['ada.ns.cloudflare.com', 'rex.ns.cloudflare.com'], 'account' => ['name' => 'Agency']],
+    ], 'result_info' => ['total_count' => 1, 'total_pages' => 1]]),
+    'api.cloudflare.com/*' => Http::response(['result' => [], 'result_info' => ['total_count' => 0, 'total_pages' => 1]]),
+    'boogle.agency.test/api/admin/projects/12/exceptions*' => Http::response(['total' => 3, 'data' => [
+        ['id' => 901, 'issue_code' => 'SHOP-41', 'exception' => 'Stripe\\Exception\\SignatureVerificationException', 'error' => 'No signatures found matching the expected signature', 'status' => 'OPEN'],
+    ]]),
+    'boogle.agency.test/api/admin/projects*' => Http::response(['data' => [
+        ['id' => 12, 'title' => 'Shop Acme', 'url' => 'https://shop.acme.test', 'group' => ['title' => 'Acme'], 'uptime_enabled' => true],
+    ], 'next_page_url' => null]),
+    'boogle.agency.test/*' => Http::response(['data' => [], 'next_page_url' => null]),
+    'panel.johnny.agency.test/api/buckets/shop-acme-media' => Http::response(['data' => ['name' => 'shop-acme-media', 'objects' => 18342, 'bytes' => 2_147_483_648, 'keys' => [['id' => 'GKmedia'], ['id' => 'GKapp']]]]),
+    'panel.johnny.agency.test/api/buckets*' => Http::response(['data' => [['name' => 'shop-acme-media', 'created' => $ago('80 days')], ['name' => 'agency-backups', 'created' => $ago('200 days')]]]),
+    'panel.johnny.agency.test/*' => Http::response(['data' => []]),
 ];

@@ -26,13 +26,13 @@ final class Retention
         $position = 0;
 
         foreach ($snapshots as $id => $at) {
-            if ($position++ < max(1, $policy['last'] ?? 1)) {
+            if ($position++ < max(1, $policy['last'])) {
                 $kept[$id][] = 'last';
             }
         }
 
         foreach (self::BUCKETS as $rule => $format) {
-            $wanted = (int) ($policy[$rule] ?? 0);
+            $wanted = $policy[$rule];
             $seen = [];
 
             foreach ($snapshots as $id => $at) {

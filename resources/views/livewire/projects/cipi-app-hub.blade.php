@@ -240,10 +240,10 @@
                                         </td>
                                         <td class="px-2 py-1.5 text-end whitespace-nowrap">
                                             @if ($secret)
-                                                <flux:button size="xs" variant="ghost" icon="eye" x-on:click="shown[@js($key)] = ! shown[@js($key)]" :aria-label="__('Show')" />
+                                                <flux:button size="xs" variant="ghost" icon="eye" x-on:click="shown[{{ \Illuminate\Support\Js::from($key) }}] = ! shown[{{ \Illuminate\Support\Js::from($key) }}]" :aria-label="__('Show')" />
                                             @endif
                                             @if ($this->can('env-set'))
-                                                <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editEnv(@js($key))" :aria-label="__('Change')" />
+                                                <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editEnv({{ \Illuminate\Support\Js::from($key) }})" :aria-label="__('Change')" />
                                             @endif
                                         </td>
                                     </tr>
@@ -256,7 +256,7 @@
             @if ($this->can('env-set'))
                 <form wire:submit="saveEnv" class="space-y-3 self-start rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
                     <flux:heading size="sm">{{ __('Change the .env') }}</flux:heading>
-                    <flux:textarea wire:model="envSet" rows="6" class="font-mono text-xs" :label="__('Set')" placeholder="APP_DEBUG=false&#10;MAIL_FROM_ADDRESS=hello@example.com" :description="__('KEY=value, one per line; existing keys are replaced.')" />
+                    <flux:textarea wire:model="envSet" rows="6" class="font-mono text-xs" :label="__('Set')" placeholder="APP_DEBUG=false&#10;MAIL_FROM_ADDRESS=hello@example.com" :description:trailing="__('KEY=value, one per line; existing keys are replaced.')" />
                     <flux:input wire:model="envUnset" class="font-mono text-xs" :label="__('Remove')" placeholder="OLD_KEY, OTHER_KEY" />
                     <flux:button type="submit" variant="primary" size="sm" class="w-full">{{ __('Save to the server') }}</flux:button>
                     <flux:text class="text-xs">{{ __('Applied at the next deploy or config cache clear.') }}</flux:text>
@@ -350,7 +350,7 @@
                     <flux:button size="sm" icon="plus" wire:click="addAnonRule">{{ __('Add a column') }}</flux:button>
 
                     <div class="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
-                        <flux:input wire:model="anonTruncate" class="font-mono text-xs" :label="__('Tables emptied')" :description="__('Separated by commas: sessions, jobs, tokens…')" />
+                        <flux:input wire:model="anonTruncate" class="font-mono text-xs" :label="__('Tables emptied')" :description:trailing="__('Separated by commas: sessions, jobs, tokens…')" />
                         <flux:input wire:model="anonLocale" class="font-mono text-xs" :label="__('Fake data locale')" placeholder="it_IT" />
                         <flux:input wire:model="anonPassword" class="font-mono text-xs" :label="__('Everyone\'s password')" />
                     </div>
@@ -474,9 +474,9 @@
                         <flux:select.option value="key">{{ __('a system key') }}</flux:select.option>
                     </flux:select>
                     @if ($sshAuth === 'password')
-                        <flux:input wire:model="sshPassword" type="password" size="sm" class="w-56" :placeholder="__('cipi app reset-password :app', ['app' => $item->resource_id])" />
+                        <div class="w-64"><flux:input wire:model="sshPassword" type="password" size="sm" :placeholder="__('cipi app reset-password :app', ['app' => $item->resource_id])" /></div>
                     @else
-                        <flux:select wire:model="sshKey" size="sm" class="w-56">
+                        <flux:select wire:model="sshKey" size="sm" class="max-w-56">
                             <flux:select.option value="">{{ __('Pick…') }}</flux:select.option>
                             @foreach ($this->systemKeys as $key)
                                 <flux:select.option value="{{ $key->uuid }}">{{ $key->name }}</flux:select.option>

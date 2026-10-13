@@ -203,7 +203,7 @@
   },
   {
     "name": "project-infrastructure",
-    "url": "${BASE}/p/shop-acme/infrastructure",
+    "url": "${BASE}/p/shop-acme/infrastructure?resource=${RES_DROPLET}",
     "wait": 2000
   },
   {
@@ -298,7 +298,7 @@
   },
   {
     "name": "project-infrastructure-admin",
-    "url": "${BASE}/p/shop-acme/infrastructure",
+    "url": "${BASE}/p/shop-acme/infrastructure?resource=${RES_DROPLET}",
     "wait": 2000
   },
   {
@@ -367,5 +367,68 @@
     "url": "${BASE3}/admin/system",
     "height": 960,
     "wait": 1500
+  },
+  {
+    "name": "backups",
+    "url": "${BASE}/backups",
+    "height": 1100,
+    "wait": 1500
+  },
+  {
+    "name": "backups-schedule",
+    "url": "${BASE}/backups?tab=schedule",
+    "height": 1250,
+    "wait": 1500
+  },
+  {
+    "name": "backups-runs",
+    "url": "${BASE}/backups?tab=runs&job=${JOB_SITE}",
+    "height": 1100,
+    "wait": 1500
+  },
+  {
+    "name": "backups-new",
+    "url": "${BASE}/p/shop-acme/backups",
+    "eval": "(() => { setTimeout(() => Livewire.all().find(c => c.name === 'tools.backups').$wire.call('newJob'), 300); return true; })()",
+    "height": 1500,
+    "wait": 2000
+  },
+  {
+    "name": "project-overview",
+    "url": "${BASE}/p/shop-acme/infrastructure",
+    "height": 1250,
+    "wait": 4000
+  },
+  {
+    "name": "cipi-hub",
+    "url": "${BASE}/p/shop-acme/infrastructure?resource=${RES_CIPI}",
+    "height": 1150,
+    "wait": 2500
+  },
+  {
+    "name": "cipi-logs",
+    "url": "${BASE}/p/shop-acme/infrastructure?resource=${RES_CIPI}&view=logs",
+    "height": 1000,
+    "wait": 2500
+  },
+  {
+    "name": "cipi-anonymizer",
+    "url": "${BASE}/p/shop-acme/infrastructure?resource=${RES_CIPI}&view=database",
+    "eval": "(() => { setTimeout(() => Livewire.all().find(c => c.name === 'projects.cipi-app-hub').$wire.call('loadAnonymizer', 'scan'), 300); return true; })()",
+    "height": 1500,
+    "wait": 3000
+  },
+  {
+    "name": "cipi-agent",
+    "url": "${BASE}/p/shop-acme/infrastructure?resource=${RES_CIPI}&view=agent",
+    "height": 1150,
+    "wait": 2500
+  },
+  {
+    "name": "project-attach",
+    "url": "${BASE}/p/shop-acme/infrastructure",
+    "eval": "(() => { setTimeout(async () => { const c = Livewire.all().find(c => c.name === 'projects.infrastructure').$wire; await c.call('startAttach'); await c.set('attachAccount', '${ACCOUNT_CIPI}'); await c.call('pickAttachRow', 'portal'); await c.call('safeActions'); }, 300); return true; })()",
+    "height": 1500,
+    "wait": 3500
   }
 ]

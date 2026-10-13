@@ -39,6 +39,42 @@
                 <livewire:studio.files :workspace="$workspace" :sandbox="$sandbox" :key="'files-'.$workspace->id.'-'.$sandbox" />
             </div>
         @endif
+        @if ($remoteMounted && $canUseRemote)
+            {{-- The remote terminals: the project's SSH hosts through the gateway, kept alive while the pane shows something else. --}}
+            <div x-data="sshTerminals" @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'terminal' || $terminalMode !== 'remote'])>
+                <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
+                    @if ($canUseRemote)
+                        <div class="mb-2 inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs dark:bg-zinc-800">
+                            @foreach (['local' => [__('Local'), 'computer-desktop'], 'remote' => [__('Remote (SSH)'), 'globe-alt']] as $mode => [$modeLabel, $modeIcon])
+                                <button type="button" wire:click="setTerminalMode('{{ $mode }}')" @class([
+                                    'flex items-center gap-1 rounded-md px-2.5 py-1 transition',
+                                    'bg-white font-medium shadow-sm dark:bg-zinc-700' => $terminalMode === $mode,
+                                    'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $terminalMode !== $mode,
+                                ])><flux:icon :name="$modeIcon" variant="micro" class="size-3.5" />{{ $modeLabel }}</button>
+                            @endforeach
+                        </div>
+                    @endif
+                    @if (! $this->remoteConfirmed())
+                        <div class="flex flex-wrap items-center gap-2 text-sm">
+                            <flux:text>{{ __('As on the SSH page, confirm your password to open a session.') }}</flux:text>
+                            <flux:button size="xs" variant="primary" icon="lock-closed" wire:click="confirmPassword">{{ __('Confirm') }}</flux:button>
+                        </div>
+                    @elseif ($this->remoteConnections->isEmpty())
+                        <flux:text class="text-sm">{{ __('No SSH connection tied to this project. Add one on the SSH page (with the project chosen), or from a Cipi app in Infrastructure.') }}</flux:text>
+                    @else
+                        <div class="flex flex-wrap gap-1.5">
+                            @foreach ($this->remoteConnections as $row)
+                                <flux:button size="xs" :variant="$row['ready'] ? 'filled' : 'ghost'" icon="command-line" x-on:click="open('{{ $row['connection']->uuid }}')" :title="$row['connection']->address()" wire:key="remote-{{ $row['connection']->uuid }}">
+                                    {{ $row['connection']->name }}@unless ($row['ready']) · {{ __('no credential') }}@endunless
+                                </flux:button>
+                            @endforeach
+                        </div>
+                        <flux:text class="mt-1 text-xs">{{ __('A full shell on the host, with your own key or password. Each button opens one more session.') }}</flux:text>
+                    @endif
+                </div>
+                @include('livewire.ssh.partials.terminals', ['class' => 'min-h-0', 'empty' => __('Pick a host above to open a terminal on it.')])
+            </div>
+        @endif
         @if ($tab === 'preview')
             @if ($workspace->isRunning() && $appUrl)
                 <iframe src="{{ $appUrl }}" title="{{ $sandbox ? __('Sandbox preview') : __('Workspace preview') }}" class="h-full w-full bg-white" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
@@ -92,9 +128,20 @@
                     @include('livewire.studio.partials.git.'.$changesView)
                 </div>
             </div>
-        @elseif ($tab === 'terminal')
+        @elseif ($tab === 'terminal' && $terminalMode === 'local')
             <div class="flex h-full min-h-0 flex-col" @if ($run && ($run['status'] ?? '') === 'running') wire:poll.2s="refreshRun" @endif>
                 <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
+                    @if ($canUseRemote)
+                        <div class="mb-2 inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs dark:bg-zinc-800">
+                            @foreach (['local' => [__('Local'), 'computer-desktop'], 'remote' => [__('Remote (SSH)'), 'globe-alt']] as $mode => [$modeLabel, $modeIcon])
+                                <button type="button" wire:click="setTerminalMode('{{ $mode }}')" @class([
+                                    'flex items-center gap-1 rounded-md px-2.5 py-1 transition',
+                                    'bg-white font-medium shadow-sm dark:bg-zinc-700' => $terminalMode === $mode,
+                                    'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $terminalMode !== $mode,
+                                ])><flux:icon :name="$modeIcon" variant="micro" class="size-3.5" />{{ $modeLabel }}</button>
+                            @endforeach
+                        </div>
+                    @endif
                     <div class="mb-2 flex flex-wrap gap-1.5">
                         @foreach ($shortcuts as $shortcut)
                             <flux:button size="xs" variant="filled" wire:click="runCommand(@js($shortcut['command']))" :title="$shortcut['command']">{{ $shortcut['label'] }}</flux:button>
