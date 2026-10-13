@@ -81,6 +81,9 @@ class Projects extends Component
 
     public bool $pulse = false;
 
+    /** IANA name: APP_TIMEZONE of the site and the previews, TZ of the workspaces. */
+    public string $timezone = 'UTC';
+
     // Every host wants a Studio login with access to the project; these lists narrow it to addresses.
     public string $site_ips = '';
 
@@ -299,6 +302,7 @@ class Projects extends Component
         $this->reverb = $features['reverb'];
         $this->horizon = $features['horizon'];
         $this->pulse = $features['pulse'];
+        $this->timezone = $project->timezone();
         $this->site_ips = implode("\n", $access['site']['ips']);
         $this->previews_ips = implode("\n", $access['previews']['ips']);
         $this->branch_rules = array_map(fn (array $rule) => ['branch' => $rule['branch'], 'ips' => implode(', ', $rule['ips'])], $access['branches']);
@@ -326,6 +330,7 @@ class Projects extends Component
 
         $this->validate([
             'queues' => ['required', 'string', 'regex:/^\s*[a-z0-9][a-z0-9_-]*(\s*,\s*[a-z0-9][a-z0-9_-]*)*\s*$/'],
+            'timezone' => ['required', Rule::in(timezone_identifiers_list())],
             'site_ips' => ['nullable', 'string', 'max:4000'],
             'previews_ips' => ['nullable', 'string', 'max:4000'],
             'branch_rules' => ['array', 'max:50'],
@@ -333,6 +338,7 @@ class Projects extends Component
             'branch_rules.*.ips' => ['required', 'string', 'max:4000'],
         ], [
             'queues.regex' => __('Queue names: lowercase letters, digits, dashes and underscores, separated by commas.'),
+            'timezone.in' => __('Choose a timezone from the list.'),
             'branch_rules.*.branch.required' => __('Name the branch or remove the rule.'),
             'branch_rules.*.ips.required' => __('List the addresses for this branch, or remove the rule.'),
         ]);
@@ -355,6 +361,7 @@ class Projects extends Component
 
         $project->update(['settings' => array_merge($project->settings ?? [], [
             'features' => ['scheduler' => $this->scheduler, 'queues' => $this->queueList(), 'reverb' => $this->reverb, 'horizon' => $this->horizon, 'pulse' => $this->pulse],
+            'timezone' => $this->timezone,
             'access' => [
                 'site' => ['ips' => $this->ipList($this->site_ips)],
                 'previews' => ['ips' => $this->ipList($this->previews_ips)],
@@ -495,6 +502,7 @@ class Projects extends Component
             'users' => User::query()->orderBy('name')->get(['id', 'name', 'email', 'role']),
             'domain' => config('studio.domain'),
             'phpVersions' => (array) config('studio.php_versions'),
+            'timezones' => $this->settingsId ? timezone_identifiers_list() : [],
             'deployerHasGit' => auth()->user()->hasGit(),
             'git' => GitProvider::current(),
         ]);

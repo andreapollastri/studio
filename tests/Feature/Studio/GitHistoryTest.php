@@ -36,7 +36,8 @@ function fakeGitBridge(): void
             $url === 'http://bridge.test:4455/git/checkout' => Http::response(['branch' => $request['branch'], 'status' => [], 'stat' => '', 'diff' => '']),
             $url === 'http://bridge.test:4455/git/fetch' => Http::response(['current' => 'develop', 'local' => [], 'remote' => [['name' => 'origin/hotfix', 'sha' => 'f000000', 'date' => now()->toIso8601String(), 'subject' => 'Hotfix']]]),
             $url === 'http://bridge.test:4455/git' => Http::response(['branch' => $current, 'status' => [' M app/Models/Order.php'], 'stat' => '1 file changed', 'diff' => '+between', 'upstream' => 'origin/develop', 'ahead' => 2, 'behind' => 1, 'merging' => false, 'conflicts' => [], 'stashes' => 0]),
-            $url === 'http://bridge.test:4455/git/merge' && $request['branch'] === 'feature/conflict' => Http::response(['error' => 'CONFLICT (content): Merge conflict in app/Models/Order.php'], 422),
+            $url === 'http://bridge.test:4455/git/merge' && $request['branch'] === 'feature/conflict' => Http::response(['error' => 'merging feature/conflict conflicts in app/Models/Order.php: nothing was merged. Ask Claude to merge it and resolve the conflicts, or align the two branches first.'], 409),
+            $url === 'http://bridge.test:4455/git/merge' && $request['branch'] === 'feature/deps' => Http::response(['branch' => 'develop', 'status' => [], 'stat' => '', 'diff' => '', 'after' => ['composer install', 'php artisan migrate']]),
             in_array($url, ['http://bridge.test:4455/git/commit', 'http://bridge.test:4455/git/discard', 'http://bridge.test:4455/git/pull', 'http://bridge.test:4455/git/push', 'http://bridge.test:4455/git/merge', 'http://bridge.test:4455/git/merge/abort', 'http://bridge.test:4455/git/branches', 'http://bridge.test:4455/git/revert', 'http://bridge.test:4455/git/stash'], true) => Http::response(['branch' => 'develop', 'status' => [], 'stat' => '', 'diff' => '']),
             str_starts_with($url, 'http://bridge.test:4455/git/branches?') => Http::response(['current' => 'develop', 'local' => [], 'remote' => []]),
             default => Http::response(['error' => 'unexpected '.$url], 500),
@@ -142,9 +143,11 @@ test('branches are created, merged, deleted, and commits reverted', function () 
         ->assertSet('newBranch', '')
         ->call('merge', 'feature/US-014')
         ->assertSet('gitNotice', 'feature/US-014 merged into develop.')
+        ->call('merge', 'feature/deps')
+        ->assertSet('gitNotice', 'feature/deps merged into develop. Run in the Terminal: composer install, php artisan migrate.')
         ->call('merge', 'feature/conflict')
         ->assertSet('gitNotice', null)
-        ->assertSee('Merge conflict in app/Models/Order.php')
+        ->assertSet('gitError', 'Merging feature/conflict conflicts in app/Models/Order.php: nothing was merged. Ask Claude to merge it and resolve the conflicts, or align the two branches first.')
         ->call('abortMerge')
         ->call('deleteBranch', 'feature/US-014')
         ->call('setChangesView', 'history')

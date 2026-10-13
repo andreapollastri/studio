@@ -56,7 +56,7 @@
                 </span>
             @endif
             <flux:dropdown position="bottom" align="end">
-                <button type="button" class="rounded px-1 text-zinc-400 opacity-0 hover:text-zinc-700 group-hover:opacity-100 dark:hover:text-zinc-200" aria-label="{{ __('Actions') }}">…</button>
+                <button type="button" class="touch-reveal rounded px-1 text-zinc-400 opacity-0 hover:text-zinc-700 group-hover:opacity-100 dark:hover:text-zinc-200" aria-label="{{ __('Actions') }}">…</button>
                 <flux:menu class="font-sans">
                     @if ($entry['type'] === 'dir')
                         <flux:menu.item icon="document-plus" wire:click="startCreating(@js($path), 'file')">{{ __('New file') }}</flux:menu.item>

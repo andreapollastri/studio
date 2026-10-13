@@ -11,7 +11,7 @@
                 <span class="truncate">{{ $node->name }}</span>
             </button>
             <flux:dropdown position="bottom" align="end">
-                <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" class="opacity-0 group-hover:opacity-100" />
+                <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" class="touch-reveal opacity-0 group-hover:opacity-100" />
                 <flux:menu>
                     <flux:menu.item icon="folder-plus" wire:click="newFolder('{{ $node->uuid }}')">{{ __('New folder inside') }}</flux:menu.item>
                     <flux:menu.item icon="pencil-square" wire:click="renameFolder('{{ $node->uuid }}')">{{ __('Rename') }}</flux:menu.item>

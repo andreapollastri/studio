@@ -86,7 +86,7 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function git(): array
     {
@@ -128,7 +128,7 @@ final class BridgeClient
     /**
      * Switch the working tree to a branch; the answer is the new working tree state.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitCheckout(string $branch): array
     {
@@ -146,7 +146,7 @@ final class BridgeClient
     /**
      * Stage everything and commit it; during a merge this concludes it.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitCommitAll(string $message): array
     {
@@ -156,7 +156,7 @@ final class BridgeClient
     /**
      * Throw away the changes of one path as git status lists it, or of the whole working tree.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitDiscard(?string $path = null): array
     {
@@ -164,7 +164,7 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitPull(): array
     {
@@ -172,7 +172,7 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitPush(): array
     {
@@ -182,7 +182,7 @@ final class BridgeClient
     /**
      * Merge a branch into the current one; a conflict leaves the merge open (the state says `merging`).
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitMerge(string $branch): array
     {
@@ -190,7 +190,7 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitMergeAbort(): array
     {
@@ -200,7 +200,7 @@ final class BridgeClient
     /**
      * Create a branch from the current commit, or from $from, and switch to it.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitCreateBranch(string $branch, ?string $from = null): array
     {
@@ -218,7 +218,7 @@ final class BridgeClient
     /**
      * A new commit that undoes $sha.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitRevert(string $sha): array
     {
@@ -228,7 +228,7 @@ final class BridgeClient
     /**
      * Put the changes aside, or bring the newest stash back with $pop.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     public function gitStash(bool $pop = false): array
     {
@@ -250,7 +250,7 @@ final class BridgeClient
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after: list<string>}
      */
     private function stateFrom(array $data): array
     {
@@ -265,6 +265,7 @@ final class BridgeClient
             'merging' => (bool) ($data['merging'] ?? false),
             'conflicts' => array_values(array_map('strval', (array) ($data['conflicts'] ?? []))),
             'stashes' => (int) ($data['stashes'] ?? 0),
+            'after' => array_values(array_map('strval', (array) ($data['after'] ?? []))),
         ];
     }
 

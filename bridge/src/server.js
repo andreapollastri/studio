@@ -8,10 +8,16 @@ import {
   GitError,
   gitBranches,
   gitCheckout,
+  gitCherryPick,
   gitCommit,
   gitCommitAll,
+  gitCompare,
   gitCreateBranch,
+  gitCreateTag,
   gitDeleteBranch,
+  gitDeleteRemoteBranch,
+  gitDeleteTag,
+  gitDiffFile,
   gitDiscard,
   gitFetch,
   gitLog,
@@ -19,9 +25,21 @@ import {
   gitMergeAbort,
   gitPull,
   gitPush,
+  gitPushTags,
+  gitRenameBranch,
+  gitReset,
+  gitResolve,
   gitRevert,
+  gitStage,
   gitStash,
+  gitStashApply,
+  gitStashDrop,
+  gitStashes,
+  gitStashPush,
+  gitStashShow,
   gitState,
+  gitTags,
+  gitUnstage,
 } from './git.js';
 import { CommandError, RunManager } from './commands.js';
 import { FileError, Files } from './files.js';
@@ -61,75 +79,9 @@ export function createServer(config, options = {}) {
         return json(res, 200, { skills: await listSkills(config.workspaceDir) });
       }
 
-      if (req.method === 'GET' && path === '/git') {
-        return json(res, 200, await gitState(config.workspaceDir));
-      }
-
-      if (req.method === 'GET' && path === '/git/log') {
-        return json(res, 200, await gitLog(config.workspaceDir, { limit: url.searchParams.get('limit') ?? 80, all: url.searchParams.get('all') !== '0' }));
-      }
-
-      if (req.method === 'GET' && path === '/git/branches') {
-        return json(res, 200, await gitBranches(config.workspaceDir));
-      }
-
-      if ((match = /^\/git\/commit\/([^/]+)$/.exec(path)) && req.method === 'GET') {
-        return json(res, 200, await gitCommit(config.workspaceDir, decodeURIComponent(match[1])));
-      }
-
-      if (req.method === 'POST' && path === '/git/checkout') {
-        const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 200, await gitCheckout(config.workspaceDir, body.branch));
-      }
-
-      if (req.method === 'POST' && path === '/git/fetch') {
-        return json(res, 200, await gitFetch(config.workspaceDir));
-      }
-
-      if (req.method === 'POST' && path === '/git/commit') {
-        const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 200, await gitCommitAll(config.workspaceDir, body.message));
-      }
-
-      if (req.method === 'POST' && path === '/git/discard') {
-        const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 200, await gitDiscard(config.workspaceDir, body.path ?? null));
-      }
-
-      if (req.method === 'POST' && path === '/git/pull') {
-        return json(res, 200, await gitPull(config.workspaceDir));
-      }
-
-      if (req.method === 'POST' && path === '/git/push') {
-        return json(res, 200, await gitPush(config.workspaceDir));
-      }
-
-      if (req.method === 'POST' && path === '/git/merge') {
-        const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 200, await gitMerge(config.workspaceDir, body.branch));
-      }
-
-      if (req.method === 'POST' && path === '/git/merge/abort') {
-        return json(res, 200, await gitMergeAbort(config.workspaceDir));
-      }
-
-      if (req.method === 'POST' && path === '/git/branches') {
-        const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 201, await gitCreateBranch(config.workspaceDir, body.branch, body.from ?? null));
-      }
-
-      if (req.method === 'DELETE' && path === '/git/branches') {
-        return json(res, 200, await gitDeleteBranch(config.workspaceDir, url.searchParams.get('branch') ?? ''));
-      }
-
-      if (req.method === 'POST' && path === '/git/revert') {
-        const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 200, await gitRevert(config.workspaceDir, body.sha));
-      }
-
-      if (req.method === 'POST' && path === '/git/stash') {
-        const body = await readJson(req, config.maxBodyBytes);
-        return json(res, 200, await gitStash(config.workspaceDir, body.pop === true));
+      if (path === '/git' || path.startsWith('/git/')) {
+        await gitRoute(req, res, path, url, config);
+        if (res.writableEnded) return;
       }
 
       if (req.method === 'GET' && path === '/files') {
@@ -230,6 +182,60 @@ export function createServer(config, options = {}) {
   };
 
   return server;
+}
+
+/** The git routes: what the Changes tab of Studio reads and does in the workspace's repository. */
+async function gitRoute(req, res, path, url, config) {
+  const dir = config.workspaceDir;
+  const query = (name) => url.searchParams.get(name);
+  const flag = (name) => ['1', 'true'].includes(query(name) ?? '');
+  const body = req.method === 'POST' ? await readJson(req, config.maxBodyBytes) : {};
+  let match;
+
+  if (req.method === 'GET') {
+    if (path === '/git') return json(res, 200, await gitState(dir));
+    if (path === '/git/log') return json(res, 200, await gitLog(dir, { limit: query('limit') ?? 80, all: query('all') !== '0', search: query('search') ?? '' }));
+    if (path === '/git/branches') return json(res, 200, await gitBranches(dir));
+    if (path === '/git/diff') return json(res, 200, await gitDiffFile(dir, query('path') ?? ''));
+    if (path === '/git/compare') return json(res, 200, await gitCompare(dir, query('branch') ?? ''));
+    if (path === '/git/tags') return json(res, 200, await gitTags(dir));
+    if (path === '/git/stashes') return json(res, 200, await gitStashes(dir));
+    if (path === '/git/stash/show') return json(res, 200, await gitStashShow(dir, query('index') ?? 0));
+    if ((match = /^\/git\/commit\/([^/]+)$/.exec(path))) return json(res, 200, await gitCommit(dir, decodeURIComponent(match[1])));
+  }
+
+  if (req.method === 'POST') {
+    switch (path) {
+      case '/git/checkout': return json(res, 200, await gitCheckout(dir, body.branch));
+      case '/git/fetch': return json(res, 200, await gitFetch(dir));
+      case '/git/stage': return json(res, 200, await gitStage(dir, body.paths ?? null));
+      case '/git/unstage': return json(res, 200, await gitUnstage(dir, body.paths ?? null));
+      case '/git/commit': return json(res, 200, await gitCommitAll(dir, body.message, { all: body.all !== false, amend: body.amend === true }));
+      case '/git/resolve': return json(res, 200, await gitResolve(dir, body.path, body.side));
+      case '/git/discard': return json(res, 200, await gitDiscard(dir, body.path ?? null));
+      case '/git/pull': return json(res, 200, await gitPull(dir));
+      case '/git/push': return json(res, 200, await gitPush(dir, { force: body.force === true }));
+      case '/git/merge': return json(res, 200, await gitMerge(dir, body.branch, { mode: body.mode ?? 'merge' }));
+      case '/git/merge/abort': return json(res, 200, await gitMergeAbort(dir));
+      case '/git/branches': return json(res, 201, await gitCreateBranch(dir, body.branch, body.from ?? null));
+      case '/git/branches/rename': return json(res, 200, await gitRenameBranch(dir, body.from, body.to));
+      case '/git/revert': return json(res, 200, await gitRevert(dir, body.sha));
+      case '/git/cherry-pick': return json(res, 200, await gitCherryPick(dir, body.sha));
+      case '/git/reset': return json(res, 200, await gitReset(dir, body.sha, body.mode ?? 'mixed'));
+      case '/git/tags': return json(res, 201, await gitCreateTag(dir, body.tag, { at: body.at ?? null, message: body.message ?? '' }));
+      case '/git/tags/push': return json(res, 200, await gitPushTags(dir, body.tag ?? null));
+      // the older body {pop: true} restores the newest stash
+      case '/git/stash': return json(res, 200, body.pop === true ? await gitStash(dir, true) : await gitStashPush(dir, { message: body.message ?? '', untracked: body.untracked !== false }));
+      case '/git/stash/apply': return json(res, 200, await gitStashApply(dir, body.index ?? 0, { pop: body.pop !== false }));
+    }
+  }
+
+  if (req.method === 'DELETE') {
+    if (path === '/git/branches') return json(res, 200, await gitDeleteBranch(dir, query('branch') ?? '', { force: flag('force'), remote: flag('remote') }));
+    if (path === '/git/remote-branches') return json(res, 200, await gitDeleteRemoteBranch(dir, query('branch') ?? ''));
+    if (path === '/git/tags') return json(res, 200, await gitDeleteTag(dir, query('tag') ?? '', { remote: flag('remote') }));
+    if (path === '/git/stash') return json(res, 200, await gitStashDrop(dir, query('index') ?? 0));
+  }
 }
 
 function authorized(req, token) {

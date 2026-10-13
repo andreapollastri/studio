@@ -78,7 +78,7 @@
         <div x-show="dragging" class="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-sky-500 bg-sky-50/90 text-sm font-medium text-sky-700 dark:bg-sky-950/80 dark:text-sky-300" style="display: none">
             {{ __('Drop the files to upload them here') }}
         </div>
-        <table class="w-full text-sm">
+        <table class="table-cards w-full text-sm">
             <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800">
                 <tr>
                     <th class="w-8 px-3 py-2"></th>
@@ -92,8 +92,8 @@
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @foreach ($this->folders as $item)
                     <tr wire:key="drive-folder-{{ $item->uuid }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                        <td class="px-3 py-2"><input type="checkbox" value="{{ $item->uuid }}" wire:model.live="selectedFolders" class="rounded" /></td>
-                        <td class="px-3 py-2">
+                        <td class="px-3 py-2" data-cell="select"><input type="checkbox" value="{{ $item->uuid }}" wire:model.live="selectedFolders" class="rounded" /></td>
+                        <td class="px-3 py-2" data-cell="main">
                             <button type="button" wire:click="openFolder('{{ $item->uuid }}')" class="flex items-center gap-2 font-medium">
                                 <flux:icon.folder variant="solid" class="size-5 text-amber-400" />{{ $item->name }}
                             </button>
@@ -101,14 +101,11 @@
                                 <div class="ps-7 text-xs text-zinc-500">{{ __('from :name', ['name' => $item->user->name]) }}</div>
                             @endif
                         </td>
-                        <td class="px-3 py-2">
-                            @if ($item->project_id)
-                                <flux:badge size="sm" color="sky" icon="rectangle-stack">{{ $item->project?->name }}</flux:badge>
-                            @endif
-                        </td>
-                        <td class="px-3 py-2"></td>
-                        <td class="px-3 py-2 text-xs text-zinc-500">{{ $item->updated_at?->diffForHumans() }}</td>
-                        <td class="px-3 py-2 text-end whitespace-nowrap">
+                        {{-- on one line: without a project the cell stays :empty, and a phone's card drops it --}}
+                        <td class="px-3 py-2" data-cell="meta">@if ($item->project_id)<flux:badge size="sm" color="sky" icon="rectangle-stack">{{ $item->project?->name }}</flux:badge>@endif</td>
+                        <td class="px-3 py-2" data-cell="meta"></td>
+                        <td class="px-3 py-2 text-xs text-zinc-500" data-cell="meta">{{ $item->updated_at?->diffForHumans() }}</td>
+                        <td class="px-3 py-2 text-end whitespace-nowrap" data-cell="actions">
                             <flux:dropdown position="bottom" align="end">
                                 <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                                 <flux:menu>
@@ -126,17 +123,17 @@
                 @endforeach
                 @foreach ($this->files as $file)
                     <tr wire:key="drive-file-{{ $file->uuid }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                        <td class="px-3 py-2"><input type="checkbox" value="{{ $file->uuid }}" wire:model.live="selectedFiles" class="rounded" /></td>
-                        <td class="px-3 py-2">
+                        <td class="px-3 py-2" data-cell="select"><input type="checkbox" value="{{ $file->uuid }}" wire:model.live="selectedFiles" class="rounded" /></td>
+                        <td class="px-3 py-2" data-cell="main">
                             <a href="{{ route('drive.file', ['file' => $file, 'inline' => $file->isPreviewable() ? 1 : null]) }}" target="{{ $file->isPreviewable() ? '_blank' : '_self' }}" class="flex items-center gap-2">
                                 <flux:icon :name="str_starts_with((string) $file->mime, 'image/') ? 'photo' : 'document'" class="size-5 text-zinc-400" />
                                 <span>{{ $file->name }}</span>
                             </a>
                         </td>
-                        <td class="px-3 py-2 text-xs text-zinc-500">{{ $file->user->name }}</td>
-                        <td class="px-3 py-2 text-end text-xs tabular-nums text-zinc-500">{{ \Illuminate\Support\Number::fileSize($file->size, 1) }}</td>
-                        <td class="px-3 py-2 text-xs text-zinc-500">{{ $file->updated_at?->diffForHumans() }}</td>
-                        <td class="px-3 py-2 text-end whitespace-nowrap">
+                        <td class="px-3 py-2 text-xs text-zinc-500" data-cell="meta">{{ $file->user->name }}</td>
+                        <td class="px-3 py-2 text-end text-xs tabular-nums text-zinc-500" data-cell="meta">{{ \Illuminate\Support\Number::fileSize($file->size, 1) }}</td>
+                        <td class="px-3 py-2 text-xs text-zinc-500" data-cell="meta">{{ $file->updated_at?->diffForHumans() }}</td>
+                        <td class="px-3 py-2 text-end whitespace-nowrap" data-cell="actions">
                             <flux:dropdown position="bottom" align="end">
                                 <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                                 <flux:menu>

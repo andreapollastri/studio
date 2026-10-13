@@ -15,7 +15,7 @@
 #                                      a repository Studio just created: fresh Laravel + Boost + Larapilot, pushed
 #   project-create   <slug>            {repo_url, branch, php_version, db_engine, site_host, git_token, git_username}
 #   project-deploy   <slug>            {branch, php_version, git_token, git_username}
-#   project-configure <slug>           {php_version, site_host, scheduler, queues, reverb, reverb_port, horizon, pulse}
+#   project-configure <slug>           {php_version, site_host, scheduler, queues, reverb, reverb_port, horizon, pulse, timezone}
 #   project-delete   <slug>
 #   workspace-create <handle> <slug>   {repo_url, branch, php_version, db_engine, preview_host, bridge_port,
 #                                       bridge_token, git_token, git_username, git_env, claude_api_key, git_name, git_email}
@@ -80,6 +80,12 @@ valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,27}$ ]] || fail "invalid name: $1
 # A branch is passed to git as a positional argument: it must never look like an option.
 valid_branch() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$1" != *..* ]] && [[ "$1" != *.lock ]] || fail "invalid branch name: $1"; }
 valid_php()  { [[ "$1" =~ ^[0-9]+\.[0-9]+$ ]] && [ -x "/usr/bin/php$1" ] || fail "PHP $1 is not installed"; }
+# project_timezone — the timezone field (an IANA name, UTC when absent), checked against the zoneinfo database
+project_timezone() {
+    local tz; tz=$(field timezone); [ -n "$tz" ] || tz=UTC
+    [[ "$tz" =~ ^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$ ]] && [ -f "/usr/share/zoneinfo/$tz" ] || fail "invalid timezone: $tz"
+    printf '%s' "$tz"
+}
 reload_all_fpm() { local d; for d in /etc/php/*/fpm; do [ -d "$d" ] && systemctl reload "php$(basename "$(dirname "$d")")-fpm" 2>/dev/null || true; done; }
 
 # The variables a workspace may get for the agent's CLI and Larapilot, on any provider.
@@ -321,7 +327,8 @@ build() {
 # (cron every minute) and one queue worker per queue; Horizon replaces the
 # workers when switched on; Reverb and Pulse run when switched on. The
 # switches come from the input fields scheduler, horizon, reverb, pulse (1|0),
-# queues (comma separated) and reverb_port, as Studio stores them per project.
+# queues (comma separated) and reverb_port, as Studio stores them per project;
+# timezone becomes the host's APP_TIMEZONE.
 
 caddy_ws_snippet() { # MATCHER PORT — empty port = no Reverb on this host
     [ -n "$2" ] || return 0
@@ -348,9 +355,9 @@ render_site() {
 # apply_services BASE USER APPDIR PHP LOGDIR HOST
 apply_services() {
     local base=$1 user=$2 app=$3 php=$4 logdir=$5 host=$6
-    local scheduler queues reverb rport horizon pulse
+    local scheduler queues reverb rport horizon pulse tz
     scheduler=$(field scheduler); queues=$(field queues); reverb=$(field reverb); rport=$(field reverb_port)
-    horizon=$(field horizon); pulse=$(field pulse)
+    horizon=$(field horizon); pulse=$(field pulse); tz=$(project_timezone)
     [ -n "$scheduler" ] || scheduler=1; [ -n "$queues" ] || queues=default; [ -n "$reverb" ] || reverb=0
     [ -n "$horizon" ] || horizon=0; [ -n "$pulse" ] || pulse=0
 
@@ -391,6 +398,11 @@ apply_services() {
         set_env "$app/.env" VITE_REVERB_HOST '"${REVERB_HOST}"'
         set_env "$app/.env" VITE_REVERB_PORT '"${REVERB_PORT}"'
         set_env "$app/.env" VITE_REVERB_SCHEME '"${REVERB_SCHEME}"'
+    fi
+    set_env "$app/.env" APP_TIMEZONE "$tz"
+    # a cached configuration (artisan optimize on the site) would keep the old values
+    if [ -f "$app/bootstrap/cache/config.php" ]; then
+        run_as "$user" "$app" "" "php$php" artisan config:cache --quiet || log "config:cache failed"
     fi
     daemon "$base" reverb "$reverb" "$user" "$app" "$php" "reverb:start --host=127.0.0.1 --port=$rport"
     daemon "$base" horizon "$horizon" "$user" "$app" "$php" horizon
@@ -499,6 +511,8 @@ cmd_project_bootstrap() {
     log "creating a fresh Laravel in $tmp/app"
     run_as "$P_USER" "$tmp" "$P_ENV" "php$php" /usr/local/bin/composer create-project laravel/laravel app --prefer-dist --no-progress --quiet \
         || fail "composer create-project laravel/laravel failed"
+    # the project timezone from Studio's settings arrives as APP_TIMEZONE in the .env
+    sed -i "s/'timezone' => 'UTC',/'timezone' => env('APP_TIMEZONE', 'UTC'),/" "$tmp/app/config/app.php"
     # Laravel Boost always, as a direct dev dependency (it stays even if Larapilot is
     # ever removed), and Larapilot on top of it.
     run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" /usr/local/bin/composer require laravel/boost andreapollastri/larapilot --dev --no-progress --quiet \
@@ -684,6 +698,10 @@ write_workspace_env() { # after workspace_paths; reads tokens from INPUT, keeps 
     set_env "$W_ENV" GIT_TERMINAL_PROMPT 0
     [ -n "$bridge_token" ] && set_env "$W_ENV" BRIDGE_TOKEN "$bridge_token"
     [ -n "$bridge_port" ] && set_env "$W_ENV" BRIDGE_PORT "$bridge_port"
+    # the project timezone, for Claude and the terminal; the bridge picks it up when it starts
+    if has_field timezone; then
+        local tz; tz=$(project_timezone); set_env "$W_ENV" TZ "$tz"
+    fi
     # git_token sent: one provider at a time, drop every agent variable, then set what Studio
     # sent; sent empty (the person removed their token) the workspace loses it at once.
     if has_field git_token; then
@@ -790,6 +808,8 @@ cmd_workspace_configure() {
     local php host; php=$(require_field php_version); host=$(require_field preview_host); valid_php "$php"
     render_site "$W_SITE" "ws_$(dbname "$handle")_$(dbname "$slug")" "$host" "$W_DIR" "$W_POOL" local "$(reverb_port_if_on)"
     apply_services "$W_BASE" "$W_USER" "$W_DIR" "$php" "$W_HOME" "$host"
+    # Claude and the terminal: from the next start of the workspace, a running chat is not cut off
+    local tz; tz=$(project_timezone); [ -f "$W_ENV" ] && set_env "$W_ENV" TZ "$tz"
     echo '{"ok":true}'
 }
 

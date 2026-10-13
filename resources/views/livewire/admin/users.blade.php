@@ -1,5 +1,5 @@
-<div class="flex h-full w-full flex-1 flex-col gap-6">
-    <div class="flex items-start justify-between gap-4">
+<div class="flex h-full w-full flex-1 flex-col gap-6 max-sm:gap-4">
+    <div class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:gap-3">
         <div>
             <flux:heading size="xl">{{ __('Users') }}</flux:heading>
             <flux:text class="mt-1">{{ __('Studio is invite-only: create the account here and share the initial password once. The person then connects :provider and Claude in their settings.', ['provider' => $git->label()]) }}</flux:text>
@@ -8,7 +8,7 @@
     </div>
 
     <div class="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-        <table class="w-full text-sm">
+        <table class="table-cards w-full text-sm">
             <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800">
                 <tr>
                     <th class="px-4 py-2 text-start">{{ __('Name') }}</th>
@@ -22,27 +22,27 @@
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @foreach ($users as $user)
                     <tr wire:key="user-{{ $user->uuid }}">
-                        <td class="px-4 py-2">
+                        <td class="px-4 py-2" data-cell="main">
                             <div class="font-medium">{{ $user->name }}</div>
                             @if ($user->handle)<div class="font-mono text-xs text-zinc-500">{{ $user->handle }}</div>@endif
                         </td>
-                        <td class="px-4 py-2 text-xs">{{ $user->email }}</td>
-                        <td class="px-4 py-2">
+                        <td class="px-4 py-2 text-xs" data-cell="wide">{{ $user->email }}</td>
+                        <td class="px-4 py-2" data-cell="meta">
                             <flux:select size="sm" wire:change="setRole('{{ $user->uuid }}', $event.target.value)">
                                 @foreach ($roles as $role)
                                     <flux:select.option value="{{ $role->value }}" :selected="$user->role === $role">{{ $role->label() }}</flux:select.option>
                                 @endforeach
                             </flux:select>
                         </td>
-                        <td class="px-4 py-2 text-xs">
+                        <td class="px-4 py-2 text-xs" data-cell="meta">
                             <div class="flex flex-wrap gap-1">
                                 <flux:badge size="sm" :color="$user->hasGit() ? 'green' : 'zinc'">{{ $git->label() }}{{ $user->git_login ? ' · '.$user->git_login : '' }}</flux:badge>
                                 <flux:badge size="sm" :color="$user->hasClaude() ? 'green' : 'zinc'">Claude</flux:badge>
                                 @if ($user->two_factor_confirmed_at)<flux:badge size="sm" color="green">2FA</flux:badge>@endif
                             </div>
                         </td>
-                        <td class="px-4 py-2 text-end tabular-nums">{{ $user->projects_count }}</td>
-                        <td class="px-4 py-2 text-end whitespace-nowrap">
+                        <td class="px-4 py-2 text-end tabular-nums" data-cell="meta" data-label="{{ __('Projects') }}">{{ $user->projects_count }}</td>
+                        <td class="px-4 py-2 text-end whitespace-nowrap" data-cell="actions">
                             @unless ($user->is(auth()->user()))
                                 <flux:button size="xs" variant="ghost" icon="key" :tooltip="__('Reset password')" wire:click="resetPassword('{{ $user->uuid }}')" wire:confirm="{{ __('Give :name a new password? Their sessions are closed and their 2FA is removed; they set it up again after logging in.', ['name' => $user->name]) }}" />
                                 <flux:button size="xs" variant="ghost" icon="trash" wire:click="remove('{{ $user->uuid }}')" wire:confirm="{{ __('Delete the account? Their workspaces and conversations are removed from Studio.') }}" />

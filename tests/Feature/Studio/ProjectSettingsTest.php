@@ -18,7 +18,8 @@ test('a project starts with the scheduler and the default queue on, Reverb off, 
         ->and($project->access()['site'])->toBe(['ips' => []])
         ->and($project->access()['previews'])->toBe(['ips' => []])
         ->and($project->access()['branches'])->toBe([])
-        ->and($project->serviceInput())->toBe(['scheduler' => '1', 'queues' => 'default', 'reverb' => '0', 'reverb_port' => 9000 + $project->id, 'horizon' => '0', 'pulse' => '0'])
+        ->and($project->timezone())->toBe('UTC')
+        ->and($project->serviceInput())->toBe(['scheduler' => '1', 'queues' => 'default', 'reverb' => '0', 'reverb_port' => 9000 + $project->id, 'horizon' => '0', 'pulse' => '0', 'timezone' => 'UTC'])
         // every host of a project runs its own Reverb: the preview never shares the site's port
         ->and($workspace->serviceInput()['reverb_port'])->toBe(20000 + $workspace->id)
         ->and($workspace->serviceInput()['queues'])->toBe('default');
@@ -38,6 +39,7 @@ test('an administrator saves features and access rules, and the server is asked 
         ->set('queues', 'default, mail, exports')
         ->set('reverb', true)
         ->set('pulse', true)
+        ->set('timezone', 'Europe/Rome')
         ->set('site_ips', "203.0.113.0/24\n198.51.100.7")
         ->call('addBranchRule')
         ->set('branch_rules.0.branch', 'feature/secret')
@@ -50,9 +52,35 @@ test('an administrator saves features and access rules, and the server is asked 
     expect($project->features())->toBe(['scheduler' => false, 'queues' => ['default', 'mail', 'exports'], 'reverb' => true, 'horizon' => false, 'pulse' => true])
         ->and($project->access()['site'])->toBe(['ips' => ['203.0.113.0/24', '198.51.100.7']])
         ->and($project->access()['branches'])->toBe([['branch' => 'feature/secret', 'ips' => ['10.0.0.0/8']]])
-        ->and($project->serviceInput()['queues'])->toBe('default,mail,exports');
+        ->and($project->serviceInput()['queues'])->toBe('default,mail,exports')
+        ->and($project->timezone())->toBe('Europe/Rome')
+        ->and($project->serviceInput()['timezone'])->toBe('Europe/Rome');
 
     Queue::assertPushed(ConfigureProjectSite::class, fn (ConfigureProjectSite $job) => $job->project->is($project));
+});
+
+test('the settings open on the stored timezone, and a name outside the list is refused', function () {
+    Queue::fake();
+    $admin = User::factory()->admin()->create();
+    $project = Project::factory()->online()->create(['settings' => ['timezone' => 'America/New_York']]);
+    $workspace = Workspace::factory()->create(['project_id' => $project->id]);
+
+    expect($workspace->serviceInput()['timezone'])->toBe('America/New_York');
+
+    Livewire::actingAs($admin)
+        ->test(Projects::class)
+        ->call('settings', $project->uuid)
+        ->assertSet('timezone', 'America/New_York')
+        ->set('timezone', 'Mars/Olympus_Mons')
+        ->call('saveSettings')
+        ->assertHasErrors('timezone');
+
+    expect($project->fresh()->timezone())->toBe('America/New_York');
+    Queue::assertNothingPushed();
+});
+
+test('a timezone stored by hand that PHP does not know falls back to UTC', function () {
+    expect(Project::factory()->make(['settings' => ['timezone' => 'Nowhere/Land']])->timezone())->toBe('UTC');
 });
 
 test('a bad whitelist entry or queue name is refused before anything is saved', function () {

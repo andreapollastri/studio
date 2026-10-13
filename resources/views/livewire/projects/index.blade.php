@@ -3,7 +3,7 @@
     {{-- A site being set up or a workspace on its way: keep the badges current. --}}
     @if ($projects->contains(fn ($p) => $p->site_status->isTransitional()) || $workspaces->contains(fn ($w) => $w->status->isTransitional())) wire:poll.4s @else wire:poll.30s.visible @endif
 >
-    <div class="flex items-start justify-between gap-4">
+    <div class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:gap-3">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
             <flux:text class="mt-1">{{ __('Every project opens your workspace: a chat with Claude, the preview of your branch, the backlog.') }}</flux:text>

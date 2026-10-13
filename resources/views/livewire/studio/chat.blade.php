@@ -2,12 +2,12 @@
     class="flex h-full min-h-0 flex-col"
     @if ($conversation->isBusy()) wire:poll.4s="poll" @endif
 >
-    <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-2 dark:border-zinc-700">
+    <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-2 dark:border-zinc-700 max-md:gap-2 max-md:px-3">
         <div class="min-w-0">
             <div class="truncate text-sm font-medium">{{ $conversation->displayTitle() }}</div>
-            <x-studio.status-bar :conversation="$conversation" :can-chat="$canChat" class="mt-1" />
+            <x-studio.status-bar :conversation="$conversation" :can-chat="$canChat" class="studio-status-bar mt-1" />
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 max-md:shrink-0 max-md:gap-1">
             @if ($canChat)
                 <flux:modal.trigger name="chat-settings">
                     <flux:button size="xs" variant="ghost" icon="adjustments-horizontal" :tooltip="__('Model & mode')" :aria-label="__('Model & mode')" />
@@ -15,13 +15,13 @@
             @endif
             <flux:button size="xs" variant="ghost" :icon="$showTools ? 'eye-slash' : 'eye'" wire:click="$toggle('showTools')" :tooltip="$showTools ? __('Hide details') : __('Details')" :aria-label="$showTools ? __('Hide details') : __('Details')" />
             @if ($canChat && $conversation->isBusy())
-                <flux:button size="xs" variant="ghost" icon="stop" wire:click="interrupt">{{ __('Interrupt') }}</flux:button>
+                <flux:button size="xs" variant="ghost" icon="stop" wire:click="interrupt" :aria-label="__('Interrupt')"><span class="max-sm:hidden">{{ __('Interrupt') }}</span></flux:button>
             @endif
         </div>
     </div>
 
     <div
-        class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+        class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 max-xl:overscroll-contain max-md:px-3"
         x-data
         x-init="$el.scrollTop = $el.scrollHeight"
         x-on:chat-updated.window="$nextTick(() => $el.scrollTop = $el.scrollHeight)"
@@ -193,7 +193,7 @@
             </form>
         </flux:modal>
 
-        <div class="border-t border-zinc-200 p-3 dark:border-zinc-700">
+        <div class="border-t border-zinc-200 p-3 dark:border-zinc-700 max-md:p-2">
             <form wire:submit="send" class="flex items-end gap-2">
                 <div class="min-w-0 flex-1">
                     <flux:textarea
@@ -207,7 +207,7 @@
                     />
                     <flux:error name="draft" />
                 </div>
-                <flux:button type="submit" variant="primary" icon="paper-airplane" :disabled="! $conversation->workspace->isRunning() || $conversation->isBusy()">{{ __('Send') }}</flux:button>
+                <flux:button type="submit" variant="primary" icon="paper-airplane" :disabled="! $conversation->workspace->isRunning() || $conversation->isBusy()" :aria-label="__('Send')"><span class="max-sm:hidden">{{ __('Send') }}</span></flux:button>
             </form>
         </div>
     @endif

@@ -5,7 +5,9 @@ namespace App\Livewire\Studio;
 use App\Bridge\BridgeClient;
 use App\Bridge\BridgeException;
 use App\Models\Workspace;
+use Closure;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Client\RequestException;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -15,7 +17,7 @@ class SidePane extends Component
 
     public string $tab = 'preview';
 
-    /** @var array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}|null */
+    /** @var array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int, after?: list<string>}|null */
     public ?array $git = null;
 
     public ?string $gitError = null;
@@ -146,7 +148,7 @@ class SidePane extends Component
 
     public function pullRemote(): void
     {
-        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitPull(), __('Pulled from the remote.'));
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitPull(), fn (array $state) => $this->withNextSteps(__('Pulled from the remote.'), $state));
     }
 
     public function pushRemote(): void
@@ -187,14 +189,24 @@ class SidePane extends Component
         $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitStash(pop: true), __('Stashed changes brought back.'));
     }
 
-    /** Merge a branch into the current one; on a conflict the working tree shows what to resolve. */
+    /** Merge a branch into the current one, all or nothing: on a conflict the bridge undoes it and names the files. */
     public function merge(string $branch): void
     {
-        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitMerge($branch), __(':branch merged into :current.', ['branch' => $branch, 'current' => $this->git['branch'] ?? 'HEAD']));
+        $current = $this->git['branch'] ?? 'HEAD';
 
-        if ($this->git['merging'] ?? false) {
-            $this->changesView = 'tree';
-        }
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitMerge($branch), fn (array $state) => $this->withNextSteps(__(':branch merged into :current.', ['branch' => $branch, 'current' => $current]), $state));
+    }
+
+    /**
+     * What the commits just brought in ask of the app, as commands the terminal runs.
+     *
+     * @param  array{after?: list<string>}  $state
+     */
+    private function withNextSteps(string $notice, array $state): string
+    {
+        $steps = $state['after'] ?? [];
+
+        return $steps === [] ? $notice : $notice.' '.__('Run in the Terminal: :steps.', ['steps' => implode(', ', $steps)]);
     }
 
     public function abortMerge(): void
@@ -238,7 +250,7 @@ class SidePane extends Component
      * Run one git command that changes the repository, then read it again whatever happened:
      * a failed merge or pull leaves something to see.
      */
-    private function changeGit(callable $call, string $notice): void
+    private function changeGit(callable $call, string|Closure $notice): void
     {
         if (! $this->canUseTerminal()) {
             abort(403);
@@ -247,8 +259,10 @@ class SidePane extends Component
         $this->gitNotice = null;
 
         $this->withGit(function (BridgeClient $bridge) use ($call, $notice): void {
+            $result = null;
+
             try {
-                $call($bridge);
+                $result = $call($bridge);
             } finally {
                 try {
                     $this->readGit($bridge);
@@ -257,7 +271,7 @@ class SidePane extends Component
                 }
             }
 
-            $this->gitNotice = $notice;
+            $this->gitNotice = $notice instanceof Closure ? $notice(is_array($result) ? $result : []) : $notice;
         });
     }
 
@@ -276,8 +290,22 @@ class SidePane extends Component
             $call(new BridgeClient($this->workspace));
             $this->gitError = null;
         } catch (BridgeException $e) {
-            $this->gitError = $e->getMessage();
+            $this->gitError = $this->gitRefusal($e) ?? $e->getMessage();
         }
+    }
+
+    /** Git refusing for a reason of the repository (a conflict, uncommitted changes) is said as it is, not as a bridge error. */
+    private function gitRefusal(BridgeException $e): ?string
+    {
+        $previous = $e->getPrevious();
+
+        if (! $previous instanceof RequestException || $previous->response->status() !== 409) {
+            return null;
+        }
+
+        $message = trim((string) $previous->response->json('error'));
+
+        return $message === '' ? null : ucfirst($message);
     }
 
     /** The branch a workspace is on decides which access rule its preview gets, so keep it current. */

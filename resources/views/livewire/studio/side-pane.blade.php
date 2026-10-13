@@ -1,4 +1,6 @@
-<div class="flex h-full w-full min-h-0 flex-col">
+<div class="flex h-full w-full min-h-0 flex-col"
+    x-data="{ ask: {}, confirm() { this.$flux.modal('git-confirm').close(); this.$wire.call(this.ask.method, ...(this.ask.args ?? [])) } }"
+    x-on:git-confirm="ask = $event.detail; $flux.modal('git-confirm').show()">
     <div class="flex items-center gap-0.5 overflow-x-auto border-b border-zinc-200 px-2 py-2 dark:border-zinc-700">
         @foreach (array_filter(['preview' => __('Preview'), 'changes' => $hasWorkspace ? __('Changes') : null, 'terminal' => $canUseTerminal ? __('Terminal') : null, 'files' => $canUseTerminal ? __('Files') : null]) as $key => $label)
             <button
@@ -19,7 +21,7 @@
         @elseif ($tab === 'terminal' && $run && ($run['status'] ?? '') === 'running')
             <flux:button size="xs" variant="ghost" icon="stop" wire:click="killRun">{{ __('Stop') }}</flux:button>
         @endif
-        <div class="shrink-0" x-data="{ wide: false }" x-on:studio-pane-wide-changed.window="wide = $event.detail.wide">
+        <div class="studio-pane-wide-toggle shrink-0" x-data="{ wide: false }" x-on:studio-pane-wide-changed.window="wide = $event.detail.wide">
             <flux:button size="xs" variant="ghost" icon="arrows-pointing-out" x-show="! wide" x-on:click="$dispatch('studio-pane-toggle')" :aria-label="__('Full screen')" :title="__('Full screen')" />
             <flux:button size="xs" variant="ghost" icon="arrows-pointing-in" x-show="wide" x-cloak x-on:click="$dispatch('studio-pane-toggle')" :aria-label="__('Exit full screen')" :title="__('Exit full screen')" />
         </div>
@@ -82,7 +84,7 @@
                             </flux:callout.text>
                             @if ($canUseTerminal)
                                 <x-slot name="actions">
-                                    <flux:button size="sm" wire:click="abortMerge" wire:confirm="{{ __('Abort the merge? The working tree goes back to how it was before it.') }}">{{ __('Abort merge') }}</flux:button>
+                                    <flux:button size="sm" x-on:click="$dispatch('git-confirm', @js(['method' => 'abortMerge', 'icon' => 'abort', 'danger' => true, 'title' => __('Abort the merge?'), 'body' => __('The working tree goes back to how it was before it.'), 'confirm' => __('Abort merge')]))">{{ __('Abort merge') }}</flux:button>
                                 </x-slot>
                             @endif
                         </flux:callout>
@@ -105,7 +107,7 @@
                                         <flux:button size="xs" variant="ghost" icon="archive-box" wire:click="stashPop">{{ __('Restore stash') }} ({{ $git['stashes'] }})</flux:button>
                                     @endif
                                     @if (count($git['status']) > 0)
-                                        <flux:button size="xs" variant="ghost" icon="trash" class="ml-auto text-red-600!" wire:click="discard" wire:confirm="{{ __('Discard every uncommitted change, new files included? This cannot be undone.') }}">{{ __('Discard all') }}</flux:button>
+                                        <flux:button size="xs" variant="ghost" icon="trash" class="ml-auto text-red-600!" x-on:click="$dispatch('git-confirm', @js(['method' => 'discard', 'icon' => 'trash', 'danger' => true, 'title' => __('Discard all changes?'), 'body' => __('Every uncommitted change goes, new files included. This cannot be undone.'), 'confirm' => __('Discard all')]))">{{ __('Discard all') }}</flux:button>
                                     @endif
                                 </div>
                             @endif
@@ -117,7 +119,7 @@
                                         <li class="group flex items-center gap-2" wire:key="status-{{ md5($line) }}">
                                             <span class="min-w-0 flex-1 truncate whitespace-pre">{{ $line }}</span>
                                             @if ($canUseTerminal && ! $git['merging'])
-                                                <button type="button" class="shrink-0 rounded px-1 text-zinc-400 opacity-0 hover:bg-zinc-100 hover:text-red-600 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-zinc-800" wire:click="discard(@js(substr($line, 3)))" wire:confirm="{{ __('Discard the changes to :path? This cannot be undone.', ['path' => substr($line, 3)]) }}" title="{{ __('Discard') }}">✕</button>
+                                                <button type="button" class="touch-reveal shrink-0 rounded px-1 text-zinc-400 opacity-0 hover:bg-zinc-100 hover:text-red-600 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-zinc-800" x-on:click="$dispatch('git-confirm', @js(['method' => 'discard', 'args' => [substr($line, 3)], 'icon' => 'trash', 'danger' => true, 'title' => __('Discard these changes?'), 'body' => __('The file goes back to its last commit. This cannot be undone.'), 'subject' => substr($line, 3), 'confirm' => __('Discard')]))" title="{{ __('Discard') }}">✕</button>
                                             @endif
                                         </li>
                                     @endforeach
@@ -150,7 +152,7 @@
                                             <flux:input size="sm" wire:model="newBranch" :placeholder="__('New branch from here')" class="min-w-0 flex-1" />
                                             <flux:button size="sm" type="submit" icon="plus">{{ __('Create') }}</flux:button>
                                         </form>
-                                        <flux:button size="sm" variant="ghost" icon="arrow-uturn-left" wire:click="revert(@js((string) ($commit['sha'] ?? '')))" wire:confirm="{{ __('Revert this commit? A new commit that undoes it is added on :branch.', ['branch' => $git['branch'] ?? 'HEAD']) }}">{{ __('Revert') }}</flux:button>
+                                        <flux:button size="sm" variant="ghost" icon="arrow-uturn-left" x-on:click="$dispatch('git-confirm', @js(['method' => 'revert', 'args' => [(string) ($commit['sha'] ?? '')], 'icon' => 'revert', 'title' => __('Revert this commit?'), 'body' => __('A new commit that undoes it is added on :branch.', ['branch' => $git['branch'] ?? 'HEAD']), 'subject' => trim(($commit['short'] ?? '').' '.($commit['subject'] ?? '')), 'confirm' => __('Revert')]))">{{ __('Revert') }}</flux:button>
                                     </div>
                                 @endif
                                 <pre class="whitespace-pre-wrap px-3 py-2 font-mono text-xs text-zinc-600 dark:text-zinc-300">{{ $commit['stat'] ?? '' }}</pre>
@@ -230,8 +232,8 @@
                                             <flux:dropdown position="bottom" align="end">
                                                 <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('More')" />
                                                 <flux:menu>
-                                                    <flux:menu.item icon="arrows-right-left" wire:click="merge(@js((string) ($b['name'] ?? '')))" wire:confirm="{{ __('Merge :branch into :current?', ['branch' => $b['name'] ?? '', 'current' => $branches['current'] ?? 'HEAD']) }}">{{ __('Merge into :current', ['current' => $branches['current'] ?? 'HEAD']) }}</flux:menu.item>
-                                                    <flux:menu.item icon="trash" variant="danger" wire:click="deleteBranch(@js((string) ($b['name'] ?? '')))" wire:confirm="{{ __('Delete the branch :branch? Git refuses if it is not merged anywhere.', ['branch' => $b['name'] ?? '']) }}">{{ __('Delete') }}</flux:menu.item>
+                                                    <flux:menu.item icon="arrows-right-left" x-on:click="$dispatch('git-confirm', @js(['method' => 'merge', 'args' => [(string) ($b['name'] ?? '')], 'icon' => 'merge', 'title' => __('Merge :branch into :current?', ['branch' => $b['name'] ?? '', 'current' => $branches['current'] ?? 'HEAD']), 'body' => __('Its commits join :current. If both changed the same lines, the merge stops on the conflicts for you to resolve.', ['current' => $branches['current'] ?? 'HEAD']), 'from' => (string) ($b['name'] ?? ''), 'into' => $branches['current'] ?? 'HEAD', 'confirm' => __('Merge')]))">{{ __('Merge into :current', ['current' => $branches['current'] ?? 'HEAD']) }}</flux:menu.item>
+                                                    <flux:menu.item icon="trash" variant="danger" x-on:click="$dispatch('git-confirm', @js(['method' => 'deleteBranch', 'args' => [(string) ($b['name'] ?? '')], 'icon' => 'trash', 'danger' => true, 'title' => __('Delete this branch?'), 'body' => __('Git refuses if it is not merged anywhere.'), 'subject' => (string) ($b['name'] ?? ''), 'confirm' => __('Delete')]))">{{ __('Delete') }}</flux:menu.item>
                                                 </flux:menu>
                                             </flux:dropdown>
                                         @endif
@@ -251,7 +253,7 @@
                                             <flux:dropdown position="bottom" align="end">
                                                 <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('More')" />
                                                 <flux:menu>
-                                                    <flux:menu.item icon="arrows-right-left" wire:click="merge(@js((string) ($b['name'] ?? '')))" wire:confirm="{{ __('Merge :branch into :current?', ['branch' => $b['name'] ?? '', 'current' => $branches['current'] ?? 'HEAD']) }}">{{ __('Merge into :current', ['current' => $branches['current'] ?? 'HEAD']) }}</flux:menu.item>
+                                                    <flux:menu.item icon="arrows-right-left" x-on:click="$dispatch('git-confirm', @js(['method' => 'merge', 'args' => [(string) ($b['name'] ?? '')], 'icon' => 'merge', 'title' => __('Merge :branch into :current?', ['branch' => $b['name'] ?? '', 'current' => $branches['current'] ?? 'HEAD']), 'body' => __('Its commits join :current. If both changed the same lines, the merge stops on the conflicts for you to resolve.', ['current' => $branches['current'] ?? 'HEAD']), 'from' => (string) ($b['name'] ?? ''), 'into' => $branches['current'] ?? 'HEAD', 'confirm' => __('Merge')]))">{{ __('Merge into :current', ['current' => $branches['current'] ?? 'HEAD']) }}</flux:menu.item>
                                                 </flux:menu>
                                             </flux:dropdown>
                                         @endif
@@ -308,4 +310,40 @@
             </div>
         @endif
     </div>
+    {{-- One confirmation for every git action that changes the repository; the trigger says what it asks --}}
+    @if ($canUseTerminal)
+        <flux:modal name="git-confirm" class="w-full md:w-[28rem]">
+            <div class="space-y-5">
+                <div class="flex items-start gap-4">
+                    <div class="flex size-10 shrink-0 items-center justify-center rounded-full" :class="ask.danger ? 'bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400' : 'bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300'">
+                        <flux:icon.arrows-right-left x-show="ask.icon === 'merge'" class="size-5" />
+                        <flux:icon.trash x-show="ask.icon === 'trash'" class="size-5" />
+                        <flux:icon.arrow-uturn-left x-show="ask.icon === 'revert'" class="size-5" />
+                        <flux:icon.x-circle x-show="ask.icon === 'abort'" class="size-5" />
+                    </div>
+                    <div class="min-w-0 pt-1">
+                        <flux:heading size="lg" class="break-words" x-text="ask.title" />
+                        <flux:text class="mt-1" x-text="ask.body" />
+                    </div>
+                </div>
+                <div x-show="ask.from" class="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900/50">
+                    <span class="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-white px-2 py-1 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:ring-zinc-700">
+                        <flux:icon.code-bracket variant="micro" class="size-3 shrink-0 text-zinc-400" />
+                        <span class="truncate" x-text="ask.from"></span>
+                    </span>
+                    <flux:icon.arrow-long-right variant="micro" class="size-4 shrink-0 text-zinc-400" />
+                    <span class="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-violet-50 px-2 py-1 font-semibold text-violet-800 ring-1 ring-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-800">
+                        <flux:icon.code-bracket variant="micro" class="size-3 shrink-0" />
+                        <span class="truncate" x-text="ask.into"></span>
+                    </span>
+                </div>
+                <div x-show="ask.subject" class="truncate rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900/50" x-text="ask.subject"></div>
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                    <flux:button variant="primary" x-show="! ask.danger" x-on:click="confirm()"><span x-text="ask.confirm"></span></flux:button>
+                    <flux:button variant="danger" x-show="ask.danger" x-on:click="confirm()"><span x-text="ask.confirm"></span></flux:button>
+                </div>
+            </div>
+        </flux:modal>
+    @endif
 </div>

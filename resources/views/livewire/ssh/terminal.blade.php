@@ -132,7 +132,7 @@
     </aside>
 
     {{-- Terminals: the browser owns them, Livewire never redraws this part. --}}
-    <section wire:ignore class="flex min-h-[28rem] min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 dark:border-zinc-700">
+    <section wire:ignore x-ref="terminals" class="flex min-h-[28rem] min-w-0 flex-1 flex-col overflow-hidden max-lg:scroll-mt-16 rounded-xl border border-zinc-200 bg-zinc-950 dark:border-zinc-700">
         <div class="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 py-1.5">
             <div class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
                 <template x-for="session in sessions" :key="session.id">
@@ -217,6 +217,19 @@
                     </div>
                 </template>
             </div>
+        </div>
+
+        {{-- Touch screens: the keys a phone's keyboard lacks. Pressed without taking the focus, so the keyboard stays up. --}}
+        <div class="ssh-keybar" x-show="sessions.length > 0">
+            @foreach (['esc' => 'Esc', 'tab' => 'Tab', 'ctrl' => 'Ctrl', 'ctrl-c' => '^C', 'ctrl-d' => '^D', 'up' => '↑', 'down' => '↓', 'left' => '←', 'right' => '→', 'home' => 'Home', 'end' => 'End', 'pipe' => '|', 'tilde' => '~', 'slash' => '/', 'dash' => '-'] as $name => $label)
+                <button
+                    type="button"
+                    class="shrink-0 rounded-md px-2.5 py-1.5 font-mono text-xs text-zinc-300 ring-1 ring-zinc-700 ring-inset active:bg-zinc-700"
+                    @if ($name === 'ctrl') x-bind:class="ctrl && 'bg-zinc-100 text-zinc-900! ring-zinc-100'" x-bind:aria-pressed="ctrl" @endif
+                    x-on:touchstart.prevent="key(@js($name))"
+                    x-on:mousedown.prevent="key(@js($name))"
+                >{{ $label }}</button>
+            @endforeach
         </div>
     </section>
 

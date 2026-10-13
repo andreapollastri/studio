@@ -1,11 +1,11 @@
 <div
-    class="flex h-full min-h-0 w-full"
+    class="studio-files flex h-full min-h-0 w-full"
     x-data="studioEditor"
     x-on:files-open.window="openFile($event.detail)"
     x-on:files-renamed.window="renamed($event.detail)"
     x-on:files-deleted.window="removed($event.detail)"
 >
-    <aside x-show="tree" class="flex w-44 shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-700">
+    <aside x-show="tree" class="studio-files-tree flex w-44 shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-700">
         <div class="flex items-center gap-0.5 border-b border-zinc-200 px-2 py-1 dark:border-zinc-700">
             <span class="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{{ __('Files') }}</span>
             <flux:button size="xs" variant="ghost" icon="document-plus" wire:click="startCreating('', 'file')" :title="__('New file')" />

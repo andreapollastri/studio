@@ -170,9 +170,20 @@ class Project extends Model
     }
 
     /**
-     * The feature switches as the server helper reads them.
+     * The project's timezone (an IANA name, UTC by default): APP_TIMEZONE of the site and of
+     * every workspace preview, and TZ of the workspaces, where Claude and the terminal run.
+     */
+    public function timezone(): string
+    {
+        $timezone = (string) ($this->settings['timezone'] ?? '');
+
+        return in_array($timezone, timezone_identifiers_list(), true) ? $timezone : 'UTC';
+    }
+
+    /**
+     * The feature switches and the timezone as the server helper reads them.
      *
-     * @return array{scheduler: string, queues: string, reverb: string, reverb_port: int, horizon: string, pulse: string}
+     * @return array{scheduler: string, queues: string, reverb: string, reverb_port: int, horizon: string, pulse: string, timezone: string}
      */
     public function serviceInput(): array
     {
@@ -185,6 +196,7 @@ class Project extends Model
             'reverb_port' => $this->reverbPort(),
             'horizon' => $features['horizon'] ? '1' : '0',
             'pulse' => $features['pulse'] ? '1' : '0',
+            'timezone' => $this->timezone(),
         ];
     }
 

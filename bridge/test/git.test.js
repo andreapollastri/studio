@@ -139,19 +139,36 @@ test('commit, discard, stash, merge with a conflict, revert and branches from th
   await writeFile(join(dir, 'a.txt'), 'main\n');
   state = await gitCommitAll(dir, 'F: main side');
   assert.equal(state.ahead, 1);
-  await assert.rejects(gitMerge(dir, 'feature/conflict'), (e) => e.status === 422 && /CONFLICT/.test(e.message));
+  await assert.rejects(gitMerge(dir, 'feature/conflict'), (e) => e.status === 409 && /conflicts in a\.txt: nothing was merged/.test(e.message));
   state = await gitState(dir);
-  assert.equal(state.merging, true);
-  assert.deepEqual(state.conflicts, ['a.txt']);
+  assert.equal(state.merging, false);
+  assert.deepEqual(state.status, []);
+
+  // uncommitted changes, or a merge left open by someone else, keep a merge from starting
+  await writeFile(join(dir, 'a.txt'), 'dirty\n');
+  await assert.rejects(gitMerge(dir, 'feature/conflict'), (e) => e.status === 409 && /uncommitted changes/.test(e.message));
+  await gitDiscard(dir, 'a.txt');
+  await assert.rejects(git(dir, 'merge', '-q', '--no-edit', 'feature/conflict'));
+  await assert.rejects(gitMerge(dir, 'feature/conflict'), (e) => e.status === 409 && /a merge is in progress/.test(e.message));
   state = await gitMergeAbort(dir);
   assert.equal(state.merging, false);
   assert.deepEqual(state.status, []);
 
-  // resolve a merge by committing
-  await assert.rejects(gitMerge(dir, 'feature/conflict'));
+  // a merge open in the tree is concluded by committing
+  await assert.rejects(git(dir, 'merge', '-q', '--no-edit', 'feature/conflict'));
+  assert.deepEqual((await gitState(dir)).conflicts, ['a.txt']);
   await writeFile(join(dir, 'a.txt'), 'both\n');
   state = await gitCommitAll(dir, 'G: merge feature/conflict');
   assert.equal(state.merging, false);
+
+  // a clean merge says what the merged changes ask of the app
+  await gitCreateBranch(dir, 'feature/deps');
+  await writeFile(join(dir, 'composer.lock'), '{}\n');
+  await gitCommitAll(dir, 'H: dependencies');
+  await gitCheckout(dir, 'main');
+  state = await gitMerge(dir, 'feature/deps');
+  assert.deepEqual(state.after, ['composer install']);
+  assert.deepEqual(state.status, []);
 
   // revert a commit and a merge commit
   const log = await gitLog(dir, { limit: 1 });

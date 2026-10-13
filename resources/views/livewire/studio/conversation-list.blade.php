@@ -10,7 +10,7 @@
                     href="{{ route('studio.conversation', [$project, $item]) }}"
                     wire:navigate
                     @class([
-                        'block rounded-lg py-2 ps-3 pe-8 text-sm transition',
+                        'block rounded-lg py-2 ps-3 pe-8 text-sm transition max-md:py-3 max-md:pe-10',
                         'bg-white shadow-sm dark:bg-zinc-800' => $item->uuid === $current,
                         'hover:bg-white/60 dark:hover:bg-zinc-800/60' => $item->uuid !== $current,
                     ])
@@ -26,7 +26,7 @@
                         size="xs"
                         variant="ghost"
                         icon="trash"
-                        class="absolute! end-1 top-1.5 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        class="touch-reveal absolute! end-1 top-1.5 opacity-0 group-hover:opacity-100 focus:opacity-100 max-md:top-3"
                         wire:click="confirmDelete('{{ $item->uuid }}')"
                         :tooltip="__('Delete')"
                         :aria-label="__('Delete the conversation')"

@@ -2475,6 +2475,11 @@
             installed.</dd></dl>
           <dl><dt>Pulse</dt><dd><code>php artisan pulse:check</code>, so the Pulse dashboard of the app shows the
             server's CPU, memory and disk. The app must have <code>laravel/pulse</code>.</dd></dl>
+          <dl><dt>Timezone</dt><dd>One per project, UTC by default: <code>APP_TIMEZONE</code> in the <code>.env</code> of
+            the site and of every preview (the cached configuration is rebuilt), and <code>TZ</code> in the workspaces, so
+            Claude and the terminal see the same clock from the next start of each workspace. Laravel reads it when
+            <code>config/app.php</code> has <code>'timezone' =&gt; env('APP_TIMEZONE', 'UTC')</code>: projects Studio
+            creates have it, an existing repository needs that line.</dd></dl>
           <dl><dt>HTTPS</dt><dd>Nothing to switch on: Caddy issues a certificate for every host the first time it is
             opened, the deploy site and each workspace preview alike (see <a href="#deep-dive-server">The server</a>).</dd></dl>
         </div>

@@ -1,5 +1,5 @@
-<div class="flex h-full w-full flex-1 flex-col gap-6" @if ($projects->contains(fn ($p) => $p->site_status->isTransitional())) wire:poll.3s @endif>
-    <div class="flex items-start justify-between gap-4">
+<div class="flex h-full w-full flex-1 flex-col gap-6 max-sm:gap-4" @if ($projects->contains(fn ($p) => $p->site_status->isTransitional())) wire:poll.3s @endif>
+    <div class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:gap-3">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
             <flux:text class="mt-1">{{ __('A project is a :provider repository with Larapilot. Its deploy branch runs at :host; every member gets a workspace and a preview of their own.', ['provider' => $git->label(), 'host' => '<project>.'.$domain]) }}</flux:text>
@@ -15,7 +15,7 @@
     @endunless
 
     <div class="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-        <table class="w-full text-sm">
+        <table class="table-cards w-full text-sm">
             <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800">
                 <tr>
                     <th class="px-4 py-2 text-start">{{ __('Project') }}</th>
@@ -29,13 +29,13 @@
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @forelse ($projects as $project)
                     <tr wire:key="project-{{ $project->uuid }}">
-                        <td class="px-4 py-2">
+                        <td class="px-4 py-2" data-cell="main">
                             <div class="font-medium">{{ $project->name }}</div>
                             <div class="font-mono text-xs text-zinc-500">{{ $project->slug }}</div>
                         </td>
-                        <td class="max-w-xs truncate px-4 py-2 font-mono text-xs">{{ $project->repositoryPath() ?? $project->repo_url }} <span class="text-zinc-500">@ {{ $project->default_branch }}</span></td>
-                        <td class="px-4 py-2 text-xs">PHP {{ $project->php_version }} · {{ $project->db_engine === 'pgsql' ? 'PostgreSQL' : 'MariaDB' }}</td>
-                        <td class="px-4 py-2 text-xs">
+                        <td class="max-w-xs truncate px-4 py-2 font-mono text-xs" data-cell="wide">{{ $project->repositoryPath() ?? $project->repo_url }} <span class="text-zinc-500">@ {{ $project->default_branch }}</span></td>
+                        <td class="px-4 py-2 text-xs" data-cell="meta">PHP {{ $project->php_version }} · {{ $project->db_engine === 'pgsql' ? 'PostgreSQL' : 'MariaDB' }}</td>
+                        <td class="px-4 py-2 text-xs" data-cell="wide">
                             <div class="flex flex-wrap items-center gap-2">
                                 <flux:badge size="sm" :color="match ($project->site_status) { \App\Enums\SiteStatus::Ready => 'green', \App\Enums\SiteStatus::Failed => 'red', \App\Enums\SiteStatus::New => 'zinc', default => 'yellow' }">{{ $project->site_status->label() }}</flux:badge>
                                 @if ($project->isOnline())
@@ -51,8 +51,8 @@
                                 <div class="mt-1 max-w-md whitespace-pre-wrap break-words text-red-600">{{ $project->last_error }}</div>
                             @endif
                         </td>
-                        <td class="px-4 py-2 text-end tabular-nums">{{ $project->members_count }}</td>
-                        <td class="px-4 py-2 text-end whitespace-nowrap">
+                        <td class="px-4 py-2 text-end tabular-nums" data-cell="meta" data-label="{{ __('Members') }}">{{ $project->members_count }}</td>
+                        <td class="px-4 py-2 text-end whitespace-nowrap" data-cell="actions-row">
                             <flux:button size="xs" variant="ghost" icon="rocket-launch" wire:click="deploy('{{ $project->uuid }}')" :disabled="$project->site_status->isTransitional()">{{ $project->site_status === \App\Enums\SiteStatus::New ? __('Create site') : __('Deploy') }}</flux:button>
                             <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="edit('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Edit') }}</flux:button>
                             <flux:button size="xs" variant="ghost" icon="cog-6-tooth" wire:click="settings('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Settings') }}</flux:button>
@@ -156,6 +156,15 @@
                 <flux:checkbox wire:model.live="horizon" :label="__('Horizon')" :description="__('php artisan horizon in place of the queue workers; the queues come from config/horizon.php. Needs laravel/horizon.')" />
                 <flux:checkbox wire:model="reverb" :label="__('Reverb websockets')" :description="__('php artisan reverb:start on a loopback port, proxied under /app of the host. Needs laravel/reverb.')" />
                 <flux:checkbox wire:model="pulse" :label="__('Pulse server metrics')" :description="__('php artisan pulse:check, so the Pulse dashboard shows CPU, memory and disk. Needs laravel/pulse.')" />
+            </div>
+
+            <div class="space-y-3">
+                <flux:heading size="sm">{{ __('Timezone') }}</flux:heading>
+                <flux:select wire:model="timezone" :label="__('Project timezone')" :description="__('APP_TIMEZONE in the .env of the site and of every preview, TZ in the workspaces where Claude and the terminal run. Laravel reads it when config/app.php has env(\'APP_TIMEZONE\'), as projects created by Studio do.')">
+                    @foreach ($timezones as $zone)
+                        <flux:select.option value="{{ $zone }}">{{ str_replace('_', ' ', $zone) }}</flux:select.option>
+                    @endforeach
+                </flux:select>
             </div>
             @endif
 

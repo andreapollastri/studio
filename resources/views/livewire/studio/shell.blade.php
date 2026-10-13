@@ -1,9 +1,17 @@
 <div
-    class="flex h-full min-h-0"
+    class="studio-shell flex h-full min-h-0"
     {{-- The right pane full screen: conversations and chat hide, and keep their state. --}}
-    x-data="{ wide: false }"
-    x-init="$watch('wide', value => $dispatch('studio-pane-wide-changed', { wide: value }))"
+    {{-- Below xl, view says which panel a phone shows, and whether the pane slides over on a tablet (resources/css/app.css). --}}
+    x-data="{ wide: false, view: @js($conversation ? 'chat' : (auth()->user()->can('chat', $project) ? 'list' : 'pane')) }"
+    x-init="
+        $watch('wide', value => { if (value) view = 'pane'; $dispatch('studio-pane-wide-changed', { wide: value }) });
+        $watch('view', value => { if (value !== 'pane') wide = false; $dispatch('studio-view-changed', { view: value }) });
+        $nextTick(() => $dispatch('studio-view-changed', { view }));
+    "
+    x-bind:data-view="view"
+    x-bind:data-wide="wide"
     x-on:studio-pane-toggle.window="wide = ! wide"
+    x-on:studio-view.window="view = $event.detail.view === 'pane' && view === 'pane' ? 'chat' : $event.detail.view"
 >
     <x-slot:header>
         <div class="flex min-w-0 items-center gap-3">
@@ -15,8 +23,17 @@
         </div>
     </x-slot:header>
 
+    <x-slot:actions>
+        {{-- Tablet: the pane is hidden next to the chat, this slides it over; a phone has the tab bar. --}}
+        <div class="hidden shrink-0 md:block xl:hidden" x-data="{ open: false }" x-on:studio-view-changed.window="open = $event.detail.view === 'pane'">
+            <flux:button size="sm" variant="ghost" icon="window" x-on:click="$dispatch('studio-view', { view: 'pane' })" x-bind:class="open && 'bg-zinc-100 dark:bg-zinc-800'" :aria-label="__('Preview, changes, terminal and files')">{{ __('Workspace') }}</flux:button>
+        </div>
+    </x-slot:actions>
+
+    <div class="studio-backdrop" x-on:click="view = 'chat'" aria-hidden="true"></div>
+
     {{-- Conversations --}}
-    <aside x-show="! wide" class="flex w-64 shrink-0 flex-col border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+    <aside x-show="! wide" class="studio-list flex w-64 shrink-0 flex-col border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
         <div class="flex items-center justify-between px-3 py-3">
             <flux:heading size="sm">{{ __('Conversations') }}</flux:heading>
             @can('chat', $project)
@@ -34,7 +51,7 @@
     </aside>
 
     {{-- Chat --}}
-    <section x-show="! wide" class="flex min-w-0 flex-1 flex-col">
+    <section x-show="! wide" class="studio-chat flex min-w-0 flex-1 flex-col">
         @if ($missing)
             <div class="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
                 <flux:icon.link class="size-8 text-zinc-400" />
@@ -68,7 +85,23 @@
     </section>
 
     {{-- Preview / changes / terminal / files --}}
-    <aside class="hidden w-[30rem] shrink-0 border-s border-zinc-200 dark:border-zinc-700 xl:flex" x-bind:class="{ 'flex! w-auto! min-w-0 flex-1 border-s-0': wide }">
+    <aside class="studio-pane hidden w-[30rem] shrink-0 border-s border-zinc-200 dark:border-zinc-700 xl:flex" x-bind:class="{ 'flex! w-auto! min-w-0 flex-1 border-s-0': wide }">
         <livewire:studio.side-pane :workspace="$workspace" :key="'pane-'.$workspace->uuid" />
     </aside>
+
+    {{-- Phone: one panel at a time --}}
+    <nav class="studio-tabbar" aria-label="{{ __('Project') }}">
+        @foreach (['list' => ['icon' => 'queue-list', 'label' => __('Conversations')], 'chat' => ['icon' => 'chat-bubble-left-right', 'label' => __('Chat')], 'pane' => ['icon' => 'window', 'label' => __('Workspace')]] as $key => $entry)
+            <button
+                type="button"
+                class="flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition"
+                x-on:click="view = @js($key)"
+                x-bind:class="view === @js($key) ? 'text-zinc-900 dark:text-white' : 'text-zinc-400 dark:text-zinc-500'"
+                x-bind:aria-current="view === @js($key) && 'page'"
+            >
+                <flux:icon :name="$entry['icon']" class="size-5" />
+                {{ $entry['label'] }}
+            </button>
+        @endforeach
+    </nav>
 </div>

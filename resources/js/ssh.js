@@ -15,6 +15,31 @@ const CLOSE_REASONS = {
     1006: 'The SSH gateway cannot be reached. Is the studio-ssh service running?',
 };
 
+/** What the touch key bar sends: the keys a phone's keyboard lacks. */
+const KEYS = {
+    esc: '\x1b',
+    tab: '\t',
+    up: '\x1b[A',
+    down: '\x1b[B',
+    right: '\x1b[C',
+    left: '\x1b[D',
+    home: '\x1b[H',
+    end: '\x1b[F',
+    'ctrl-c': '\x03',
+    'ctrl-d': '\x04',
+    pipe: '|',
+    tilde: '~',
+    slash: '/',
+    dash: '-',
+};
+
+/** Ctrl + a key: @ to _ (letters either case) map to 0x00–0x1f, ? to DEL. */
+function controlOf(char) {
+    if (char === '?') return '\x7f';
+    const code = char.toUpperCase().charCodeAt(0);
+    return code >= 64 && code <= 95 ? String.fromCharCode(code - 64) : char;
+}
+
 function sshTerminals() {
     // xterm instances, sockets and observers stay out of Alpine's reactive proxies.
     const runtime = new Map();
@@ -25,6 +50,7 @@ function sshTerminals() {
         active: null,
         layout: 'tabs',
         filter: '',
+        ctrl: false,
 
         init() {
             try { this.layout = localStorage.getItem('studio.ssh.layout') === 'grid' ? 'grid' : 'tabs'; } catch {}
@@ -78,6 +104,19 @@ function sshTerminals() {
             await this.$nextTick();
             const term = await this.mount(id);
             if (term) this.connect(id, info);
+            // Below lg the connections sit above the terminals: bring the new one into view.
+            if (window.matchMedia('(width < 64rem)').matches) this.$refs.terminals?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+
+        /** A key a touch keyboard does not have, from the key bar under the terminal. */
+        key(name) {
+            if (name === 'ctrl') {
+                this.ctrl = !this.ctrl;
+            } else if (this.active !== null && KEYS[name] !== undefined) {
+                this.send(this.active, { type: 'data', data: KEYS[name] });
+                this.ctrl = false;
+            }
+            runtime.get(this.active)?.term.focus();
         },
 
         async mount(id) {
@@ -106,7 +145,14 @@ function sshTerminals() {
             });
             observer.observe(element);
 
-            term.onData((data) => this.send(id, { type: 'data', data }));
+            term.onData((data) => {
+                // Ctrl from the touch key bar: the next letter becomes its control character
+                if (this.ctrl && data.length === 1) {
+                    data = controlOf(data);
+                    this.ctrl = false;
+                }
+                this.send(id, { type: 'data', data });
+            });
             term.onResize(({ cols, rows }) => this.send(id, { type: 'resize', cols, rows }));
             term.focus();
 

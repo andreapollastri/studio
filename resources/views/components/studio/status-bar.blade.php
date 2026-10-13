@@ -36,7 +36,8 @@
         {{ $account === 'api_key' ? __('API key') : ($account === 'subscription' ? __('Subscription') : __('No Claude account')) }}
     </a>
 
-    @if ($account === 'subscription' && $usage)
+    {{-- within limits and no percentage yet: nothing worth a chip --}}
+    @if ($account === 'subscription' && $usage && (isset($usage['percent']) || isset($usage['week_percent']) || in_array($usage['status'] ?? '', ['rejected', 'allowed_warning'], true)))
         @php
             // the five-hour window and the week, as /usage shows them; either may be unknown yet
             $percent = $usage['percent'] ?? null;
@@ -70,10 +71,8 @@
                 @endif
             @elseif (($usage['status'] ?? '') === 'rejected')
                 {{ __('limit reached') }}
-            @elseif (($usage['status'] ?? '') === 'allowed_warning')
-                {{ __('near the limit') }}
             @else
-                {{ __('plan within limits') }}
+                {{ __('near the limit') }}
             @endif
             @if ($resets && $resets->isFuture())
                 · {{ __('resets :time', ['time' => $when($resets)]) }}

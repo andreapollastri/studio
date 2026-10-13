@@ -53,6 +53,11 @@ server is in `installer/upgrades/<version>.sh`.
 - **Delete a conversation**: the bin next to it in the list, after a confirmation that names it. Its
   messages go with it; a Claude Code still running for it is stopped (the bridge's new
   `DELETE /conversations/{id}`). Only its owner can: not even an administrator.
+- **Phones and tablets**: the project opens one panel at a time on a phone (*Conversations*, *Chat*,
+  *Workspace* in a tab bar), and on a tablet the workspace pane (preview, changes, terminal, files)
+  slides over the chat instead of being missing below 1280px. Tables become cards on a phone, the
+  controls that appeared on hover stay visible on touch screens, the SSH terminal gets a key bar (Esc,
+  Tab, Ctrl, arrows…). The desktop layout is unchanged.
 - **Terminal tab**: colours (ANSI) instead of escape codes; git, Composer, artisan and the test tools
   are asked for colour; characters split across chunks arrive whole.
 
@@ -63,6 +68,9 @@ server is in `installer/upgrades/<version>.sh`.
   within its major, the provider's CLI), Composer, Claude Code, glab; then needrestart, Studio's
   services and its health check. The System page lists what changed and whether a new kernel needs a
   reboot; `SYSTEM_REBOOT=1` in `/etc/studio/studio.env` reboots by itself. A switch turns it off.
+- **Project timezone** (*Administration → Projects → Settings → Server*): `APP_TIMEZONE` of the site
+  and of every preview, `TZ` of the workspaces (Claude and the terminal), UTC by default. Repositories
+  Studio creates read it in `config/app.php`; an existing one needs `env('APP_TIMEZONE', 'UTC')` there.
 - **TLS certificates** are checked in the same run (`studio-update certificates` alone): one Caddy left
   late is renewed on the spot, one it could not renew shows up on the System page.
 

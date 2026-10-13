@@ -1,11 +1,18 @@
 @php($tree = $this->folders->groupBy(fn ($f) => $f->parent_id ?? 0))
 <div class="flex min-h-[32rem] flex-col gap-6 lg:flex-row">
     {{-- Sections and folders --}}
-    <aside class="flex shrink-0 flex-col gap-4 lg:w-64">
+    <aside class="flex shrink-0 flex-col gap-4 lg:w-64" x-data="{ open: false }">
         <div>
             <flux:heading size="xl">{{ __('Password manager') }}</flux:heading>
             <flux:text class="mt-1 text-xs">{{ __('Encrypted on this server. Share an item with a project, by role, or with single people.') }}</flux:text>
         </div>
+
+        {{-- Below lg the sections sit above the items: folded behind the one that is open. --}}
+        <div class="lg:hidden">
+            <flux:button class="w-full justify-between!" icon="folder" icon:trailing="chevron-down" x-on:click="open = ! open" x-bind:aria-expanded="open">{{ trim($search) !== '' ? __('Search') : $heading }}</flux:button>
+        </div>
+
+        <div class="contents" x-bind:class="{ 'max-lg:hidden': ! open }" x-on:click="$event.target.closest('[wire\\:click^=show]') && (open = false)">
 
         <nav class="flex flex-col gap-0.5 text-sm">
             @foreach (['all' => ['icon' => 'key', 'label' => __('All items')], 'shared' => ['icon' => 'users', 'label' => __('Shared with me')]] as $key => $entry)
@@ -52,6 +59,7 @@
                 @endforeach
             </div>
         @endif
+        </div>
     </aside>
 
     {{-- Items --}}
@@ -65,7 +73,7 @@
         </div>
 
         <div class="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-            <table class="w-full text-sm" x-data="{ shown: {}, copied: null,
+            <table class="table-cards w-full text-sm" x-data="{ shown: {}, copied: null,
                 async copy(id, field) { const value = await $wire.reveal(id, field); if (value) { await navigator.clipboard.writeText(value); this.copied = id + field; setTimeout(() => this.copied = null, 1500) } },
                 async toggle(id) { if (this.shown[id] !== undefined) { delete this.shown[id]; return } this.shown[id] = await $wire.reveal(id, 'password') ?? '' } }">
                 <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800">
@@ -81,7 +89,7 @@
                     @forelse ($this->items as $item)
                         @php($mine = $item->isOwnedBy(auth()->user()))
                         <tr wire:key="vault-item-{{ $item->uuid }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                            <td class="px-4 py-2">
+                            <td class="px-4 py-2" data-cell="main">
                                 <button type="button" class="text-start" wire:click="open('{{ $item->uuid }}')">
                                     <div class="flex items-center gap-1.5 font-medium">
                                         {{ $item->title }}
@@ -90,7 +98,7 @@
                                     @if ($item->url)<div class="max-w-64 truncate text-xs text-zinc-500">{{ parse_url($item->url, PHP_URL_HOST) ?: $item->url }}</div>@endif
                                 </button>
                             </td>
-                            <td class="px-4 py-2">
+                            <td class="px-4 py-2" data-cell="wide">
                                 @if ($item->username)
                                     <div class="flex items-center gap-1">
                                         <span class="max-w-48 truncate font-mono text-xs">{{ $item->username }}</span>
@@ -101,7 +109,7 @@
                                     </div>
                                 @endif
                             </td>
-                            <td class="px-4 py-2">
+                            <td class="px-4 py-2" data-cell="wide">
                                 @if ($item->password)
                                     <div class="flex items-center gap-1">
                                         <span class="font-mono text-xs" x-text="shown['{{ $item->uuid }}'] ?? '••••••••••'"></span>
@@ -115,14 +123,14 @@
                                     </div>
                                 @endif
                             </td>
-                            <td class="px-4 py-2">
+                            <td class="px-4 py-2" data-cell="wide">
                                 <div class="flex flex-wrap items-center gap-1">
                                     @unless ($mine)<flux:badge size="sm" :title="__('Owner')">{{ $item->user->handle ?: $item->user->name }}</flux:badge>@endunless
                                     @if ($item->project)<flux:badge size="sm" color="sky" icon="rectangle-stack">{{ $item->project->name }} · {{ implode(', ', $item->project_roles ?? []) ?: __('admins only') }}</flux:badge>@endif
                                     @if ($item->shared_with_count)<flux:badge size="sm" color="violet" icon="users">{{ $item->shared_with_count }}</flux:badge>@endif
                                 </div>
                             </td>
-                            <td class="px-4 py-2 text-end whitespace-nowrap">
+                            <td class="px-4 py-2 text-end whitespace-nowrap" data-cell="actions">
                                 <flux:dropdown position="bottom" align="end">
                                     <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                                     <flux:menu>

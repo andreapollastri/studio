@@ -4,12 +4,12 @@
         @include('partials.head')
         @vite('resources/js/editor.js')
     </head>
-    <body class="h-screen overflow-hidden bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
+    <body class="h-screen overflow-hidden max-xl:h-dvh bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
         <div class="flex h-full flex-col">
-            <header class="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 px-3 dark:border-zinc-700">
-                <a href="{{ route('projects.index') }}" class="flex items-center gap-2" wire:navigate>
+            <header class="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 px-3 dark:border-zinc-700 max-md:gap-2 max-md:px-2">
+                <a href="{{ route('projects.index') }}" class="flex items-center gap-2 max-md:shrink-0" wire:navigate>
                     <x-app-logo-icon class="size-6" />
-                    <span class="text-sm font-semibold">Studio</span>
+                    <span class="text-sm font-semibold max-md:hidden">Studio</span>
                 </a>
 
                 <flux:separator vertical class="my-2" />
@@ -18,8 +18,11 @@
 
                 <flux:spacer />
 
+                {{ $actions ?? '' }}
+
                 <flux:dropdown position="bottom" align="end">
-                    <flux:profile :name="auth()->user()->name" :initials="auth()->user()->initials()" :avatar="auth()->user()->avatar_url" icon:trailing="chevron-down" class="!py-1" />
+                    {{-- A phone has no room for the name and the chevron next to the project and its workspace: the avatar alone --}}
+                    <flux:profile :name="auth()->user()->name" :initials="auth()->user()->initials()" :avatar="auth()->user()->avatar_url" icon:trailing="chevron-down" class="!py-1 max-md:[&>div:not(:first-child)]:hidden max-md:[&>span]:hidden" />
                     <flux:menu>
                         <flux:menu.item :href="route('projects.index')" icon="folder" wire:navigate>{{ __('Projects') }}</flux:menu.item>
                         <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>{{ __('Settings') }}</flux:menu.item>

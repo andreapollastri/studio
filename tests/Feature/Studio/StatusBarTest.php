@@ -50,6 +50,18 @@ test('on a subscription the bar shows the plan\'s usage, never a cost', function
         ->assertDontSee('last turn');
 });
 
+test('a plan within its limits with no percentage yet shows no usage chip', function () {
+    $user = User::factory()->create([
+        'claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true,
+        'claude_usage' => ['status' => 'allowed', 'resets_at' => now()->addHours(2)->toIso8601String(), 'at' => now()->toIso8601String()],
+    ]);
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => chatFor($user)])
+        ->assertSee('Subscription')
+        ->assertDontSee('within limits')
+        ->assertDontSee('resets');
+});
+
 test('without a connected account the bar says so', function () {
     $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => false]);
 

@@ -37,6 +37,9 @@ function toBase64(text) {
     return btoa(binary);
 }
 
+// A phone (the md breakpoint of resources/css/app.css): the tree lays over the editor.
+const isPhone = () => window.matchMedia('(width < 48rem)').matches;
+
 function studioEditor() {
     // Monaco objects stay out of Alpine's reactive proxy: only tabs, active, saving and message are reactive.
     let monaco = null;
@@ -60,6 +63,8 @@ function studioEditor() {
                 scrollBeyondLastLine: false,
                 tabSize: 4,
                 renderWhitespace: 'selection',
+                // a narrow screen: wrap the lines and keep the gutter thin
+                ...(isPhone() ? { wordWrap: 'on', lineNumbersMinChars: 3, folding: false, glyphMargin: false, lineDecorationsWidth: 4 } : {}),
             });
             editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => this.save());
             editor.onDidChangeModelContent(() => {
@@ -92,6 +97,7 @@ function studioEditor() {
                 tab.hash = hash;
             }
             this.show(path);
+            if (isPhone()) this.tree = false;
         },
 
         show(path) {
