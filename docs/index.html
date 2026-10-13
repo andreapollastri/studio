@@ -1823,6 +1823,16 @@
       <a href="#work-workspaces">Workspaces</a>
       <a href="#work-clients">Clients</a>
 
+      <div class="docs-nav-label">Infrastructure</div>
+      <a href="#infra">Connectors</a>
+      <a class="sub" href="#infra-aws">AWS</a>
+      <a class="sub" href="#infra-digitalocean">DigitalOcean</a>
+      <a class="sub" href="#infra-hetzner">Hetzner</a>
+      <a class="sub" href="#infra-cloudflare">Cloudflare</a>
+      <a class="sub" href="#infra-cipi">Cipi</a>
+      <a class="sub" href="#infra-boogle">Boogle</a>
+      <a class="sub" href="#infra-hackly">Hackly</a>
+
       <div class="docs-nav-label">Tools</div>
       <a href="#tools-ssh">SSH terminal</a>
       <a href="#tools-passwords">Password manager</a>
@@ -3192,6 +3202,228 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             workspace</em> sends a file, a selection or the whole folder into your workspace of that project, where you
             choose; a move removes from the drive only what arrived.</li>
         </ul>
+      </section>
+
+<!-- Infrastructure -->
+      <section class="doc-section" id="infra">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Connectors</h2>
+          <p>The clouds and services your servers run on, driven from Studio through their APIs: AWS, DigitalOcean, Hetzner,
+            Cloudflare, Cipi, Boogle and Hackly. Each holds any number of accounts.</p>
+        </div>
+        <ol>
+          <li><strong>Turn it on.</strong> <em>Administration → Connectors</em>: switch a connector on. Connectors are for the
+            administrators only: PMs, developers and clients never see them. Only connectors that are on appear in the menu, under
+            <em>Infrastructure</em> between <em>Studio</em> and <em>Tools</em>; the others are nowhere to be seen.</li>
+          <li><strong>Add the accounts.</strong> Open the connector and press <em>Accounts</em> (administrators only): a name
+            (<em>Production</em>, <em>Client X</em>) and the credentials described below for each provider. Studio checks
+            them against the provider before saving, stores them encrypted with <code>APP_KEY</code> and never shows a secret
+            again: to change one, type the new one; leave it empty to keep it.</li>
+          <li><strong>Work.</strong> Pick the account at the top, then a tab: each list has its search, filters (the region for
+            AWS, the account for Cloudflare, the status for Boogle and Hackly), a button to create one more and a menu of
+            actions on every row. What Studio reads stays fresh for two minutes; whatever you do from the page clears it.</li>
+        </ol>
+        <div class="note"><strong>Who can do what.</strong> Every administrator can do, on a connector's accounts, everything their
+          credentials allow, after typing their password again as for the SSH terminal. Give every account the narrowest
+          token that does the job. Destructive actions ask first; every
+          action goes to Studio's log (<code>storage/logs</code>) with who, which account and on what.</div>
+        <p>Work a provider runs in the background (a Cipi deploy, a new server) shows its result when it is quick; otherwise
+          the result window offers <em>Check again</em>. Secrets a provider hands over once (a new root password, a generated
+          private key, a database password) are shown once, with a copy button: save them where they belong, for instance in
+          the <a href="#tools-passwords">Password manager</a>.</p>
+      </section>
+
+      <section class="doc-section" id="infra-aws">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>AWS</h2>
+          <p>One Studio account per AWS account, signed with an IAM access key.</p>
+        </div>
+        <div class="walkthrough-grid">
+          <dl><dt>EC2</dt><dd>Instances: launch (newest Ubuntu LTS or any AMI, type, key pair, security group, subnet, disk,
+            cloud-init), start, stop, reboot, terminate, change type, image (AMI), console output, termination protection.
+            Key pairs (generate, import), security groups (open and close ports), Elastic IPs, EBS volumes (attach, detach,
+            snapshot, resize), AMIs.</dd></dl>
+          <dl><dt>Lightsail, all of it</dt><dd>Instances (create, power, snapshots, firewall ports, SSH access), instance and
+            disk snapshots (restore to a new instance or disk), static IPs, disks, key pairs, managed databases (power,
+            snapshot, master password, public access), load balancers, container services, buckets (public or private,
+            plan, access keys), DNS zones and records, distributions (CDN), certificates, alarms, the operations log.</dd></dl>
+          <dl><dt>More</dt><dd>RDS (start, stop, reboot, snapshot, class), S3 buckets (create, delete, region), Route 53 zones
+            and records, CloudFront (invalidate), the cost of the month by service (Cost Explorer, $0.01 a request).</dd></dl>
+        </div>
+        <h3>The credentials</h3>
+        <ol>
+          <li>In the AWS console: <em>IAM → Users → Create user</em>, for instance <code>studio</code>, without console access.</li>
+          <li>Permissions: attach the policy below (as an inline policy, or a customer managed one), or for a look-only account
+            AWS's <code>ReadOnlyAccess</code>.</li>
+          <li>The user's <em>Security credentials → Create access key</em>, use case <em>Application running outside AWS</em>.
+            Copy the <strong>Access key ID</strong> (<code>AKIA…</code>) and the <strong>Secret access key</strong>: the
+            secret is shown once.</li>
+          <li>In Studio: both keys and the <strong>default region</strong> (the region filter on each tab switches it). The
+            <strong>session token</strong> is only for temporary credentials (STS, SSO), which expire.</li>
+        </ol>
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "ec2:*", "lightsail:*",
+      "rds:Describe*", "rds:StartDBInstance", "rds:StopDBInstance", "rds:RebootDBInstance",
+      "rds:CreateDBSnapshot", "rds:ModifyDBInstance",
+      "s3:ListAllMyBuckets", "s3:GetBucketLocation", "s3:CreateBucket", "s3:DeleteBucket",
+      "route53:*",
+      "cloudfront:ListDistributions", "cloudfront:GetDistribution", "cloudfront:CreateInvalidation",
+      "ce:GetCostAndUsage"
+    ],
+    "Resource": "*"
+  }]
+}</code></pre>
+        <p>Drop what the team does not use: without <code>rds:*</code> the RDS tab says so and the rest keeps working.
+          Lightsail creates a service-linked role the first time you make a database or a container service; if AWS refuses
+          it, add <code>iam:CreateServiceLinkedRole</code>.</p>
+      </section>
+
+      <section class="doc-section" id="infra-digitalocean">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>DigitalOcean</h2>
+          <p>One Studio account per team, with a personal access token.</p>
+        </div>
+        <p>Droplets (create with region, size, image, SSH keys, backups, IPv6, monitoring, tags, cloud-init; power on, shut
+          down, reboot, power cycle, power off, snapshot, resize, rename, rebuild, backups, root password reset, destroy),
+          domains and DNS records, SSH keys, firewalls (create, apply to Droplets), volumes (attach, detach, resize),
+          snapshots, reserved IPs, load balancers, managed databases (connection details, backups, databases inside), App
+          Platform (deploy, deployments, spec), Kubernetes (kubeconfig, node pools), the balance of the month.</p>
+        <ol>
+          <li><a href="https://cloud.digitalocean.com/account/api/tokens" target="_blank" rel="noopener">cloud.digitalocean.com → API → Tokens</a>,
+            in the team to drive (switch team at the top left first), <em>Generate New Token</em>.</li>
+          <li>An expiration you are happy with and <strong>Full Access</strong>, or <em>Custom Scopes</em> with read and write
+            on: droplet, domain, ssh_key, firewall, block_storage, snapshot, reserved_ip, load_balancer, database, app,
+            kubernetes, plus read on account, billing, regions, sizes and image.</li>
+          <li>Copy the token (<code>dop_v1_…</code>, shown once) into Studio's <strong>Personal access token</strong>.</li>
+        </ol>
+      </section>
+
+      <section class="doc-section" id="infra-hetzner">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Hetzner</h2>
+          <p>Hetzner Cloud: a token belongs to one project, so one Studio account per project.</p>
+        </div>
+        <p>Servers (create with type, location, image, SSH keys, firewalls, IPv4/IPv6, backups, cloud-init, with the root
+          password shown once when no key is given; power on, shut down, reboot, reset, power off, snapshot, change type,
+          rename, rescue mode, root password reset, rebuild, backups, protection, delete), SSH keys, firewalls (ports and
+          the servers they apply to), volumes, floating and primary IPs, networks, load balancers, snapshots and backups,
+          managed certificates, DNS zones and record sets.</p>
+        <ol>
+          <li><a href="https://console.hetzner.com/" target="_blank" rel="noopener">console.hetzner.com</a> → the project →
+            <em>Security → API tokens → Generate API token</em>.</li>
+          <li>A description and <strong>Read &amp; Write</strong> (<em>Read</em> lets Studio list but not act).</li>
+          <li>Copy the token (shown once) into Studio's <strong>API token</strong>. Repeat for every project, each as its own
+            account.</li>
+        </ol>
+        <p>DNS zones are those of the project in Hetzner's Console (the DNS that moved into the Cloud API); zones still on the
+          old dns.hetzner.com are not seen until moved.</p>
+      </section>
+
+      <section class="doc-section" id="infra-cloudflare">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Cloudflare</h2>
+          <p>One Studio account per API token; a token may reach several Cloudflare accounts.</p>
+        </div>
+        <p>Zones (add, with the nameservers to set; purge everything or some URLs; SSL/TLS mode, Always use HTTPS, minimum TLS,
+          security level and <em>I'm under attack</em>, development mode, Brotli; pause, activation check, delete), DNS records
+          (create, edit, proxy on and off, delete, export as BIND), Workers, Pages (deploy, deployments), R2 buckets and
+          tunnels (create, install command, public hostnames).</p>
+        <ol>
+          <li><a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com → My Profile → API Tokens</a>
+            → <em>Create Token → Custom token</em>. Not the Global API Key.</li>
+          <li>Permissions, keeping only what you need:
+            <div class="table-card">
+              <table>
+                <thead><tr><th>Scope</th><th>Permission</th><th>For</th></tr></thead>
+                <tbody>
+                  <tr><td>Zone</td><td>Zone: Edit · Zone Settings: Edit · DNS: Edit · Cache Purge: Purge</td><td>Zones, settings, records, purge</td></tr>
+                  <tr><td>Account</td><td>Account Settings: Read</td><td>Listing the accounts</td></tr>
+                  <tr><td>Account</td><td>Workers Scripts: Edit · Cloudflare Pages: Edit · Workers R2 Storage: Edit · Cloudflare Tunnel: Edit</td><td>The account tabs</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </li>
+          <li>Zone resources: <em>All zones from an account</em> (or the zones to drive); account resources: the account(s).</li>
+          <li>Copy the token (shown once) into Studio's <strong>API token</strong>.</li>
+        </ol>
+      </section>
+
+      <section class="doc-section" id="infra-cipi">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Cipi</h2>
+          <p>Servers run with <a href="https://cipi.sh/" target="_blank" rel="noopener">Cipi</a>, one Studio account per
+            server, through the Cipi API, the same the Cipi GUI uses for its fleet.</p>
+        </div>
+        <p>The server's status and disk; apps (create Laravel, custom or Octane apps; deploy, roll back, unlock, deploy
+          history, aliases, SSL with HTTP or Cloudflare DNS-01 and wildcards, force HTTPS, www redirect, Artisan, whitelisted
+          commands, logs, <code>.env</code> read and set, edit domain/PHP/repository/branch, password protection, health
+          check, limits, fix permissions, suspend, delete), databases (create, backup, new password), services (restart),
+          the cipi user's SSH keys, PHP versions (install).</p>
+        <ol>
+          <li>On the server, as root, install the API on a host of its own if it is not there yet:
+            <code>cipi api api.server.example.com</code>, then <code>cipi api ssl</code> for its certificate (point the host's
+            DNS to the server first).</li>
+          <li>Create a token: <code>cipi api token create</code>, choosing the abilities when asked
+            (<code>php artisan cipi:token-abilities</code> lists them). For full control: apps-view,
+            apps-create, apps-edit, apps-delete, apps-suspend, apps-basicauth, apps-env, apps-artisan, apps-run,
+            deploy-manage, aliases-view, aliases-create, aliases-delete, ssl-manage, www-manage, dbs-view, dbs-create,
+            dbs-manage, services-view, services-manage, ssh-view, ssh-manage, php-view, php-manage, health-view,
+            status-view, disk-view. Fewer abilities: the matching tabs and actions answer 403.</li>
+          <li>If the API's IP whitelist is on, allow Studio's server: <code>cipi api ip-whitelist add &lt;Studio's IP&gt;</code>.</li>
+          <li>In Studio: the <strong>API address</strong> (<code>https://api.server.example.com</code>) and the
+            <strong>API token</strong>. One account per server.</li>
+        </ol>
+      </section>
+
+      <section class="doc-section" id="infra-boogle">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Boogle</h2>
+          <p><a href="https://boogle.web.ap.it/" target="_blank" rel="noopener">Boogle</a>, the exception tracker and uptime
+            monitor: one Studio account per instance.</p>
+        </div>
+        <p>Exceptions and outages of every project or of one (filter by status and project; details; mark as open, read,
+          fixed or done, with a note), projects (create, edit, delete, installation keys for the app), groups and their
+          issue prefixes.</p>
+        <ol>
+          <li>On the Boogle panel, signed in as an <strong>administrator</strong>: <em>Profile → API tokens</em>, create a
+            token. The admin API answers only to administrators' tokens.</li>
+          <li>In Studio: the <strong>address</strong> of the instance (<code>https://boogle.example.com</code>) and the
+            <strong>API token</strong>.</li>
+        </ol>
+      </section>
+
+      <section class="doc-section" id="infra-hackly">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Hackly</h2>
+          <p><a href="https://hackly.web.ap.it/" target="_blank" rel="noopener">Hackly</a>, the security scanner: one Studio
+            account per instance.</p>
+        </div>
+        <p>Posture, compliance and scanners (weekly digest, re-probe), findings (filter by status and severity; details,
+          Markdown, a fix prompt for the agent, triage with a note, read-only share links), targets (add, DNS TXT
+          verification, scan with a profile, linked repositories, pause, delete), repositories (add, scan, refresh, links),
+          target and repository scans (report, cancel, run again), penetration tests (authorize, check the TXT, start),
+          GitHub tokens.</p>
+        <ol>
+          <li>On Hackly: <em>Profile → API tokens</em>, a token with the <strong>write</strong> ability (<em>read</em> only
+            looks; <code>*</code> also mints tokens, which Studio does not need). From the server instead:
+            <code>php artisan hackly:token you@example.com --ability=write</code>.</li>
+          <li>In Studio: the <strong>address</strong> of the instance (<code>https://hackly.example.com</code>) and the
+            <strong>API token</strong> (<code>hk_…</code>, shown once).</li>
+        </ol>
+        <div class="note"><strong>Scan only what you may.</strong> Hackly scans targets whose DNS proves ownership; a
+          penetration test needs its own fresh authorization. Studio starts them, it does not lift those checks.</div>
       </section>
 
 <!-- Deep dive -->

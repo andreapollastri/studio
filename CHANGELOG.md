@@ -26,6 +26,30 @@ server is in `installer/upgrades/<version>.sh`.
   follow the open conversation. *Merge into my workspace* commits and merges the branch (all or
   nothing), *Push the branch* pushes it for a pull request, *Remove* keeps the conversation to read.
   Queues run inline there, no scheduler or Reverb. Up to 3 per person by default.
+- **A more readable Changes tab**: each file has an icon in the colour of its kind (PHP, Blade,
+  JS/TS, CSS, config, docs, images, data, scripts…), its name in the colour of what happened to it
+  (modified, new, deleted and struck through, renamed, in conflict) and the lines it adds and
+  removes, with a five-block bar as on GitHub (needs the bridge of this release).
+
+### Infrastructure
+- **Connectors** for the clouds and services the servers run on, driven through their APIs, each
+  with any number of accounts: **AWS** (EC2 instances, key pairs, security groups, Elastic IPs,
+  EBS volumes, AMIs; every kind of Lightsail resource: instances, snapshots, static IPs, disks, key
+  pairs, databases, load balancers, container services, buckets, DNS, distributions, certificates,
+  alarms, operations; RDS, S3, Route 53, CloudFront, the cost of the month), **DigitalOcean**
+  (Droplets, domains, firewalls, volumes, reserved IPs, load balancers, databases, App Platform,
+  Kubernetes), **Hetzner** Cloud (servers, firewalls, volumes, IPs, networks, load balancers,
+  snapshots, certificates, DNS), **Cloudflare** (zones, DNS, purge, SSL and security settings,
+  Workers, Pages, R2, tunnels), **Cipi** servers (status, apps with deploy, rollback, SSL, aliases,
+  `.env`, Artisan and logs, databases, services, SSH keys, PHP), **Boogle** (exceptions, projects,
+  groups) and **Hackly** (posture, findings and triage, targets, repositories, scans, penetration
+  tests).
+- *Administration → Connectors* turns each one on. Connectors are for the administrators only:
+  enabled ones show under *Infrastructure* in their menu, and no other role sees them. Administrators add the
+  accounts, checked against the provider and stored encrypted; the pages ask for the password
+  again, and every action is logged with who did it. AWS requests are signed with Signature
+  Version 4 by Studio itself, no SDK. The docs say for each provider where to create the token and
+  with which permissions.
 
 ### Server
 - The system step installs Playwright MCP (pinned in `requirements.env`) and its Chromium in

@@ -4,9 +4,11 @@ use App\Http\Controllers\Admin\SystemStatusController;
 use App\Http\Controllers\ConversationImageController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
+use App\Livewire\Admin\Connectors as AdminConnectors;
 use App\Livewire\Admin\Projects as AdminProjects;
 use App\Livewire\Admin\System as AdminSystem;
 use App\Livewire\Admin\Users as AdminUsers;
+use App\Livewire\Infrastructure\Console as InfrastructureConsole;
 use App\Livewire\Projects\Index as ProjectsIndex;
 use App\Livewire\Ssh\Terminal as SshTerminal;
 use App\Livewire\Studio\Shell;
@@ -32,9 +34,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('drive', Drive::class)->name('drive');
     Route::get('drive/files/{file}', DriveFileController::class)->name('drive.file');
 
+    // Clouds and services driven through their APIs: the password again, as for the SSH terminal.
+    Route::get('infrastructure/{connector}', InfrastructureConsole::class)
+        ->middleware(['can:infrastructure,connector', 'password.confirm'])
+        ->name('infrastructure');
+
     Route::middleware('can:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('projects', AdminProjects::class)->name('projects');
         Route::get('users', AdminUsers::class)->name('users');
+        Route::get('connectors', AdminConnectors::class)->name('connectors');
         Route::get('system', AdminSystem::class)->name('system');
         Route::get('system/status', SystemStatusController::class)->name('system.status');
     });

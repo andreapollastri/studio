@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
- * @phpstan-type GitFile array{path: string, from: ?string, index: string, worktree: string, staged: bool, unstaged: bool, untracked: bool, conflicted: bool}
+ * @phpstan-type GitLines array{added: ?int, removed: ?int}
+ * @phpstan-type GitFile array{path: string, from: ?string, index: string, worktree: string, staged: bool, unstaged: bool, untracked: bool, conflicted: bool, lines: array{staged: ?GitLines, unstaged: ?GitLines}}
  * @phpstan-type GitState array{branch: ?string, detached: bool, status: list<string>, files: list<GitFile>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, operation: ?string, conflicts: list<string>, stashes: int, last: array{sha: string, short: string, subject: string, message: string, pushed: bool}|null, after: list<string>, squashed: ?string}
  *
  * Studio's side of the bridge protocol: plain HTTP calls into the Node bridge
@@ -560,6 +561,23 @@ final class BridgeClient
     }
 
     /**
+     * Lines added and removed in one file, null where git did not count them (a binary file).
+     *
+     * @return array{added: ?int, removed: ?int}|null
+     */
+    private function linesFrom(mixed $lines): ?array
+    {
+        if (! is_array($lines)) {
+            return null;
+        }
+
+        return [
+            'added' => isset($lines['added']) ? (int) $lines['added'] : null,
+            'removed' => isset($lines['removed']) ? (int) $lines['removed'] : null,
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return GitState
      */
@@ -583,6 +601,11 @@ final class BridgeClient
                 'unstaged' => (bool) ($file['unstaged'] ?? false),
                 'untracked' => (bool) ($file['untracked'] ?? false),
                 'conflicted' => (bool) ($file['conflicted'] ?? false),
+                // an older bridge does not count the lines: the list then shows none
+                'lines' => [
+                    'staged' => $this->linesFrom($file['lines']['staged'] ?? null),
+                    'unstaged' => $this->linesFrom($file['lines']['unstaged'] ?? null),
+                ],
             ];
         }
 

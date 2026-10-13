@@ -17,6 +17,17 @@
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
+                @php($infrastructure = \App\Infrastructure\Connectors::visibleTo(auth()->user()))
+                @if ($infrastructure !== [])
+                    <flux:sidebar.group :heading="__('Infrastructure')" class="grid">
+                        @foreach ($infrastructure as $connector)
+                            <flux:sidebar.item :icon="$connector->icon()" :href="route('infrastructure', $connector->key())" :current="request()->routeIs('infrastructure') && request()->route('connector') === $connector->key()" wire:navigate>
+                                {{ $connector->label() }}
+                            </flux:sidebar.item>
+                        @endforeach
+                    </flux:sidebar.group>
+                @endif
+
                 <flux:sidebar.group :heading="__('Tools')" class="grid">
                     @can('ssh')
                         <flux:sidebar.item icon="command-line" :href="route('ssh')" :current="request()->routeIs('ssh')" wire:navigate>
@@ -38,6 +49,9 @@
                         </flux:sidebar.item>
                         <flux:sidebar.item icon="users" :href="route('admin.users')" :current="request()->routeIs('admin.users')" wire:navigate>
                             {{ __('Users') }}
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="puzzle-piece" :href="route('admin.connectors')" :current="request()->routeIs('admin.connectors')" wire:navigate>
+                            {{ __('Connectors') }}
                         </flux:sidebar.item>
                         <flux:sidebar.item icon="server-stack" :href="route('admin.system')" :current="request()->routeIs('admin.system')" wire:navigate>
                             {{ __('System') }}

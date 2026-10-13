@@ -70,6 +70,14 @@ chat), subagent cards with `code-reviewer` and `browser-qa`, and conversations i
 (worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* picks the model, the effort and the permission mode
 (ask, ask with edits, autopilot, plan only); the *Terminal* tab runs allowlisted commands in the workspace; the *Files* tab is a file manager with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
+**Infrastructure.** *Administration → Connectors* turns on the clouds and services the team runs its servers on:
+AWS (EC2, every kind of Lightsail resource, RDS, S3, Route 53, CloudFront), DigitalOcean, Hetzner Cloud, Cloudflare,
+[Cipi](https://cipi.sh) servers, [Boogle](https://boogle.web.ap.it) and [Hackly](https://hackly.web.ap.it), for the
+administrators only. Enabled connectors show under *Infrastructure* in their menu, the others stay hidden. Each holds any number
+of accounts, added by administrators, checked against the provider and stored encrypted; from there servers, DNS,
+firewalls, volumes, databases, apps, deploys, exceptions and findings are listed and driven through the providers' APIs.
+Which token to create, where and with which permissions: [the docs](https://studio.web.ap.it/#infra).
+
 ## Status (1.1)
 
 What changed in each release: [CHANGELOG.md](CHANGELOG.md).
@@ -97,6 +105,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Claude: *Sign in with Claude* (the official `claude auth login` in the person's home on the server, through the SSH gateway), or an API key: one or the other, chosen in Settings | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
 | Agent browser (Playwright MCP signed in to the preview with the person's pass), screenshots in the chat, subagents as cards, Studio's `code-reviewer` and `browser-qa` | done, tested (bridge against the fake CLI; Playwright MCP 0.0.83 run for real against a site behind a pass cookie: navigate, screenshot, console); not yet run on a live server |
 | Conversations in a sandbox: worktree on its own branch, database copy, build and preview host; merge, push, remove; the side pane follows it | done, tested (bridge against real git repositories, Studio with stand-ins for the bridge and the helper); `sandbox-create`/`sandbox-delete` shellchecked, not yet run on a live server |
+| Infrastructure connectors (*Administration → Connectors*, menu *Infrastructure*): AWS (EC2, all of Lightsail, RDS, S3, Route 53, CloudFront, cost), DigitalOcean, Hetzner Cloud, Cloudflare, Cipi servers, Boogle, Hackly; multi-account, credentials encrypted and checked on save, enabled per connector and role | done, tested against each API's documented requests and answers (HTTP fakes, AWS SigV4 against the AWS test suite); not yet run against the live services |
 | Not started | atomic releases for project sites, notifications, mobile layout |
 
 ## Run it locally (no server)

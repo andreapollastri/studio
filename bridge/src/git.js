@@ -79,6 +79,37 @@ async function statusFiles(workspaceDir) {
   return files;
 }
 
+/**
+ * Lines added and removed per file, from `git diff --numstat -z` (renames name the new path); a binary file
+ * counts null and null.
+ */
+async function numstat(workspaceDir, args) {
+  const parts = (await git(workspaceDir, ['diff', '--numstat', '-z', ...args]).catch(() => '')).split('\0');
+  const counts = new Map();
+  for (let i = 0; i < parts.length; i++) {
+    const match = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(parts[i]);
+    if (!match) continue;
+    // a rename leaves the path empty, then gives the old and the new one
+    const path = match[3] === '' ? (i += 2, parts[i]) : match[3];
+    if (path === undefined) continue;
+    counts.set(path, { added: match[1] === '-' ? null : Number(match[1]), removed: match[2] === '-' ? null : Number(match[2]) });
+  }
+  return counts;
+}
+
+/** The lines of a new file, as a diff would count them: null for a binary or a big one. */
+async function lineCount(workspaceDir, path) {
+  try {
+    const bytes = await readFile(join(workspaceDir, path));
+    if (bytes.length > 2 * 1024 * 1024 || bytes.includes(0)) return null;
+    if (bytes.length === 0) return 0;
+    const lines = bytes.toString('utf8').split('\n').length;
+    return bytes[bytes.length - 1] === 10 ? lines - 1 : lines;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether a git call succeeds, for the questions git answers with its exit code. */
 async function succeeds(workspaceDir, args) {
   try {
@@ -99,6 +130,16 @@ export async function gitState(workspaceDir) {
   const files = await statusFiles(workspaceDir);
   const status = files.map((f) => `${f.index}${f.worktree} ${f.from ? `${f.from} -> ${f.path}` : f.path}`);
   const head = await hasHead(workspaceDir);
+
+  // how much each file changes, staged and not, so the list can show it
+  const [stagedCounts, unstagedCounts] = await Promise.all([numstat(workspaceDir, ['--cached']), numstat(workspaceDir, [])]);
+  for (const file of files) {
+    file.lines = {
+      staged: stagedCounts.get(file.path) ?? null,
+      unstaged: file.untracked ? { added: await lineCount(workspaceDir, file.path), removed: 0 } : unstagedCounts.get(file.path) ?? null,
+    };
+  }
+
   const stat = (await git(workspaceDir, ['diff', ...(head ? ['HEAD'] : ['--cached']), '--stat=120'])).trimEnd();
   const diff = bounded(await git(workspaceDir, ['diff', ...(head ? ['HEAD'] : ['--cached'])]));
 

@@ -102,6 +102,11 @@ test('commit, discard, stash, merge with a conflict, revert and branches from th
   await writeFile(join(dir, 'new.txt'), 'new\n');
   let state = await gitState(dir);
   assert.equal(state.status.length, 2);
+  // lines changed per file: the modified one against the index, the new one counted whole
+  assert.deepEqual(state.files.find((f) => f.path === 'a.txt').lines, { staged: null, unstaged: { added: 1, removed: 1 } });
+  assert.deepEqual(state.files.find((f) => f.path === 'new.txt').lines, { staged: null, unstaged: { added: 1, removed: 0 } });
+  await git(dir, 'add', 'a.txt');
+  assert.deepEqual((await gitState(dir)).files.find((f) => f.path === 'a.txt').lines, { staged: { added: 1, removed: 1 }, unstaged: null });
   state = await gitDiscard(dir, 'a.txt');
   assert.deepEqual(state.status, ['?? new.txt']);
   state = await gitDiscard(dir, 'new.txt');

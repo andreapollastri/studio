@@ -6,15 +6,27 @@
     $operation = $git['operation'] ?? null;
     $last = $git['last'] ?? null;
     // one letter per file, as git status says it, in the colour of what it means
+    // and the file name in the same colour, struck through when it goes
     $badge = fn (string $code, bool $untracked = false) => match (true) {
-        $untracked => ['U', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300', __('New file')],
-        $code === 'M' => ['M', 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300', __('Modified')],
-        $code === 'A' => ['A', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300', __('Added')],
-        $code === 'D' => ['D', 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300', __('Deleted')],
-        $code === 'R' => ['R', 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300', __('Renamed')],
-        $code === 'C' => ['C', 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300', __('Copied')],
-        $code === 'T' => ['T', 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300', __('Type changed')],
-        default => ['!', 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300', __('Conflict')],
+        $untracked => ['U', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300', __('New file'), 'text-emerald-700 dark:text-emerald-400'],
+        $code === 'M' => ['M', 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300', __('Modified'), 'text-amber-700 dark:text-amber-300'],
+        $code === 'A' => ['A', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300', __('Added'), 'text-emerald-700 dark:text-emerald-400'],
+        $code === 'D' => ['D', 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300', __('Deleted'), 'text-red-700 line-through decoration-red-400/70 dark:text-red-400'],
+        $code === 'R' => ['R', 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300', __('Renamed'), 'text-sky-700 dark:text-sky-300'],
+        $code === 'C' => ['C', 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300', __('Copied'), 'text-sky-700 dark:text-sky-300'],
+        $code === 'T' => ['T', 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300', __('Type changed'), 'text-zinc-700 dark:text-zinc-300'],
+        default => ['!', 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300', __('Conflict'), 'text-red-700 dark:text-red-400'],
+    };
+    // five blocks in the share of lines added and removed, as GitHub draws them
+    $blocks = function (int $added, int $removed): array {
+        $total = $added + $removed;
+        if ($total === 0) {
+            return [0, 0];
+        }
+        $green = $added === 0 ? 0 : max(1, (int) round(5 * $added / $total));
+        $red = $removed === 0 ? 0 : max(1, (int) round(5 * $removed / $total));
+
+        return $green + $red > 5 ? ($green > $red ? [5 - $red, $red] : [$green, 5 - $green]) : [$green, $red];
     };
     $row = 'group flex items-center gap-2 rounded-md px-1.5 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800';
     $icon = 'touch-reveal shrink-0 rounded p-0.5 text-zinc-400 opacity-0 hover:bg-zinc-200 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-zinc-700';
@@ -56,7 +68,8 @@
                     @foreach ($conflicted as $file)
                         <li class="flex flex-wrap items-center gap-2 px-3 py-1.5 text-xs" wire:key="conflict-{{ md5($file['path']) }}">
                             <span class="inline-flex size-4 shrink-0 items-center justify-center rounded bg-red-100 text-[10px] font-bold text-red-700 dark:bg-red-950 dark:text-red-300">!</span>
-                            <button type="button" wire:click="openFile(@js($file['path']))" class="min-w-0 flex-1 truncate text-left font-mono hover:underline">{{ $file['path'] }}</button>
+                            <x-studio.file-icon :path="$file['path']" />
+                            <button type="button" wire:click="openFile(@js($file['path']))" class="min-w-0 flex-1 truncate text-left font-mono text-red-700 hover:underline dark:text-red-400">{{ $file['path'] }}</button>
                             @if ($canUseTerminal)
                                 <flux:button.group>
                                     <flux:button size="xs" wire:click="resolve(@js($file['path']), 'ours')" :title="__('Keep the version of :branch', ['branch' => $git['branch']])">{{ __('Keep mine') }}</flux:button>
@@ -140,14 +153,35 @@
                     </div>
                     <ul class="font-mono text-xs">
                         @foreach ($list as $file)
-                            @php([$letter, $color, $meaning] = $badge($kind === 'staged' ? $file['index'] : $file['worktree'], $kind === 'unstaged' && $file['untracked']))
+                            @php([$letter, $color, $meaning, $tint] = $badge($kind === 'staged' ? $file['index'] : $file['worktree'], $kind === 'unstaged' && $file['untracked']))
                             @php($open = ($fileDiff['path'] ?? null) === $file['path'])
+                            @php($lines = $file['lines'][$kind] ?? null)
                             <li @class([$row, 'bg-zinc-100 dark:bg-zinc-800' => $open]) wire:key="{{ $kind }}-{{ md5($file['path']) }}">
                                 <span class="inline-flex size-4 shrink-0 items-center justify-center rounded text-[10px] font-bold {{ $color }}" title="{{ $meaning }}">{{ $letter }}</span>
+                                <x-studio.file-icon :path="$file['path']" />
                                 <button type="button" wire:click="openFile(@js($file['path']))" class="min-w-0 flex-1 truncate text-left" title="{{ $file['from'] ? $file['from'].' → '.$file['path'] : $file['path'] }}">
-                                    <span>{{ basename($file['path']) }}</span>
+                                    <span class="{{ $tint }}">{{ basename($file['path']) }}</span>
                                     @if (dirname($file['path']) !== '.')<span class="text-zinc-400"> {{ dirname($file['path']) }}</span>@endif
                                 </button>
+                                @if ($lines && $lines['added'] === null)
+                                    <span class="shrink-0 text-[10px] text-zinc-400">{{ __('binary') }}</span>
+                                @elseif ($lines && ($lines['added'] + $lines['removed']) > 0)
+                                    @php([$green, $red] = $blocks($lines['added'], $lines['removed']))
+                                    <span class="flex shrink-0 items-center gap-1 text-[10px] tabular-nums" title="{{ __(':added lines added, :removed removed', ['added' => $lines['added'], 'removed' => $lines['removed']]) }}">
+                                        @if ($lines['added'] > 0)<span class="text-emerald-600 dark:text-emerald-400">+{{ $lines['added'] }}</span>@endif
+                                        @if ($lines['removed'] > 0)<span class="text-red-600 dark:text-red-400">−{{ $lines['removed'] }}</span>@endif
+                                        <span class="hidden gap-px sm:flex">
+                                            @for ($i = 0; $i < 5; $i++)
+                                                <span @class([
+                                                    'size-1.5 rounded-[1px]',
+                                                    'bg-emerald-500' => $i < $green,
+                                                    'bg-red-500' => $i >= $green && $i < $green + $red,
+                                                    'bg-zinc-300 dark:bg-zinc-600' => $i >= $green + $red,
+                                                ])></span>
+                                            @endfor
+                                        </span>
+                                    </span>
+                                @endif
                                 @if ($canUseTerminal && ! $operation)
                                     @if ($kind === 'staged')
                                         <button type="button" class="{{ $icon }}" wire:click="unstage(@js($file['path']))" title="{{ __('Unstage') }}"><flux:icon.minus variant="micro" class="size-3.5" /></button>

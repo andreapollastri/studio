@@ -17,9 +17,9 @@ function gitClientState(array $overrides = []): array
         'branch' => 'develop', 'detached' => false,
         'status' => ['M  app/Models/Order.php', ' M routes/web.php', '?? app/Exports/Invoice.php'],
         'files' => [
-            ['path' => 'app/Models/Order.php', 'from' => null, 'index' => 'M', 'worktree' => ' ', 'staged' => true, 'unstaged' => false, 'untracked' => false, 'conflicted' => false],
+            ['path' => 'app/Models/Order.php', 'from' => null, 'index' => 'M', 'worktree' => ' ', 'staged' => true, 'unstaged' => false, 'untracked' => false, 'conflicted' => false, 'lines' => ['staged' => ['added' => 12, 'removed' => 3], 'unstaged' => null]],
             ['path' => 'routes/web.php', 'from' => null, 'index' => ' ', 'worktree' => 'M', 'staged' => false, 'unstaged' => true, 'untracked' => false, 'conflicted' => false],
-            ['path' => 'app/Exports/Invoice.php', 'from' => null, 'index' => '?', 'worktree' => '?', 'staged' => false, 'unstaged' => true, 'untracked' => true, 'conflicted' => false],
+            ['path' => 'app/Exports/Invoice.php', 'from' => null, 'index' => '?', 'worktree' => '?', 'staged' => false, 'unstaged' => true, 'untracked' => true, 'conflicted' => false, 'lines' => ['staged' => null, 'unstaged' => ['added' => 40, 'removed' => 0]]],
         ],
         'stat' => '', 'diff' => '', 'upstream' => 'origin/develop', 'ahead' => 0, 'behind' => 0,
         'merging' => false, 'operation' => null, 'conflicts' => [], 'stashes' => 1,
@@ -81,6 +81,7 @@ test('the working tree lists staged files apart, opens a file\'s diff, stages an
         ->assertSee('Staged')
         ->assertSee('Order.php')
         ->assertSee('Invoice.php')
+        ->assertSee(['+12', '−3', '+40'])
         ->assertSee('Commit 1 staged file')
         ->call('openFile', 'app/Models/Order.php')
         ->assertSet('fileDiff.path', 'app/Models/Order.php')
