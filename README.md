@@ -1,10 +1,15 @@
 # Studio
 
-One Ubuntu server, one script. A self-hosted web app that gives a product team a human interface
-over Laravel workspaces that live on that server: a chat with the agent, the preview of your branch,
-the changes, the backlog, approvals. Each conversation is **the person's own Claude Code** running
-inside their workspace with the Larapilot skills of the project. Nothing to install on a laptop but
-a browser.
+**Your whole studio on one server.** Claude does the work. Your team decides.
+
+One Ubuntu server, one script, one wildcard DNS record. Studio is where an agency or a product team runs its
+Laravel projects. Administrators create them, put each person on them with a role *of that project* (the PM here,
+a developer there, the client elsewhere) and decide what every role sees and does. Each project is a hub: the
+conversation with **the person's own Claude Code**, running in their workspace with the Larapilot skills of the
+project, which writes the story, plans it, implements it and opens the pull request; the live preview of that
+branch, on the client's domain if they want; the repository on any git host; the servers, zones and apps attached
+to it; its passwords, files, SSH connections and backups. People read, decide and approve. Nothing to install on a
+laptop but a browser.
 
 **Version 2.0** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
 
