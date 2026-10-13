@@ -73,6 +73,12 @@ class Project extends Model
         return $this->belongsToMany(User::class, 'project_members')->withTimestamps();
     }
 
+    /** @return BelongsToMany<SshKey, $this> the system keys shared with the project */
+    public function sshKeys(): BelongsToMany
+    {
+        return $this->belongsToMany(SshKey::class)->withPivot('developers')->withTimestamps();
+    }
+
     /** @return HasMany<Workspace, $this> */
     public function workspaces(): HasMany
     {

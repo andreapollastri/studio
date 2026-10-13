@@ -10,10 +10,10 @@
         <div class="flex items-center gap-2">
             @if ($canChat)
                 <flux:modal.trigger name="chat-settings">
-                    <flux:button size="xs" variant="ghost" icon="adjustments-horizontal">{{ __('Model & mode') }}</flux:button>
+                    <flux:button size="xs" variant="ghost" icon="adjustments-horizontal" :tooltip="__('Model & mode')" :aria-label="__('Model & mode')" />
                 </flux:modal.trigger>
             @endif
-            <flux:button size="xs" variant="ghost" :icon="$showTools ? 'eye-slash' : 'eye'" wire:click="$toggle('showTools')">{{ $showTools ? __('Hide details') : __('Details') }}</flux:button>
+            <flux:button size="xs" variant="ghost" :icon="$showTools ? 'eye-slash' : 'eye'" wire:click="$toggle('showTools')" :tooltip="$showTools ? __('Hide details') : __('Details')" :aria-label="$showTools ? __('Hide details') : __('Details')" />
             @if ($canChat && $conversation->isBusy())
                 <flux:button size="xs" variant="ghost" icon="stop" wire:click="interrupt">{{ __('Interrupt') }}</flux:button>
             @endif

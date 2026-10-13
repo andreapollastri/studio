@@ -40,10 +40,13 @@ server is in `installer/upgrades/<version>.sh`.
   *Administration → Projects* and *Administration → System* refresh on their own; System follows an
   update through the maintenance of its switch and reloads onto the new release.
 - **Chat status bar**: compact chips for the state, the Claude account (an API key stands out, with
-  the estimated cost of the last turn; a subscription shows the plan's usage and when it resets, from
-  Claude Code's own rate-limit events, never a cost), the model as people say it (*Default · Haiku 4.5*),
+  the estimated cost of the last turn; a subscription shows the plan's usage as `/usage` does, the
+  five-hour window and the week in percent with their resets, never a cost), the model as people say it (*Default · Haiku 4.5*),
   the effort and the mode; a click opens *Model & mode*. The model a conversation chose is no longer
   overwritten by the one Claude Code reports.
+  The percentages are asked of Claude Code after a turn (`get_usage`, at most once a minute per
+  conversation), which reads them with its own credentials; its rate-limit events alone carry a
+  percentage only near a threshold.
 - **Conversation dots** follow the conversations: the list on the left was drawn once and never
   moved. Amber and pulsing while Claude works, blue with a ring when it asks a question or a
   permission, red when it failed, green when it finished since you last opened it, grey otherwise.

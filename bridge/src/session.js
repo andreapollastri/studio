@@ -18,6 +18,11 @@ import { CallbackPoster } from './callback.js';
  * `--permission-prompt-tool stdio` makes the CLI ask before a tool it may
  * not run outright; the question is forwarded to Studio as
  * `permission_request` and the turn waits for `answerPermission`.
+ *
+ * After a turn the CLI is asked what `/usage` shows (`get_usage`): the plan's
+ * windows as percentages, read by Claude Code itself with its own credentials.
+ * They reach Studio as `plan_usage`; an API key, or a CLI that does not know
+ * the question, answers nothing worth forwarding.
  */
 export class Session extends EventEmitter {
   key;
@@ -33,6 +38,8 @@ export class Session extends EventEmitter {
   #log;
   #turn = null; // { permission_mode, model }
   #stderr = ''; // the tail of what the current process said outside stream-json
+  #usageRequest = null; // the request_id of the get_usage still unanswered
+  #usageAskedAt = 0;
 
   constructor(key, config, { spawn: spawnImpl = spawn, log = () => {} } = {}) {
     super();
@@ -213,6 +220,8 @@ export class Session extends EventEmitter {
       this.#log(`stderr: ${chunk.trim().slice(0, 500)}`);
       this.#keepStderr(chunk);
     });
+    // a line written as the CLI exits (the usage question after a result) must not take the bridge down
+    child.stdin.on('error', (error) => this.#log(`stdin: ${error.message}`));
     child.on('error', (error) => this.#onExit(null, null, error));
     child.on('close', (code, signal) => this.#onExit(code, signal, null));
   }
@@ -245,6 +254,15 @@ export class Session extends EventEmitter {
       return;
     }
 
+    if (line.type === 'control_response' && this.#usageRequest && line.response?.request_id === this.#usageRequest) {
+      this.#usageRequest = null;
+      const usage = line.response.subtype === 'success' ? line.response.response : null;
+      if (usage?.rate_limits) {
+        this.#emitEvents([{ type: 'plan_usage', subscription_type: usage.subscription_type ?? null, rate_limits: usage.rate_limits }]);
+      }
+      return;
+    }
+
     const events = normalize(line);
 
     for (const event of events) {
@@ -258,6 +276,15 @@ export class Session extends EventEmitter {
     }
 
     if (events.length) this.#emitEvents(events);
+    if (events.some((event) => event.type === 'result')) this.#askUsage();
+  }
+
+  /** At most once a minute per conversation: the CLI asks claude.ai each time. */
+  #askUsage() {
+    if (!this.#process || this.#turn?.auth === 'api_key' || Date.now() - this.#usageAskedAt < 60_000) return;
+    this.#usageAskedAt = Date.now();
+    this.#usageRequest = `studio_usage_${this.#usageAskedAt}`;
+    this.#write({ type: 'control_request', request_id: this.#usageRequest, request: { subtype: 'get_usage', skip_behaviors: true } });
   }
 
   #onControlRequest(line) {

@@ -16,7 +16,7 @@ test('a plain turn streams deltas, a text block and a result, then the session i
   await waitFor(() => studio.events().some((e) => e.type === 'result'));
   await session.close();
 
-  const types = studio.events().map((e) => e.type);
+  const types = studio.events().map((e) => e.type).filter((type) => type !== 'plan_usage');
   assert.equal(types[0], 'init');
   assert.ok(types.includes('text_delta'));
   assert.ok(types.includes('text'));
@@ -257,4 +257,34 @@ test('without a choice from Studio the environment is left as it is, minus the k
   assert.equal(env.STUDIO_ANTHROPIC_API_KEY, undefined);
   assert.equal(claudeEnv({ STUDIO_ANTHROPIC_API_KEY: 'kept' }, 'api_key').ANTHROPIC_API_KEY, 'kept');
   assert.equal(claudeEnv({ CLAUDE_CODE_OAUTH_TOKEN: 'old' }, 'subscription').CLAUDE_CODE_OAUTH_TOKEN, undefined);
+});
+
+test('after a turn the CLI is asked what /usage shows, and the plan windows reach Studio', async () => {
+  const studio = await startCollector();
+  const session = new Session('31', testConfig(), { spawn: spawnFake });
+
+  session.sendTurn({ text: 'ciao', auth: 'subscription', callback: callback(studio) });
+  const usage = await waitFor(() => studio.events().find((e) => e.type === 'plan_usage'));
+  assert.equal(usage.subscription_type, 'max');
+  assert.deepEqual(usage.rate_limits.five_hour, { utilization: 23, resets_at: '2026-10-13T16:00:00Z' });
+
+  // not again within the minute
+  session.sendTurn({ text: 'ancora', auth: 'subscription', callback: callback(studio) });
+  await waitFor(() => studio.events().filter((e) => e.type === 'result').length === 2);
+  await new Promise((r) => setTimeout(r, 100));
+  await session.close();
+  assert.equal(studio.events().filter((e) => e.type === 'plan_usage').length, 1);
+  await studio.close();
+});
+
+test('on an API key the plan is not asked about', async () => {
+  const studio = await startCollector();
+  const session = new Session('32', testConfig(), { spawn: spawnFake });
+
+  session.sendTurn({ text: 'ciao', auth: 'api_key', callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  await new Promise((r) => setTimeout(r, 100));
+  await session.close();
+  assert.ok(!studio.events().some((e) => e.type === 'plan_usage'));
+  await studio.close();
 });

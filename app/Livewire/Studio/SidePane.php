@@ -15,10 +15,17 @@ class SidePane extends Component
 
     public string $tab = 'preview';
 
-    /** @var array{branch: ?string, status: list<string>, stat: string, diff: string}|null */
+    /** @var array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}|null */
     public ?array $git = null;
 
     public ?string $gitError = null;
+
+    /** What the last git command did, shown until the next one. */
+    public ?string $gitNotice = null;
+
+    public string $commitMessage = '';
+
+    public string $newBranch = '';
 
     /** Which view of the Changes tab is open: the working tree, the history graph, or the branches. */
     public string $changesView = 'tree';
@@ -88,32 +95,30 @@ class SidePane extends Component
     {
         $this->changesView = in_array($view, ['tree', 'history', 'branches'], true) ? $view : 'tree';
         $this->commit = null;
+        $this->gitNotice = null;
         $this->loadChangesView();
     }
 
     private function loadChangesView(): void
     {
+        $this->withGit(fn (BridgeClient $bridge) => $this->readGit($bridge));
+
+        if ($this->gitError !== null && ! $this->workspace->isRunning()) {
+            $this->git = null;
+        }
+    }
+
+    /** The working tree state, which every view's header uses, and what the open view lists. */
+    private function readGit(BridgeClient $bridge): void
+    {
+        $this->git = $bridge->git();
+        $this->rememberBranch($this->git['branch']);
+
         match ($this->changesView) {
-            'history' => $this->loadHistory(),
-            'branches' => $this->loadBranches(),
-            default => $this->loadChanges(),
+            'history' => $this->log = $bridge->gitLog(80),
+            'branches' => $this->branches = $bridge->gitBranches(),
+            default => null,
         };
-    }
-
-    public function loadHistory(): void
-    {
-        $this->withGit(function (BridgeClient $bridge): void {
-            $this->log = $bridge->gitLog(80);
-            $this->rememberBranch($this->log['branch']);
-        });
-    }
-
-    public function loadBranches(): void
-    {
-        $this->withGit(function (BridgeClient $bridge): void {
-            $this->branches = $bridge->gitBranches();
-            $this->rememberBranch($this->branches['current']);
-        });
     }
 
     public function showCommit(string $sha): void
@@ -131,25 +136,128 @@ class SidePane extends Component
     /** Switch the workspace to a branch; the preview follows, and the access rules of that branch apply. */
     public function checkout(string $branch): void
     {
-        if (! $this->canUseTerminal()) {
-            abort(403);
-        }
-
-        $this->withGit(function (BridgeClient $bridge) use ($branch): void {
-            $this->git = $bridge->gitCheckout($branch);
-            $this->rememberBranch($this->git['branch']);
-            $this->branches = $bridge->gitBranches();
-        });
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitCheckout($branch), __('Switched to :branch.', ['branch' => $branch]));
     }
 
     public function fetch(): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitFetch(), __('Fetched from the remote.'));
+    }
+
+    public function pullRemote(): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitPull(), __('Pulled from the remote.'));
+    }
+
+    public function pushRemote(): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitPush(), __('Pushed to the remote.'));
+    }
+
+    /** Stage every change and commit it; while a merge is open this concludes it. */
+    public function commitAll(): void
+    {
+        $message = trim($this->commitMessage);
+
+        if ($message === '') {
+            $this->gitError = __('Write a commit message first.');
+
+            return;
+        }
+
+        $this->changeGit(function (BridgeClient $bridge) use ($message): void {
+            $bridge->gitCommitAll($message);
+            $this->commitMessage = '';
+        }, __('Changes committed.'));
+    }
+
+    /** Throw away the changes of one file as git status lists it, or of the whole working tree. */
+    public function discard(?string $path = null): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitDiscard($path), $path === null ? __('All changes discarded.') : __('Changes to :path discarded.', ['path' => $path]));
+    }
+
+    public function stash(): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitStash(), __('Changes put aside in a stash.'));
+    }
+
+    public function stashPop(): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitStash(pop: true), __('Stashed changes brought back.'));
+    }
+
+    /** Merge a branch into the current one; on a conflict the working tree shows what to resolve. */
+    public function merge(string $branch): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitMerge($branch), __(':branch merged into :current.', ['branch' => $branch, 'current' => $this->git['branch'] ?? 'HEAD']));
+
+        if ($this->git['merging'] ?? false) {
+            $this->changesView = 'tree';
+        }
+    }
+
+    public function abortMerge(): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitMergeAbort(), __('Merge aborted.'));
+    }
+
+    /** Create a branch from the current commit, or from the commit open in the history, and switch to it. */
+    public function createBranch(?string $from = null): void
+    {
+        $name = trim($this->newBranch);
+
+        if ($name === '') {
+            $this->gitError = __('Give the new branch a name.');
+
+            return;
+        }
+
+        $this->changeGit(function (BridgeClient $bridge) use ($name, $from): void {
+            $bridge->gitCreateBranch($name, $from);
+            $this->newBranch = '';
+            $this->commit = null;
+        }, __('Created and switched to :branch.', ['branch' => $name]));
+    }
+
+    public function deleteBranch(string $branch): void
+    {
+        $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitDeleteBranch($branch), __('Branch :branch deleted.', ['branch' => $branch]));
+    }
+
+    /** A new commit that undoes one from the history. */
+    public function revert(string $sha): void
+    {
+        $this->changeGit(function (BridgeClient $bridge) use ($sha): void {
+            $bridge->gitRevert($sha);
+            $this->commit = null;
+        }, __('Commit reverted.'));
+    }
+
+    /**
+     * Run one git command that changes the repository, then read it again whatever happened:
+     * a failed merge or pull leaves something to see.
+     */
+    private function changeGit(callable $call, string $notice): void
     {
         if (! $this->canUseTerminal()) {
             abort(403);
         }
 
-        $this->withGit(function (BridgeClient $bridge): void {
-            $this->branches = $bridge->gitFetch();
+        $this->gitNotice = null;
+
+        $this->withGit(function (BridgeClient $bridge) use ($call, $notice): void {
+            try {
+                $call($bridge);
+            } finally {
+                try {
+                    $this->readGit($bridge);
+                } catch (BridgeException) {
+                    // the error of the command itself is the one worth showing
+                }
+            }
+
+            $this->gitNotice = $notice;
         });
     }
 
@@ -177,27 +285,6 @@ class SidePane extends Component
     {
         if ($branch !== null && $branch !== '' && $branch !== $this->workspace->branch) {
             $this->workspace->forceFill(['branch' => $branch])->save();
-        }
-    }
-
-    public function loadChanges(): void
-    {
-        $this->workspace->refresh();
-
-        if (! $this->workspace->isRunning()) {
-            $this->git = null;
-            $this->gitError = __('The workspace is not running.');
-
-            return;
-        }
-
-        try {
-            $this->git = (new BridgeClient($this->workspace))->git();
-            $this->gitError = null;
-            $this->rememberBranch($this->git['branch']);
-        } catch (BridgeException $e) {
-            $this->git = null;
-            $this->gitError = $e->getMessage();
         }
     }
 

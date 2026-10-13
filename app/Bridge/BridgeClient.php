@@ -86,7 +86,7 @@ final class BridgeClient
     }
 
     /**
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
      */
     public function git(): array
     {
@@ -128,7 +128,7 @@ final class BridgeClient
     /**
      * Switch the working tree to a branch; the answer is the new working tree state.
      *
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
      */
     public function gitCheckout(string $branch): array
     {
@@ -140,7 +140,99 @@ final class BridgeClient
      */
     public function gitFetch(): array
     {
-        return $this->branchesFrom($this->request(fn (PendingRequest $http) => $http->post('/git/fetch')));
+        return $this->branchesFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->post('/git/fetch')));
+    }
+
+    /**
+     * Stage everything and commit it; during a merge this concludes it.
+     *
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitCommitAll(string $message): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/commit', ['message' => $message])));
+    }
+
+    /**
+     * Throw away the changes of one path as git status lists it, or of the whole working tree.
+     *
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitDiscard(?string $path = null): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/discard', ['path' => $path])));
+    }
+
+    /**
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitPull(): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->post('/git/pull')));
+    }
+
+    /**
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitPush(): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->timeout(120)->post('/git/push')));
+    }
+
+    /**
+     * Merge a branch into the current one; a conflict leaves the merge open (the state says `merging`).
+     *
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitMerge(string $branch): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/merge', ['branch' => $branch])));
+    }
+
+    /**
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitMergeAbort(): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/merge/abort')));
+    }
+
+    /**
+     * Create a branch from the current commit, or from $from, and switch to it.
+     *
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitCreateBranch(string $branch, ?string $from = null): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/branches', ['branch' => $branch, 'from' => $from])));
+    }
+
+    /**
+     * @return array{current: ?string, local: list<array<string, mixed>>, remote: list<array<string, mixed>>}
+     */
+    public function gitDeleteBranch(string $branch): array
+    {
+        return $this->branchesFrom($this->request(fn (PendingRequest $http) => $http->withQueryParameters(['branch' => $branch])->delete('/git/branches')));
+    }
+
+    /**
+     * A new commit that undoes $sha.
+     *
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitRevert(string $sha): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/revert', ['sha' => $sha])));
+    }
+
+    /**
+     * Put the changes aside, or bring the newest stash back with $pop.
+     *
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
+     */
+    public function gitStash(bool $pop = false): array
+    {
+        return $this->stateFrom($this->request(fn (PendingRequest $http) => $http->post('/git/stash', ['pop' => $pop])));
     }
 
     /**
@@ -158,7 +250,7 @@ final class BridgeClient
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array{branch: ?string, status: list<string>, stat: string, diff: string}
+     * @return array{branch: ?string, status: list<string>, stat: string, diff: string, upstream: ?string, ahead: int, behind: int, merging: bool, conflicts: list<string>, stashes: int}
      */
     private function stateFrom(array $data): array
     {
@@ -167,6 +259,12 @@ final class BridgeClient
             'status' => array_values(array_map('strval', (array) ($data['status'] ?? []))),
             'stat' => (string) ($data['stat'] ?? ''),
             'diff' => (string) ($data['diff'] ?? ''),
+            'upstream' => isset($data['upstream']) ? (string) $data['upstream'] : null,
+            'ahead' => (int) ($data['ahead'] ?? 0),
+            'behind' => (int) ($data['behind'] ?? 0),
+            'merging' => (bool) ($data['merging'] ?? false),
+            'conflicts' => array_values(array_map('strval', (array) ($data['conflicts'] ?? []))),
+            'stashes' => (int) ($data['stashes'] ?? 0),
         ];
     }
 

@@ -4,7 +4,25 @@ import { createRequire } from 'node:module';
 import { SessionManager } from './sessions.js';
 import { BridgeError } from './session.js';
 import { listSkills } from './skills.js';
-import { GitError, gitBranches, gitCheckout, gitCommit, gitFetch, gitLog, gitState } from './git.js';
+import {
+  GitError,
+  gitBranches,
+  gitCheckout,
+  gitCommit,
+  gitCommitAll,
+  gitCreateBranch,
+  gitDeleteBranch,
+  gitDiscard,
+  gitFetch,
+  gitLog,
+  gitMerge,
+  gitMergeAbort,
+  gitPull,
+  gitPush,
+  gitRevert,
+  gitStash,
+  gitState,
+} from './git.js';
 import { CommandError, RunManager } from './commands.js';
 import { FileError, Files } from './files.js';
 
@@ -66,6 +84,52 @@ export function createServer(config, options = {}) {
 
       if (req.method === 'POST' && path === '/git/fetch') {
         return json(res, 200, await gitFetch(config.workspaceDir));
+      }
+
+      if (req.method === 'POST' && path === '/git/commit') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 200, await gitCommitAll(config.workspaceDir, body.message));
+      }
+
+      if (req.method === 'POST' && path === '/git/discard') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 200, await gitDiscard(config.workspaceDir, body.path ?? null));
+      }
+
+      if (req.method === 'POST' && path === '/git/pull') {
+        return json(res, 200, await gitPull(config.workspaceDir));
+      }
+
+      if (req.method === 'POST' && path === '/git/push') {
+        return json(res, 200, await gitPush(config.workspaceDir));
+      }
+
+      if (req.method === 'POST' && path === '/git/merge') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 200, await gitMerge(config.workspaceDir, body.branch));
+      }
+
+      if (req.method === 'POST' && path === '/git/merge/abort') {
+        return json(res, 200, await gitMergeAbort(config.workspaceDir));
+      }
+
+      if (req.method === 'POST' && path === '/git/branches') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 201, await gitCreateBranch(config.workspaceDir, body.branch, body.from ?? null));
+      }
+
+      if (req.method === 'DELETE' && path === '/git/branches') {
+        return json(res, 200, await gitDeleteBranch(config.workspaceDir, url.searchParams.get('branch') ?? ''));
+      }
+
+      if (req.method === 'POST' && path === '/git/revert') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 200, await gitRevert(config.workspaceDir, body.sha));
+      }
+
+      if (req.method === 'POST' && path === '/git/stash') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 200, await gitStash(config.workspaceDir, body.pop === true));
       }
 
       if (req.method === 'GET' && path === '/files') {

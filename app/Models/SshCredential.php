@@ -8,7 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * What one person brings to a connection someone else shared through a
- * project: their own key or password (never the owner's), and their own star.
+ * project: their own key, a system key shared with them, or their own
+ * password (never the owner's secret), and their own star.
  *
  * @property int $id
  * @property int $ssh_connection_id
@@ -58,7 +59,8 @@ class SshCredential extends Model
     public function isUsable(): bool
     {
         return match ($this->auth) {
-            'key' => $this->key !== null,
+            // A system key only while it is still shared with this person on the connection's project.
+            'key' => $this->key !== null && ($this->key->user_id === $this->user_id || $this->key->isUsableBy($this->user, $this->getRelationValue('connection')?->project_id)),
             'password' => filled($this->password),
             default => false,
         };

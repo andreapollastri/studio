@@ -49,6 +49,7 @@ final class IngestBridgeEvents
                 'error' => $this->error($conversation, $event),
                 'text_delta' => ConversationUpdated::dispatch($conversation->uuid, 'text_delta', ['text' => (string) ($event['text'] ?? '')]),
                 'status' => $this->status($conversation, $event),
+                'plan_usage' => $this->planUsage($conversation, $event),
                 default => $this->raw($conversation, $event),
             };
 
@@ -99,21 +100,77 @@ final class IngestBridgeEvents
         $status = (string) ($event['status'] ?? '');
 
         if ($status === 'rate_limit' && is_array($event['info'] ?? null)) {
-            $info = $event['info'];
-            $resets = is_numeric($info['resetsAt'] ?? null) ? (int) $info['resetsAt'] : null;
-            $utilization = is_numeric($info['utilization'] ?? null) ? (float) $info['utilization'] : null;
-
-            $conversation->user->forceFill(['claude_usage' => [
-                'status' => is_string($info['status'] ?? null) ? $info['status'] : null,
-                // a fraction or a percentage, depending on the CLI: a percentage here
-                'percent' => $utilization === null ? null : (int) round(max(0, min(100, $utilization <= 1 ? $utilization * 100 : $utilization))),
-                // seconds or milliseconds since the epoch
-                'resets_at' => $resets === null ? null : Carbon::createFromTimestamp($resets > 100_000_000_000 ? intdiv($resets, 1000) : $resets)->toIso8601String(),
-                'at' => now()->toIso8601String(),
-            ]])->save();
+            $this->rateLimit($conversation, $event['info']);
         }
 
         ConversationUpdated::dispatch($conversation->uuid, 'status', ['status' => $status]);
+    }
+
+    /**
+     * Claude Code's word on the plan as it runs a turn: whether it is within its limits, the
+     * window it speaks of (five hours, or the week) and when that resets. The percentage comes
+     * only near a threshold: without one, the last known for that window stays until it resets.
+     *
+     * @param  array<string, mixed>  $info
+     */
+    private function rateLimit(Conversation $conversation, array $info): void
+    {
+        $user = $conversation->user;
+        $usage = (array) ($user->claude_usage ?? []);
+        $type = is_string($info['rateLimitType'] ?? null) ? $info['rateLimitType'] : 'five_hour';
+        $usage['status'] = is_string($info['status'] ?? null) ? $info['status'] : null;
+        $usage['at'] = now()->toIso8601String();
+
+        // overage is billed credit, not a window of the plan
+        if ($type !== 'overage') {
+            $prefix = str_starts_with($type, 'seven_day') ? 'week_' : '';
+            $resets = is_numeric($info['resetsAt'] ?? null) ? (int) $info['resetsAt'] : null;
+            $utilization = is_numeric($info['utilization'] ?? null) ? (float) $info['utilization'] : null;
+            $previous = filled($usage[$prefix.'resets_at'] ?? null) ? Carbon::parse($usage[$prefix.'resets_at']) : null;
+
+            if ($utilization !== null) {
+                // a fraction or a percentage, depending on the CLI: a percentage here
+                $usage[$prefix.'percent'] = (int) round(max(0, min(100, $utilization <= 1 ? $utilization * 100 : $utilization)));
+            } elseif ($previous === null || $previous->isPast()) {
+                $usage[$prefix.'percent'] = null;
+            }
+
+            if ($resets !== null) {
+                // seconds or milliseconds since the epoch
+                $usage[$prefix.'resets_at'] = Carbon::createFromTimestamp($resets > 100_000_000_000 ? intdiv($resets, 1000) : $resets)->toIso8601String();
+            }
+        }
+
+        $user->forceFill(['claude_usage' => $usage])->save();
+    }
+
+    /**
+     * What `/usage` shows, asked of Claude Code by the bridge after a turn: the five-hour and the
+     * weekly window of the plan, each as a percentage (0-100) with its reset.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private function planUsage(Conversation $conversation, array $event): void
+    {
+        $user = $conversation->user;
+        $usage = (array) ($user->claude_usage ?? []);
+        $limits = is_array($event['rate_limits'] ?? null) ? $event['rate_limits'] : [];
+
+        foreach (['five_hour' => '', 'seven_day' => 'week_'] as $window => $prefix) {
+            if (! is_array($limits[$window] ?? null)) {
+                continue;
+            }
+
+            $utilization = $limits[$window]['utilization'] ?? null;
+            $resets = $limits[$window]['resets_at'] ?? null;
+            $usage[$prefix.'percent'] = is_numeric($utilization) ? (int) round(max(0, min(100, (float) $utilization))) : null;
+            $usage[$prefix.'resets_at'] = is_string($resets) && $resets !== '' ? Carbon::parse($resets)->toIso8601String() : null;
+        }
+
+        $usage['plan'] = is_string($event['subscription_type'] ?? null) ? $event['subscription_type'] : ($usage['plan'] ?? null);
+        $usage['at'] = now()->toIso8601String();
+
+        $user->forceFill(['claude_usage' => $usage])->save();
     }
 
     /**

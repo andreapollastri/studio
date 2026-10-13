@@ -3282,6 +3282,10 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
               <tr><td>GET</td><td><code>/git</code></td><td>branch, status, stat, diff of the working tree</td></tr>
               <tr><td>GET</td><td><code>/git/log?limit=</code>, <code>/git/branches</code>, <code>/git/commit/{sha}</code></td><td>history with parents and refs; local and remote branches; one commit with stat and patch</td></tr>
               <tr><td>POST</td><td><code>/git/checkout</code>, <code>/git/fetch</code></td><td><code>{branch}</code> switches the working tree; fetch with prune</td></tr>
+              <tr><td>POST</td><td><code>/git/commit</code>, <code>/git/discard</code>, <code>/git/stash</code></td><td><code>{message}</code> stages everything and commits (concluding an open merge); <code>{path}</code> or nothing throws changes away; <code>{pop}</code> stashes or brings the newest stash back</td></tr>
+              <tr><td>POST</td><td><code>/git/pull</code>, <code>/git/push</code></td><td>pull with a merge; push, setting the upstream on <code>origin</code> the first time</td></tr>
+              <tr><td>POST</td><td><code>/git/merge</code>, <code>/git/merge/abort</code>, <code>/git/revert</code></td><td><code>{branch}</code> merges into the current branch (a conflict leaves it open); abort it; <code>{sha}</code> adds a commit that undoes one</td></tr>
+              <tr><td>POST, DELETE</td><td><code>/git/branches</code></td><td><code>{branch, from}</code> creates a branch and switches to it; <code>?branch=</code> deletes a merged local branch</td></tr>
               <tr><td>GET</td><td><code>/files?path=</code>, <code>/files/read?path=</code></td><td>one folder (folders first, <code>.git</code> hidden); a file's text with the hash of its bytes, or <code>binary</code> / <code>too_large</code></td></tr>
               <tr><td>PUT</td><td><code>/files</code></td><td><code>{path, content, hash}</code> writes atomically; 409 when the file no longer matches <code>hash</code></td></tr>
               <tr><td>POST</td><td><code>/files</code>, <code>/files/rename</code></td><td><code>{path, type}</code> creates a file or folder; <code>{from, to}</code> renames</td></tr>
@@ -3376,7 +3380,6 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
               <tr><td><code>STUDIO_CALLBACK_URL</code>, <code>STUDIO_BRIDGE_TIMEOUT</code></td><td>Where bridges post events: <code>http://127.0.0.1:8081/api/bridge/events</code> on a server; seconds Studio waits for a bridge (15)</td></tr>
               <tr><td><code>STUDIO_LOCAL_BRIDGE_URL</code>, <code>STUDIO_LOCAL_BRIDGE_TOKEN</code>, <code>STUDIO_LOCAL_APP_URL</code></td><td>The one bridge and preview of the local driver</td></tr>
               <tr><td><code>REVERB_*</code>, <code>VITE_REVERB_*</code></td><td>Websockets for the live chat; Caddy proxies <code>/app</code> and <code>/apps</code> on the Studio host to Reverb</td></tr>
-              <tr><td><code>APP_LOCALE</code></td><td><code>en</code> by default; <code>it</code> ships in <code>lang/it.json</code></td></tr>
               <tr><td><code>BRIDGE_FILE_MAX</code></td><td>Bridge: largest file the Files tab opens or saves, in bytes (512 KB)</td></tr>
               <tr><td><code>BRIDGE_RUN_TIMEOUT</code>, <code>BRIDGE_RUN_OUTPUT</code>, <code>BRIDGE_RUN_HISTORY</code></td><td>Bridge: seconds a terminal command may run (600), bytes of output kept (200 KB), runs remembered (20)</td></tr>
             </tbody>

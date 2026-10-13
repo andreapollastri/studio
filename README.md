@@ -9,8 +9,7 @@ a browser.
 **Version 1.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
-(Netlify publishes the `docs/` folder as it is, see `netlify.toml`). The interface is in English;
-`APP_LOCALE=it` switches it to Italian through `lang/it.json`.
+(Netlify publishes the `docs/` folder as it is, see `netlify.toml`).
 
 ## Install on a VPS
 

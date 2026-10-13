@@ -37,27 +37,46 @@
     </a>
 
     @if ($account === 'subscription' && $usage)
-        @php($percent = $usage['percent'] ?? null)
+        @php
+            // the five-hour window and the week, as /usage shows them; either may be unknown yet
+            $percent = $usage['percent'] ?? null;
+            $week = $usage['week_percent'] ?? null;
+            $weekResets = filled($usage['week_resets_at'] ?? null) ? \Illuminate\Support\Carbon::parse($usage['week_resets_at'])->timezone(config('app.timezone')) : null;
+            $when = fn ($at) => $at->isToday() ? $at->format('H:i') : $at->translatedFormat('D H:i');
+            $worst = max($percent ?? 0, $week ?? 0);
+            $tip = array_filter([
+                $percent !== null ? __('Five-hour window: :percent% used', ['percent' => $percent]).($resets?->isFuture() ? ', '.__('resets :time', ['time' => $when($resets)]) : '') : null,
+                $week !== null ? __('Week: :percent% used', ['percent' => $week]).($weekResets?->isFuture() ? ', '.__('resets :time', ['time' => $when($weekResets)]) : '') : null,
+                __('What Claude Code last said about your plan, :when.', ['when' => \Illuminate\Support\Carbon::parse($usage['at'] ?? now())->diffForHumans()]),
+            ]);
+        @endphp
         <span @class([
             $chip,
-            $plain => ($usage['status'] ?? '') === 'allowed' || ($usage['status'] ?? null) === null,
-            'bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-800' => ($usage['status'] ?? '') === 'allowed_warning',
+            $plain => ($usage['status'] ?? '') !== 'rejected' && ($usage['status'] ?? '') !== 'allowed_warning' && $worst < 80,
+            'bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-800' => ($usage['status'] ?? '') !== 'rejected' && (($usage['status'] ?? '') === 'allowed_warning' || $worst >= 80),
             'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-800' => ($usage['status'] ?? '') === 'rejected',
-        ]) title="{{ __('What Claude Code last said about your plan, :when.', ['when' => \Illuminate\Support\Carbon::parse($usage['at'] ?? now())->diffForHumans()]) }}">
-            @if ($percent !== null)
+        ]) title="{{ implode(' · ', $tip) }}">
+            @if ($percent !== null || $week !== null)
+                @php($shown = $percent ?? $week)
                 <span class="h-1 w-10 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
-                    <span @class(['block h-full rounded-full', 'bg-violet-500' => $percent < 80, 'bg-amber-500' => $percent >= 80 && $percent < 100, 'bg-red-500' => $percent >= 100]) style="width: {{ $percent }}%"></span>
+                    <span @class(['block h-full rounded-full', 'bg-violet-500' => $shown < 80, 'bg-amber-500' => $shown >= 80 && $shown < 100, 'bg-red-500' => $shown >= 100]) style="width: {{ $shown }}%"></span>
                 </span>
-                {{ __('plan :percent%', ['percent' => $percent]) }}
+                @if ($percent !== null)
+                    {{ __('5h :percent%', ['percent' => $percent]) }}
+                @endif
+                @if ($week !== null)
+                    @if ($percent !== null) · @endif
+                    {{ __('week :percent%', ['percent' => $week]) }}
+                @endif
             @elseif (($usage['status'] ?? '') === 'rejected')
                 {{ __('limit reached') }}
             @elseif (($usage['status'] ?? '') === 'allowed_warning')
                 {{ __('near the limit') }}
             @else
-                {{ __('within limits') }}
+                {{ __('plan within limits') }}
             @endif
             @if ($resets && $resets->isFuture())
-                · {{ __('resets :time', ['time' => $resets->isToday() ? $resets->format('H:i') : $resets->translatedFormat('D H:i')]) }}
+                · {{ __('resets :time', ['time' => $when($resets)]) }}
             @endif
         </span>
     @elseif ($showCost)

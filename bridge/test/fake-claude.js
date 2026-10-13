@@ -38,6 +38,17 @@ rl.on('line', (line) => {
     return;
   }
 
+  // what /usage shows: plan windows on a subscription, nothing on an API key
+  if (message.type === 'control_request' && message.request?.subtype === 'get_usage') {
+    const plan = !process.env.ANTHROPIC_API_KEY;
+    out({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response: {
+      subscription_type: plan ? 'max' : null,
+      rate_limits_available: plan,
+      rate_limits: plan ? { five_hour: { utilization: 23, resets_at: '2026-10-13T16:00:00Z' }, seven_day: { utilization: 41.5, resets_at: '2026-10-17T09:00:00Z' } } : null,
+    } } });
+    return;
+  }
+
   if (message.type === 'control_response') {
     const response = message.response ?? {};
     if (pending && response.request_id === pending.requestId) {

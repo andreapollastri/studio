@@ -7,8 +7,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * A person may have both a Claude subscription (signed in to Claude Code in
  * their home) and an Anthropic API key, and choose which one their
- * conversations use: claude_auth_mode is that choice, a conversation may say
- * otherwise (claude_auth), and claude_signed_in is what the CLI last said.
+ * conversations use: claude_auth_mode is that choice and claude_signed_in is
+ * what the CLI last said. The per-conversation claude_auth added here is gone
+ * again (one_claude_account): the account is only ever the one in Settings.
  */
 return new class extends Migration
 {

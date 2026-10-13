@@ -23,4 +23,10 @@ class SshKeyFactory extends Factory
             ...Keys::generate('ed25519', 'studio'),
         ];
     }
+
+    /** A key of the installation, managed in System. */
+    public function system(): static
+    {
+        return $this->state(['user_id' => null, 'name' => 'deploy '.fake()->unique()->numberBetween(1, 9999)]);
+    }
 }

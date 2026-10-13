@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Ssh;
 
+use App\Livewire\Concerns\CreatesSshKeys;
 use App\Livewire\Concerns\SearchesDirectory;
 use App\Models\Project;
 use App\Models\SshConnection;
@@ -9,14 +10,12 @@ use App\Models\SshCredential;
 use App\Models\SshKey;
 use App\Models\User;
 use App\Ssh\Gateway;
-use App\Ssh\Keys;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Collection as BaseCollection;
 use Illuminate\Validation\Rule;
-use InvalidArgumentException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -24,8 +23,9 @@ use Livewire\Component;
 
 /**
  * The SSH page: a person's saved hosts (favourites first), the hosts shared
- * with the projects they work on, and their keys on the left; any number of
- * terminals on the right. Livewire owns connections and keys; the terminals
+ * with the projects they work on, their keys and the system keys shared with
+ * them (managed in System) on the left; any number of terminals on the right.
+ * Livewire owns connections and keys; the terminals
  * live in the browser (xterm.js) and talk to the SSH gateway with a one-time
  * ticket from open(). On a shared connection everybody uses their own key or
  * password: credentials are never shared.
@@ -34,6 +34,7 @@ use Livewire\Component;
 #[Title('SSH')]
 class Terminal extends Component
 {
+    use CreatesSshKeys;
     use SearchesDirectory;
 
     /** The uuid of the connection in the form. */
@@ -68,19 +69,6 @@ class Terminal extends Component
     public ?string $credential_key = null;
 
     public string $credential_password = '';
-
-    public string $key_name = '';
-
-    public string $key_mode = 'generate';
-
-    public string $key_type = 'ed25519';
-
-    public string $key_private = '';
-
-    public string $key_passphrase = '';
-
-    /** The key whose public half the modal shows, to copy into authorized_keys. */
-    public ?string $shownKey = null;
 
     public function mount(): void
     {
@@ -129,6 +117,26 @@ class Terminal extends Component
     }
 
     /**
+     * The installation's keys this person may use, with the projects that
+     * give them: administrators manage them in System.
+     *
+     * @return Collection<int, SshKey>
+     */
+    #[Computed]
+    public function systemKeys(): Collection
+    {
+        $user = auth()->user();
+
+        return SshKey::query()
+            ->sharedWith($user)
+            ->with(['projects' => fn ($q) => $user->isAdmin()
+                ? $q->orderBy('name')
+                : $q->wherePivot('developers', true)->whereIn('projects.id', $user->projects()->select('projects.id'))->orderBy('name')])
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
      * Who sees the connection being edited through its project: the project's
      * administrators and developers, and every administrator of Studio.
      *
@@ -157,7 +165,7 @@ class Terminal extends Component
     public function newConnection(): void
     {
         $this->reset(['editing', 'connection_name', 'connection_host', 'connection_port', 'connection_username', 'connection_auth', 'connection_key', 'connection_password', 'connection_favorite', 'connection_project']);
-        $keys = $this->keys();
+        $keys = $this->usableKeys(null);
         $this->connection_key = $keys->first()?->uuid;
         $this->connection_auth = $keys->isEmpty() ? 'password' : 'key';
         $this->resetValidation();
@@ -197,6 +205,7 @@ class Terminal extends Component
     {
         $existing = $this->editing ? $this->ownConnection($this->editing) : null;
         $user = auth()->user();
+        $projectId = $this->connection_project !== null ? Project::query()->where('uuid', $this->connection_project)->value('id') : null;
 
         $validated = $this->validate([
             'connection_name' => ['required', 'string', 'max:60', Rule::unique('ssh_connections', 'name')->where('user_id', $user->id)->ignore($existing?->id)],
@@ -204,7 +213,7 @@ class Terminal extends Component
             'connection_port' => ['required', 'integer', 'between:1,65535'],
             'connection_username' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9._][A-Za-z0-9._@-]*$/'],
             'connection_auth' => ['required', Rule::in(['key', 'password'])],
-            'connection_key' => ['required_if:connection_auth,key', 'nullable', 'string', Rule::exists('ssh_keys', 'uuid')->where('user_id', $user->id)],
+            'connection_key' => ['required_if:connection_auth,key', 'nullable', 'string', $this->usableKeyRule($projectId)],
             'connection_password' => [$this->connection_auth === 'password' && ! filled($existing?->password) ? 'required' : 'nullable', 'string', 'max:500'],
             'connection_favorite' => ['boolean'],
             'connection_project' => ['nullable', 'string', function (string $attribute, mixed $value, \Closure $fail) use ($user): void {
@@ -229,10 +238,10 @@ class Terminal extends Component
             'port' => $port,
             'username' => $validated['connection_username'],
             'auth' => $validated['connection_auth'],
-            'ssh_key_id' => $validated['connection_auth'] === 'key' ? $user->sshKeys()->where('uuid', $validated['connection_key'])->value('id') : null,
+            'ssh_key_id' => $validated['connection_auth'] === 'key' ? SshKey::query()->usableBy($user, $projectId)->where('uuid', $validated['connection_key'])->value('id') : null,
             'password' => $password,
             'favorite' => (bool) $validated['connection_favorite'],
-            'project_id' => $validated['connection_project'] !== null ? Project::query()->where('uuid', $validated['connection_project'])->value('id') : null,
+            'project_id' => $projectId,
         ];
 
         if ($existing) {
@@ -289,7 +298,7 @@ class Terminal extends Component
         abort_if($connection->isOwnedBy(auth()->user()), 404);
 
         $credential = $connection->credentialOf(auth()->user());
-        $keys = $this->keys();
+        $keys = $this->usableKeys($connection->project_id);
 
         $this->credentialFor = $connection->uuid;
         $this->credential_auth = $credential->auth ?? ($keys->isEmpty() ? 'password' : 'key');
@@ -308,7 +317,7 @@ class Terminal extends Component
 
         $validated = $this->validate([
             'credential_auth' => ['required', Rule::in(['key', 'password'])],
-            'credential_key' => ['required_if:credential_auth,key', 'nullable', 'string', Rule::exists('ssh_keys', 'uuid')->where('user_id', auth()->id())],
+            'credential_key' => ['required_if:credential_auth,key', 'nullable', 'string', $this->usableKeyRule($connection->project_id)],
             'credential_password' => [$this->credential_auth === 'password' && ! filled($existing?->password) ? 'required' : 'nullable', 'string', 'max:500'],
         ], [
             'credential_key.required_if' => __('Choose a key, or create one first.'),
@@ -316,7 +325,7 @@ class Terminal extends Component
 
         $connection->credentials()->updateOrCreate(['user_id' => auth()->id()], [
             'auth' => $validated['credential_auth'],
-            'ssh_key_id' => $validated['credential_auth'] === 'key' ? auth()->user()->sshKeys()->where('uuid', $validated['credential_key'])->value('id') : null,
+            'ssh_key_id' => $validated['credential_auth'] === 'key' ? SshKey::query()->usableBy(auth()->user(), $connection->project_id)->where('uuid', $validated['credential_key'])->value('id') : null,
             'password' => $validated['credential_auth'] === 'password'
                 ? (filled($validated['credential_password']) ? $validated['credential_password'] : $existing?->password)
                 : null,
@@ -371,51 +380,20 @@ class Terminal extends Component
         }
     }
 
-    public function newKey(): void
-    {
-        $this->reset(['key_name', 'key_mode', 'key_type', 'key_private', 'key_passphrase']);
-        $this->resetValidation();
-
-        Flux::modal('ssh-key')->show();
-    }
-
     public function saveKey(): void
     {
-        $user = auth()->user();
+        $key = $this->createKey(auth()->user());
 
-        $this->validate([
-            'key_name' => ['required', 'string', 'max:60', Rule::unique('ssh_keys', 'name')->where('user_id', $user->id)],
-            'key_mode' => ['required', Rule::in(['generate', 'import'])],
-            'key_type' => ['required_if:key_mode,generate', Rule::in(Keys::TYPES)],
-            'key_private' => ['required_if:key_mode,import', 'nullable', 'string', 'max:20000'],
-            'key_passphrase' => ['nullable', 'string', 'max:500'],
-        ], [
-            'key_private.required_if' => __('Paste the private key.'),
-        ]);
-
-        $comment = ($user->handle ?: 'studio').'@'.parse_url((string) config('app.url'), PHP_URL_HOST);
-
-        try {
-            $material = $this->key_mode === 'generate'
-                ? Keys::generate($this->key_type, $comment)
-                : Keys::import($this->key_private, $this->key_passphrase, $comment);
-        } catch (InvalidArgumentException $e) {
-            $this->addError('key_private', $e->getMessage());
-
-            return;
+        if ($key) {
+            unset($this->keys);
+            $this->showKey($key->uuid);
         }
-
-        $key = $user->sshKeys()->create(['name' => $this->key_name, ...$material]);
-
-        $this->reset(['key_private', 'key_passphrase']);
-        unset($this->keys);
-        Flux::modal('ssh-key')->close();
-        $this->showKey($key->uuid);
     }
 
+    /** The public half of one of this person's keys, or of a system key shared with them. */
     public function showKey(string $id): void
     {
-        $this->shownKey = $this->key($id)->uuid;
+        $this->shownKey = ($this->keys()->firstWhere('uuid', $id) ?? $this->systemKeys()->firstWhere('uuid', $id) ?? abort(404))->uuid;
 
         Flux::modal('ssh-public-key')->show();
     }
@@ -432,11 +410,39 @@ class Terminal extends Component
     {
         $credentialConnection = $this->credentialFor ? SshConnection::query()->visibleTo(auth()->user())->with('user')->where('uuid', $this->credentialFor)->first() : null;
 
+        $pickedProject = $this->connection_project ? Project::query()->where('uuid', $this->connection_project)->first() : null;
+
         return view('livewire.ssh.terminal', [
-            'shown' => $this->shownKey ? $this->keys()->firstWhere('uuid', $this->shownKey) : null,
-            'pickedProject' => $this->connection_project ? Project::query()->where('uuid', $this->connection_project)->first() : null,
+            'shown' => $this->shownKey ? ($this->keys()->firstWhere('uuid', $this->shownKey) ?? $this->systemKeys()->firstWhere('uuid', $this->shownKey)) : null,
+            'pickedProject' => $pickedProject,
             'credentialConnection' => $credentialConnection,
+            'connectionKeys' => $this->usableKeys($pickedProject?->id),
+            'credentialKeys' => $credentialConnection ? $this->usableKeys($credentialConnection->project_id) : collect(),
         ]);
+    }
+
+    /**
+     * What the key pickers offer for a connection of this project (null: a
+     * personal one): this person's keys first, then the system keys they may use.
+     *
+     * @return Collection<int, SshKey>
+     */
+    private function usableKeys(?int $projectId): Collection
+    {
+        return SshKey::query()
+            ->usableBy(auth()->user(), $projectId)
+            ->orderByRaw('user_id is null')
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function usableKeyRule(?int $projectId): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($projectId): void {
+            if (! SshKey::query()->usableBy(auth()->user(), $projectId)->where('uuid', $value)->exists()) {
+                $fail(__('Choose one of your keys, or a system key shared with this project.'));
+            }
+        };
     }
 
     private function ownConnection(string $id): SshConnection

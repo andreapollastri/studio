@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gitBranches, gitCheckout, gitCommit, gitLog, gitState, GitError } from '../src/git.js';
+import { gitBranches, gitCheckout, gitCommit, gitCommitAll, gitCreateBranch, gitDeleteBranch, gitDiscard, gitLog, gitMerge, gitMergeAbort, gitPush, gitRevert, gitStash, gitState, GitError } from '../src/git.js';
 import { createServer } from '../src/server.js';
 import { testConfig, listen } from './helpers.js';
 
@@ -87,4 +87,86 @@ test('the git routes are served behind the bearer token', async () => {
   assert.equal(bad.status, 422);
 
   await server.shutdown();
+});
+
+test('commit, discard, stash, merge with a conflict, revert and branches from the working tree', async () => {
+  const dir = await repo();
+  const origin = await mkdtemp(join(tmpdir(), 'studio-origin-'));
+  await git(origin, 'init', '-q', '--bare');
+  await git(dir, 'remote', 'add', 'origin', origin);
+  await git(dir, 'config', 'user.name', 'Maria');
+  await git(dir, 'config', 'user.email', 'maria@agency.test');
+
+  // discard one file, a new file, then everything
+  await writeFile(join(dir, 'a.txt'), 'changed\n');
+  await writeFile(join(dir, 'new.txt'), 'new\n');
+  let state = await gitState(dir);
+  assert.equal(state.status.length, 2);
+  state = await gitDiscard(dir, 'a.txt');
+  assert.deepEqual(state.status, ['?? new.txt']);
+  state = await gitDiscard(dir, 'new.txt');
+  assert.deepEqual(state.status, []);
+  await writeFile(join(dir, 'a.txt'), 'changed\n');
+  await writeFile(join(dir, 'new.txt'), 'new\n');
+  assert.deepEqual((await gitDiscard(dir)).status, []);
+  await assert.rejects(gitDiscard(dir, '../etc/passwd'), (e) => e.status === 400);
+
+  // stash and pop
+  await writeFile(join(dir, 'a.txt'), 'stashed\n');
+  state = await gitStash(dir);
+  assert.equal(state.stashes, 1);
+  assert.deepEqual(state.status, []);
+  state = await gitStash(dir, true);
+  assert.equal(state.stashes, 0);
+  assert.deepEqual(state.status, [' M a.txt']);
+
+  // commit everything, then push a branch without upstream
+  await assert.rejects(gitCommitAll(dir, '  '), (e) => e.status === 400);
+  state = await gitCommitAll(dir, 'D: change a');
+  assert.deepEqual(state.status, []);
+  assert.equal(state.upstream, null);
+  state = await gitPush(dir);
+  assert.equal(state.upstream, 'origin/main');
+  assert.equal(state.ahead, 0);
+  await assert.rejects(gitCommitAll(dir, 'nothing'), (e) => e.status === 422 && /nothing to commit/.test(e.message));
+
+  // a new branch from the current commit, a conflicting change on each side, a merge that stops
+  state = await gitCreateBranch(dir, 'feature/conflict');
+  assert.equal(state.branch, 'feature/conflict');
+  await writeFile(join(dir, 'a.txt'), 'feature\n');
+  await gitCommitAll(dir, 'E: feature side');
+  await gitCheckout(dir, 'main');
+  await writeFile(join(dir, 'a.txt'), 'main\n');
+  state = await gitCommitAll(dir, 'F: main side');
+  assert.equal(state.ahead, 1);
+  await assert.rejects(gitMerge(dir, 'feature/conflict'), (e) => e.status === 422 && /CONFLICT/.test(e.message));
+  state = await gitState(dir);
+  assert.equal(state.merging, true);
+  assert.deepEqual(state.conflicts, ['a.txt']);
+  state = await gitMergeAbort(dir);
+  assert.equal(state.merging, false);
+  assert.deepEqual(state.status, []);
+
+  // resolve a merge by committing
+  await assert.rejects(gitMerge(dir, 'feature/conflict'));
+  await writeFile(join(dir, 'a.txt'), 'both\n');
+  state = await gitCommitAll(dir, 'G: merge feature/conflict');
+  assert.equal(state.merging, false);
+
+  // revert a commit and a merge commit
+  const log = await gitLog(dir, { limit: 1 });
+  state = await gitRevert(dir, log.commits[0].sha);
+  assert.deepEqual(state.status, []);
+  assert.match((await gitLog(dir, { limit: 1 })).commits[0].subject, /^Revert/);
+  await assert.rejects(gitRevert(dir, 'HEAD'), (e) => e.status === 400);
+
+  // a branch from an older commit, then delete merged and unmerged branches
+  const first = (await gitLog(dir, { limit: 50 })).commits.at(-1);
+  state = await gitCreateBranch(dir, 'from-first', first.short);
+  assert.equal(state.branch, 'from-first');
+  await gitCheckout(dir, 'main');
+  const branches = await gitDeleteBranch(dir, 'from-first');
+  assert.ok(!branches.local.some((b) => b.name === 'from-first'));
+  await assert.rejects(gitDeleteBranch(dir, 'main'), (e) => e.status === 422);
+  await assert.rejects(gitCreateBranch(dir, 'bad..name'), (e) => e.status === 400);
 });

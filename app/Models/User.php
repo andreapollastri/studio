@@ -36,7 +36,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property ClaudeAuthMode $claude_auth_mode
  * @property string|null $claude_token only an API key: a subscription is the login in the person's home
  * @property Carbon|null $claude_checked_at
- * @property array{status?: string|null, percent?: int|null, resets_at?: string|null, at?: string}|null $claude_usage the CLI's last word on the subscription's limits
+ * @property array{status?: string|null, percent?: int|null, resets_at?: string|null, week_percent?: int|null, week_resets_at?: string|null, plan?: string|null, at?: string}|null $claude_usage the CLI's last word on the subscription's limits: the five-hour window, the week
  * @property bool $claude_signed_in signed in to Claude Code in their home with a subscription, as last checked
  * @property Carbon|null $email_verified_at
  * @property string $password

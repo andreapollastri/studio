@@ -101,6 +101,34 @@
                 @endforelse
             </div>
         </section>
+
+        @if ($this->systemKeys->isNotEmpty() || auth()->user()->isAdmin())
+            <section class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                    <flux:heading size="sm">{{ __('System keys') }}</flux:heading>
+                    @if (auth()->user()->isAdmin())
+                        <flux:button size="xs" icon="cog-6-tooth" variant="subtle" :href="route('admin.system').'#keys'" wire:navigate>{{ __('Manage') }}</flux:button>
+                    @endif
+                </div>
+                <div class="flex flex-col gap-1">
+                    @forelse ($this->systemKeys as $key)
+                        <div wire:key="ssh-system-key-{{ $key->uuid }}" class="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                            <flux:icon.server-stack variant="micro" class="size-4 shrink-0 text-zinc-400" />
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="truncate text-sm font-medium">{{ $key->name }}</span>
+                                    <flux:badge size="sm">{{ $key->label() }}</flux:badge>
+                                </div>
+                                <div class="truncate text-[11px] text-zinc-500">{{ $key->projects->isEmpty() ? __('not shared with any project') : $key->projects->pluck('name')->join(', ') }}</div>
+                            </div>
+                            <flux:button size="xs" variant="ghost" icon="clipboard-document" :tooltip="__('Public key')" wire:click="showKey('{{ $key->uuid }}')" />
+                        </div>
+                    @empty
+                        <flux:text class="px-1 text-xs">{{ __('Keys of this Studio, shared with projects: create them in Administration → System.') }}</flux:text>
+                    @endforelse
+                </div>
+            </section>
+        @endif
     </aside>
 
     {{-- Terminals: the browser owns them, Livewire never redraws this part. --}}
@@ -209,15 +237,15 @@
             </flux:radio.group>
 
             @if ($connection_auth === 'key')
-                @if ($this->keys->isEmpty())
+                @if ($connectionKeys->isEmpty())
                     <flux:callout variant="warning" icon="key" :heading="__('No keys yet')">
                         <flux:callout.text>{{ __('Save the connection with a password, or create a key first from Keys → New key.') }}</flux:callout.text>
                     </flux:callout>
                     <flux:error name="connection_key" />
                 @else
                     <flux:select wire:model="connection_key" :label="__('Key')">
-                        @foreach ($this->keys as $key)
-                            <flux:select.option :value="$key->uuid">{{ $key->name }} · {{ $key->label() }}</flux:select.option>
+                        @foreach ($connectionKeys as $key)
+                            <flux:select.option :value="$key->uuid">{{ $key->name }} · {{ $key->label() }}{{ $key->isSystem() ? ' · '.__('system') : '' }}</flux:select.option>
                         @endforeach
                     </flux:select>
                 @endif
@@ -289,15 +317,15 @@
                 </flux:radio.group>
 
                 @if ($credential_auth === 'key')
-                    @if ($this->keys->isEmpty())
+                    @if ($credentialKeys->isEmpty())
                         <flux:callout variant="warning" icon="key" :heading="__('No keys yet')">
                             <flux:callout.text>{{ __('Create a key first from Keys → New key, and add its public half to the server.') }}</flux:callout.text>
                         </flux:callout>
                         <flux:error name="credential_key" />
                     @else
                         <flux:select wire:model="credential_key" :label="__('Key')">
-                            @foreach ($this->keys as $key)
-                                <flux:select.option :value="$key->uuid">{{ $key->name }} · {{ $key->label() }}</flux:select.option>
+                            @foreach ($credentialKeys as $key)
+                                <flux:select.option :value="$key->uuid">{{ $key->name }} · {{ $key->label() }}{{ $key->isSystem() ? ' · '.__('system') : '' }}</flux:select.option>
                             @endforeach
                         </flux:select>
                     @endif
@@ -313,62 +341,5 @@
         @endif
     </flux:modal>
 
-    {{-- New key --}}
-    <flux:modal name="ssh-key" class="md:w-[34rem]">
-        <form wire:submit="saveKey" class="space-y-5">
-            <flux:heading size="lg">{{ __('New SSH key') }}</flux:heading>
-            <flux:input wire:model="key_name" :label="__('Name')" :placeholder="__('studio deploy key')" required />
-
-            <flux:radio.group wire:model.live="key_mode" variant="segmented">
-                <flux:radio value="generate" :label="__('Generate')" icon="sparkles" />
-                <flux:radio value="import" :label="__('Import')" icon="arrow-down-tray" />
-            </flux:radio.group>
-
-            @if ($key_mode === 'generate')
-                <flux:radio.group wire:model="key_type" :label="__('Type')">
-                    <flux:radio value="ed25519" label="Ed25519" :description="__('Short, fast and modern: the default of OpenSSH. Recommended.')" />
-                    <flux:radio value="rsa" label="RSA 4096" :description="__('For older servers and appliances that do not accept Ed25519.')" />
-                </flux:radio.group>
-            @else
-                <flux:textarea wire:model="key_private" :label="__('Private key')" rows="8" class="font-mono text-xs" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
-                <flux:input wire:model="key_passphrase" type="password" :label="__('Passphrase')" :description="__('Only if the key has one: it is used to read the key and not kept.')" autocomplete="off" viewable />
-                <flux:text class="text-xs">{{ __('OpenSSH, PEM (PKCS#1, PKCS#8) and PuTTY keys; RSA, Ed25519 and ECDSA.') }}</flux:text>
-            @endif
-            <flux:error name="key_private" />
-
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary">{{ $key_mode === 'generate' ? __('Generate') : __('Import') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
-
-    {{-- Public key, to copy into authorized_keys --}}
-    <flux:modal name="ssh-public-key" class="md:w-[40rem]">
-        @if ($shown)
-            <div class="space-y-4" x-data="{ copied: null, copy(text, what) { navigator.clipboard.writeText(text); this.copied = what; setTimeout(() => this.copied = null, 1500) } }">
-                <div>
-                    <flux:heading size="lg">{{ $shown->name }}</flux:heading>
-                    <flux:text class="mt-1">{{ $shown->label() }} · <span class="font-mono text-xs">{{ $shown->fingerprint }}</span></flux:text>
-                </div>
-                <flux:text>{{ __('Add the public key to ~/.ssh/authorized_keys of the user on the server, or to the deploy keys of your hosting panel.') }}</flux:text>
-                <div class="relative">
-                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-zinc-100 p-3 pe-24 font-mono text-xs dark:bg-zinc-900">{{ $shown->public_key }}</pre>
-                    <flux:button size="xs" class="absolute end-2 top-2" icon="clipboard-document" x-on:click="copy(@js($shown->public_key), 'key')">
-                        <span x-text="copied === 'key' ? @js(__('Copied')) : @js(__('Copy'))"></span>
-                    </flux:button>
-                </div>
-                <div class="relative">
-                    <flux:text class="mb-1 text-xs">{{ __('Or run this on the server, as that user:') }}</flux:text>
-                    <pre class="overflow-auto whitespace-pre-wrap break-all rounded-lg bg-zinc-100 p-3 pe-24 font-mono text-xs dark:bg-zinc-900">{{ $authorize = 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '.escapeshellarg($shown->public_key).' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys' }}</pre>
-                    <flux:button size="xs" class="absolute end-2 top-7" icon="clipboard-document" x-on:click="copy(@js($authorize), 'cmd')">
-                        <span x-text="copied === 'cmd' ? @js(__('Copied')) : @js(__('Copy'))"></span>
-                    </flux:button>
-                </div>
-                <div class="flex justify-end">
-                    <flux:modal.close><flux:button variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>
-                </div>
-            </div>
-        @endif
-    </flux:modal>
+    @include('livewire.ssh.partials.key-modals')
 </div>

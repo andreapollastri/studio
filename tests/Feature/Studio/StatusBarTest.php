@@ -42,7 +42,7 @@ test('on a subscription the bar shows the plan\'s usage, never a cost', function
 
     Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])
         ->assertSee('Subscription')
-        ->assertSee('plan 82%')
+        ->assertSee('5h 82%')
         ->assertSee('resets')
         ->assertSee('Opus 5.5')
         ->assertSee('effort default')
@@ -86,4 +86,46 @@ test('model ids read the way people say them', function () {
         ->and(ModelName::label('claude-sonnet-4-20250514'))->toBe('Sonnet 4')
         ->and(ModelName::label(null))->toBeNull()
         ->and(ModelName::label('something-else'))->toBe('something-else');
+});
+
+test('after a turn the bridge brings what /usage shows: the five hours and the week, in percent', function () {
+    $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true]);
+    $conversation = chatFor($user, ['runtime' => ['auth' => 'subscription']]);
+    $workspace = $conversation->workspace;
+    $post = fn (array $events) => $this->withToken((string) $workspace->callback_token)
+        ->postJson(route('api.bridge.events'), ['conversation' => (string) $conversation->id, 'events' => $events])
+        ->assertOk();
+
+    // during the turn: within limits, no percentage
+    $post([['type' => 'status', 'status' => 'rate_limit', 'info' => ['status' => 'allowed', 'rateLimitType' => 'five_hour', 'resetsAt' => now()->addHours(3)->getTimestamp()]]]);
+    expect($user->fresh()->claude_usage['percent'])->toBeNull();
+
+    // after it: the windows
+    $post([['type' => 'plan_usage', 'subscription_type' => 'max', 'rate_limits' => [
+        'five_hour' => ['utilization' => 23.4, 'resets_at' => now()->addHours(3)->toIso8601String()],
+        'seven_day' => ['utilization' => 41, 'resets_at' => now()->addDays(4)->toIso8601String()],
+    ]]]);
+    expect($user->fresh()->claude_usage)->toMatchArray(['status' => 'allowed', 'percent' => 23, 'week_percent' => 41, 'plan' => 'max']);
+
+    // the next turn's event without a percentage does not forget the one of its window
+    $post([['type' => 'status', 'status' => 'rate_limit', 'info' => ['status' => 'allowed', 'rateLimitType' => 'five_hour', 'resetsAt' => now()->addHours(3)->getTimestamp()]]]);
+    expect($user->fresh()->claude_usage)->toMatchArray(['percent' => 23, 'week_percent' => 41]);
+
+    Livewire::actingAs($user->fresh())->test(Chat::class, ['conversation' => $conversation->fresh()])
+        ->assertSee('5h 23%')
+        ->assertSee('week 41%')
+        ->assertSee('Five-hour window: 23% used');
+});
+
+test('a weekly warning lands on the week, not on the five hours', function () {
+    $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true]);
+    $conversation = chatFor($user);
+
+    $this->withToken((string) $conversation->workspace->callback_token)->postJson(route('api.bridge.events'), [
+        'conversation' => (string) $conversation->id,
+        'events' => [['type' => 'status', 'status' => 'rate_limit', 'info' => ['status' => 'allowed_warning', 'rateLimitType' => 'seven_day', 'utilization' => 0.85, 'resetsAt' => now()->addDays(2)->getTimestamp()]]],
+    ])->assertOk();
+
+    expect($user->fresh()->claude_usage)->toMatchArray(['status' => 'allowed_warning', 'week_percent' => 85])
+        ->and($user->fresh()->claude_usage['percent'] ?? null)->toBeNull();
 });

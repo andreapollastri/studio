@@ -180,15 +180,6 @@ test('no copy to the project without access to its file manager', function () {
     Livewire::actingAs($owner)->test(Drive::class, ['folder' => $loose->uuid])->assertDontSee('To the project');
 });
 
-test('the tools pages render in Italian', function () {
-    app()->setLocale('it');
-    $user = User::factory()->create();
-
-    $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()])->get(route('ssh'))->assertOk()->assertSee('Terminale SSH')->assertSee('Chiavi');
-    $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()])->get(route('vault'))->assertOk()->assertSee('Le mie cartelle');
-    $this->actingAs($user)->get(route('drive'))->assertOk()->assertSee('Il tuo drive è vuoto', false);
-});
-
 test('a folder created inside another shows up at once, and the URL names folders by uuid', function () {
     $user = User::factory()->create();
     $top = $user->driveFolders()->create(['name' => 'Clients']);

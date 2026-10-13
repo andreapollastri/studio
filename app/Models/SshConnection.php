@@ -127,11 +127,11 @@ class SshConnection extends Model
         return $this->isOwnedBy($user) ? null : $this->credentials()->with('key')->where('user_id', $user->id)->first();
     }
 
-    /** Ready to connect for this person: a key of theirs that still exists, or a password. */
+    /** Ready to connect for this person: a password, or a key that still exists and they may still use. */
     public function canConnect(User $user): bool
     {
         if ($this->isOwnedBy($user)) {
-            return $this->auth === 'password' ? filled($this->password) : $this->key !== null;
+            return $this->auth === 'password' ? filled($this->password) : (bool) $this->key?->isUsableBy($user, $this->project_id);
         }
 
         return (bool) $this->credentialOf($user)?->isUsable();
