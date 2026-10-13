@@ -4,7 +4,7 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
-## Unreleased
+## 2.0
 
 ### Databases
 - **Tools → Databases**, a database client in the spirit of TablePlus: MySQL, MariaDB, PostgreSQL, SQLite, Redis and
