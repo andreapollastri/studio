@@ -107,7 +107,7 @@ ver_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$2" ]; }
 ensure_base_packages() {
     apt_ensure curl wget git unzip zip jq acl ufw fail2ban cron openssl ca-certificates gnupg lsb-release \
         software-properties-common unattended-upgrades debian-keyring debian-archive-keyring apt-transport-https sudo dnsutils \
-        openssh-client rclone
+        openssh-client rclone sqlite3 mariadb-client postgresql-client
 }
 
 ensure_caddy() {
@@ -569,7 +569,7 @@ EOF
     printf 'php_admin_value[upload_max_filesize] = 256M\nphp_admin_value[post_max_size] = 260M\nphp_admin_value[max_execution_time] = 600\n' \
         >> "/etc/php/${php}/fpm/pool.d/studio.conf"
 
-    for unit in studio-queue studio-backups studio-reverb studio-scheduler; do
+    for unit in studio-queue studio-backups studio-databases studio-reverb studio-scheduler; do
         render_tpl "$rel/installer/templates/${unit}.service" "/etc/systemd/system/${unit}.service" STUDIO_DIR="$STUDIO_HOME/current" PHP="php${php}"
     done
     install_ssh_gateway "$rel"
@@ -621,9 +621,9 @@ caddy_readable() {
 restart_studio() {
     local v
     for v in /etc/php/*/fpm; do systemctl reload "php$(basename "$(dirname "$v")")-fpm" 2>/dev/null || true; done
-    systemctl enable studio-queue studio-backups studio-reverb studio-scheduler studio-ssh >/dev/null 2>&1 || true
+    systemctl enable studio-queue studio-backups studio-databases studio-reverb studio-scheduler studio-ssh >/dev/null 2>&1 || true
     # a backup under way is cut short by the restart; the next schedule runs it again
-    systemctl restart studio-queue studio-backups studio-reverb studio-scheduler
+    systemctl restart studio-queue studio-backups studio-databases studio-reverb studio-scheduler
     # Open SSH sessions end with a restart; a gateway that does not start leaves Studio up.
     systemctl restart studio-ssh || sys_warn "the SSH gateway (studio-ssh) did not start"
     systemctl enable --now caddy >/dev/null 2>&1 || true

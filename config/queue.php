@@ -54,6 +54,16 @@ return [
             'after_commit' => false,
         ],
 
+        // Tools → Databases: imports and exports, a worker of their own (studio-databases)
+        'databases' => [
+            'driver' => env('QUEUE_CONNECTION', 'database') === 'sync' ? 'sync' : 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'databases',
+            'retry_after' => 22500,
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),

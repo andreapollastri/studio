@@ -394,6 +394,61 @@
     "wait": 2000
   },
   {
+    "name": "databases",
+    "url": "${BASE}/databases",
+    "height": 1000,
+    "wait": 1500
+  },
+  {
+    "name": "databases-new",
+    "url": "${BASE}/databases",
+    "eval": "(() => { const w = Livewire.all().find(c => c.name === 'tools.databases').$wire; w.call('newConnection').then(() => { w.set('link', 'mariadb+ssh://deploy:ssh-password@203.0.113.42/shopacme:db-password@127.0.0.1/shopacme?env=production&name=Shop%20Acme%20production'); setTimeout(() => w.call('applyLink'), 300) }); return true; })()",
+    "height": 1250,
+    "wait": 2500
+  },
+  {
+    "name": "database-data",
+    "url": "${BASE}/databases/${DB_LOCAL}?table=orders",
+    "height": 1000,
+    "wait": 2000
+  },
+  {
+    "name": "database-edit",
+    "eval": "(() => { const td = [...document.querySelectorAll('td[data-col=status]')][2]; td?.dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); return !!td; })()",
+    "height": 1000,
+    "wait": 1800
+  },
+  {
+    "eval": "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))",
+    "wait": 400
+  },
+  {
+    "name": "database-structure",
+    "url": "${BASE}/databases/${DB_LOCAL}?table=orders&tab=structure",
+    "height": 1000,
+    "wait": 1800
+  },
+  {
+    "name": "database-sql",
+    "url": "${BASE}/databases/${DB_LOCAL}?tab=sql",
+    "eval": "(() => { const w = Livewire.all().find(c => c.name === 'tools.database-client').$wire; w.set('sql', \"SELECT c.name, COUNT(o.id) AS orders, SUM(o.total) AS spent\\nFROM customers c JOIN orders o ON o.customer_id = c.id\\nWHERE o.status = 'paid'\\nGROUP BY c.id ORDER BY spent DESC LIMIT 10;\\n\\nSELECT status, COUNT(*) AS orders FROM orders GROUP BY status;\").then(() => w.call('runSql')); return true; })()",
+    "height": 1100,
+    "wait": 2500
+  },
+  {
+    "name": "database-transfers",
+    "url": "${BASE}/databases/${DB_LOCAL}?tab=transfers",
+    "height": 1100,
+    "wait": 1800
+  },
+  {
+    "name": "database-new-table",
+    "url": "${BASE}/databases/${DB_LOCAL}?table=orders",
+    "eval": "(() => { const w = Livewire.all().find(c => c.name === 'tools.database-client').$wire; w.call('startNewTable').then(() => w.set('newTableName', 'returns')); return true; })()",
+    "height": 1000,
+    "wait": 1800
+  },
+  {
     "name": "project-overview",
     "url": "${BASE}/p/shop-acme/infrastructure",
     "height": 1250,

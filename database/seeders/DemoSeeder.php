@@ -3,6 +3,8 @@
 namespace Database\Seeders;
 
 use App\Backups\Retention;
+use App\Databases\Driver;
+use App\Databases\Environment;
 use App\Enums\ClaudeAuthMode;
 use App\Enums\ConversationStatus;
 use App\Enums\DomainStatus;
@@ -17,6 +19,11 @@ use App\Models\ClaudeAccount;
 use App\Models\ConnectorAccount;
 use App\Models\ConnectorSetting;
 use App\Models\Conversation;
+use App\Models\DatabaseConnection;
+use App\Models\DatabaseGroup;
+use App\Models\DatabasePreference;
+use App\Models\DatabaseQuery;
+use App\Models\DatabaseTransfer;
 use App\Models\Domain;
 use App\Models\Message;
 use App\Models\Project;
@@ -32,6 +39,8 @@ use App\Models\VaultItem;
 use App\Models\Workspace;
 use App\Ssh\Keys;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -152,6 +161,7 @@ class DemoSeeder extends Seeder
             'label' => 'Shop Acme · production', 'view_roles' => ['pm', 'dev', 'client'], 'act_roles' => ['dev'], 'actions' => ['reboot', 'snapshot'], 'added_by' => $andrea->id,
         ]);
         $this->operations($shop, $andrea);
+        $this->databases($shop, $andrea, $luca);
 
         // Andrea's list: the clients' projects in their group, on the agency's Team plan
         foreach ([$shop, $portale] as $project) {
@@ -275,6 +285,96 @@ class DemoSeeder extends Seeder
         ]);
 
         $this->command->info('Demo ready: andrea@agency.test (admin), maria@agency.test (PM of the shop), luca@agency.test (developer here, PM there), giulia@client.test (client of the shop). Password: password');
+    }
+
+    /**
+     * Tools → Databases: the shop's database as a real SQLite file next to the demo's own (so the
+     * client shows rows), the agency's other databases in Andrea's coloured groups, a query
+     * history, a saved query and a finished export.
+     */
+    private function databases(Project $shop, User $andrea, User $luca): void
+    {
+        // a short path, as a server's would be: /tmp/studio-demo/shop-acme.sqlite
+        $dir = is_writable('/tmp') ? '/tmp/studio-demo' : sys_get_temp_dir().'/studio-demo';
+        File::ensureDirectoryExists($dir);
+        $file = $dir.'/shop-acme.sqlite';
+        @unlink($file);
+
+        $pdo = new \PDO('sqlite:'.$file);
+        $pdo->exec('CREATE TABLE customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(120) NOT NULL, email VARCHAR(190) NOT NULL UNIQUE, country CHAR(2), vip BOOLEAN NOT NULL DEFAULT 0, notes TEXT, created_at DATETIME)');
+        $pdo->exec('CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, sku VARCHAR(32) NOT NULL UNIQUE, name VARCHAR(160) NOT NULL, price DECIMAL(10,2) NOT NULL, stock INTEGER NOT NULL DEFAULT 0)');
+        $pdo->exec('CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE, status VARCHAR(20) NOT NULL DEFAULT \'pending\', total DECIMAL(10,2) NOT NULL, placed_at DATETIME)');
+        $pdo->exec('CREATE INDEX orders_status_index ON orders (status)');
+        $pdo->exec('CREATE INDEX orders_customer_id_index ON orders (customer_id)');
+        $pdo->exec('CREATE TABLE migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, migration VARCHAR(255) NOT NULL, batch INTEGER NOT NULL)');
+        $pdo->exec("CREATE VIEW paid_orders AS SELECT o.id, c.name, o.total, o.placed_at FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'paid'");
+
+        $people = ['Giulia Conti', 'Marco Ferri', 'Sofia Greco', 'Luca Marino', 'Elena Bruno', 'Paolo Gallo', 'Chiara Costa', 'Davide Fontana', 'Sara Moretti', 'Matteo Rizzo', 'Anna Lombardi', 'Simone Barbieri', 'Laura Romano', 'Andrea Colombo', 'Francesca Ricci', 'Giorgio Esposito', 'Valentina De Luca', 'Federico Mancini', 'Martina Villa', 'Alessandro Serra'];
+        $insert = $pdo->prepare('INSERT INTO customers (name, email, country, vip, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+        foreach ($people as $i => $name) {
+            $insert->execute([$name, Str::slug($name, '.').'@example.com', ['IT', 'IT', 'DE', 'FR', 'IT', 'ES'][$i % 6], (int) ($i % 5 === 0), $i % 4 === 0 ? 'Prefers deliveries after 18:00' : null, now()->subDays(120 - $i * 5)->format('Y-m-d H:i:s')]);
+        }
+        $insert = $pdo->prepare('INSERT INTO products (sku, name, price, stock) VALUES (?, ?, ?, ?)');
+        foreach ([['CH-OAK', 'Oak chair', 149.00, 32], ['TB-WAL', 'Walnut table', 890.00, 6], ['LM-BRS', 'Brass lamp', 79.90, 54], ['SH-PIN', 'Pine shelf', 129.00, 18], ['RG-WOL', 'Wool rug', 340.00, 9], ['CS-LIN', 'Linen cushion', 39.00, 120]] as $product) {
+            $insert->execute($product);
+        }
+        $insert = $pdo->prepare('INSERT INTO orders (customer_id, status, total, placed_at) VALUES (?, ?, ?, ?)');
+        for ($i = 0; $i < 64; $i++) {
+            $insert->execute([($i * 7) % 20 + 1, ['paid', 'paid', 'shipped', 'pending', 'paid', 'refunded'][$i % 6], round(39 + ($i * 37.3) % 900, 2), now()->subHours(6 + $i * 9)->format('Y-m-d H:i:s')]);
+        }
+        foreach (['0001_01_01_000000_create_users_table', '2026_09_01_000001_create_customers_table', '2026_09_01_000002_create_products_table', '2026_09_02_000001_create_orders_table'] as $i => $migration) {
+            $pdo->prepare('INSERT INTO migrations (migration, batch) VALUES (?, ?)')->execute([$migration, $i < 1 ? 1 : 2]);
+        }
+        unset($pdo);
+
+        $groups = collect([['Clients', 'violet'], ['Production', 'red'], ['Agency', 'sky']])->mapWithKeys(fn (array $g, int $i) => [$g[0] => DatabaseGroup::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => $g[0]], ['color' => $g[1], 'position' => $i + 1])]);
+        $ssh = SshConnection::query()->where('user_id', $andrea->id)->where('name', 'Shop Acme · Cipi')->first();
+
+        $connections = [
+            ['Shop Acme · local copy', Driver::Sqlite, Environment::Development, ['database' => $file], 'Clients', true, ['dev' => 'write', 'pm' => 'read']],
+            ['Shop Acme · production', Driver::Mariadb, Environment::Production, ['host' => '127.0.0.1', 'port' => 3306, 'username' => 'shopacme', 'password' => 'demo', 'database' => 'shopacme', 'ssh_connection_id' => $ssh?->id], 'Production', true, ['dev' => 'read']],
+            ['Shop Acme · cache', Driver::Redis, Environment::Production, ['host' => '127.0.0.1', 'port' => 6379, 'database' => '0', 'ssh_connection_id' => $ssh?->id], 'Production', false, ['dev' => 'read']],
+            ['Shop Acme · staging', Driver::Mysql, Environment::Staging, ['host' => 'db.staging.agency.test', 'port' => 3306, 'username' => 'shop', 'password' => 'demo', 'database' => 'shop_staging'], 'Clients', false, ['dev' => 'write', 'pm' => 'read']],
+            ['Analytics warehouse', Driver::Pgsql, Environment::Production, ['host' => 'warehouse.agency.test', 'port' => 5432, 'username' => 'analyst', 'password' => 'demo', 'database' => 'analytics', 'tls' => true], 'Agency', false, null],
+            ['Sessions', Driver::Valkey, Environment::Testing, ['host' => '10.0.0.21', 'port' => 6379, 'password' => 'demo', 'database' => '1'], 'Agency', false, null],
+        ];
+
+        foreach ($connections as [$name, $driver, $environment, $attributes, $group, $favorite, $access]) {
+            $connection = DatabaseConnection::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => $name], [
+                'driver' => $driver, 'environment' => $environment, 'host' => null, 'port' => null, 'username' => null, 'password' => null, 'database' => null, 'tls' => false, 'ssh_connection_id' => null,
+                ...$attributes,
+                'project_id' => $access !== null ? $shop->id : null,
+                'project_access' => $access,
+                'last_used_at' => now()->subMinutes(30),
+            ]);
+            DatabasePreference::query()->updateOrCreate(['user_id' => $andrea->id, 'database_connection_id' => $connection->id], ['database_group_id' => $groups[$group]->id, 'favorite' => $favorite]);
+        }
+
+        $local = DatabaseConnection::query()->where('user_id', $andrea->id)->where('name', 'Shop Acme · local copy')->firstOrFail();
+        $local->queries()->delete();
+        foreach ([
+            ["SELECT status, COUNT(*) AS orders, SUM(total) AS revenue\nFROM orders\nGROUP BY status\nORDER BY revenue DESC;", 'ok', 4, null, null],
+            ['UPDATE customers SET vip = 1 WHERE id IN (3, 8);', 'ok', 6, null, null],
+            ['SELECT * FROM order_items;', 'error', 1, 'no such table: order_items', null],
+            ["SELECT c.name, COUNT(o.id) AS orders, SUM(o.total) AS spent\nFROM customers c JOIN orders o ON o.customer_id = c.id\nWHERE o.status = 'paid'\nGROUP BY c.id ORDER BY spent DESC LIMIT 10;", 'ok', 3, null, 'Best customers'],
+        ] as $i => [$sql, $status, $ms, $error, $title]) {
+            DatabaseQuery::query()->create(['database_connection_id' => $local->id, 'user_id' => $andrea->id, 'database' => 'main', 'sql' => $sql, 'status' => $status, 'duration_ms' => $ms, 'error' => $error, 'title' => $title, 'saved' => $title !== null, 'created_at' => now()->subMinutes(40 - $i * 9)]);
+        }
+
+        $local->transfers()->delete();
+        $transfer = DatabaseTransfer::query()->create([
+            'database_connection_id' => $local->id, 'user_id' => $andrea->id, 'kind' => 'export', 'format' => 'sql', 'scope' => ['database' => 'main', 'tables' => [], 'structure' => true, 'data' => true, 'drop' => true, 'gzip' => true],
+            'status' => 'success', 'started_at' => now()->subMinutes(18), 'finished_at' => now()->subMinutes(18), 'expires_at' => now()->addDays(7), 'rows' => 94, 'bytes' => 6214,
+            'output' => "[10:42:01] Dumping with sqlite3.\n[10:42:01] Ready: shop-acme-2026-10-14_104201.sql.gz, 6.1 KB.\n",
+        ]);
+        $relative = DatabaseTransfer::DIR.'/'.$transfer->uuid.'/shop-acme-'.now()->format('Y-m-d_His').'.sql.gz';
+        Storage::disk('local')->put($relative, (string) gzencode("-- demo dump\n"));
+        $transfer->forceFill(['file_path' => $relative, 'file_name' => basename($relative)])->save();
+        DatabaseTransfer::query()->create([
+            'database_connection_id' => $local->id, 'user_id' => $luca->id, 'kind' => 'import', 'format' => 'csv', 'scope' => ['database' => 'main', 'table' => 'products', 'header' => true],
+            'status' => 'success', 'started_at' => now()->subHours(3), 'finished_at' => now()->subHours(3), 'rows' => 6, 'file_name' => 'products.csv', 'bytes' => 412,
+            'output' => "[07:58:12] Running the rows into products.\n[07:58:12] 6 rows imported into products\n",
+        ]);
     }
 
     private function gitAccount(User $user, string $connector, string $login, string $host, ?string $name = null, ?string $url = null): ConnectorAccount

@@ -169,6 +169,24 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(ProjectPreference::class);
     }
 
+    /** @return HasMany<DatabaseConnection, $this> */
+    public function databaseConnections(): HasMany
+    {
+        return $this->hasMany(DatabaseConnection::class);
+    }
+
+    /** @return HasMany<DatabaseGroup, $this> */
+    public function databaseGroups(): HasMany
+    {
+        return $this->hasMany(DatabaseGroup::class)->orderBy('position')->orderBy('name');
+    }
+
+    /** @return HasMany<DatabasePreference, $this> */
+    public function databasePreferences(): HasMany
+    {
+        return $this->hasMany(DatabasePreference::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;

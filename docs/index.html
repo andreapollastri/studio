@@ -1862,6 +1862,7 @@
 
       <div class="docs-nav-label">Tools</div>
       <a href="#tools-ssh">SSH terminal</a>
+      <a href="#tools-databases">Databases</a>
       <a href="#tools-passwords">Password manager</a>
       <a href="#tools-drive">Drive</a>
       <a href="#tools-backups">Backups</a>
@@ -3681,6 +3682,125 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           for a one-time ticket (60 seconds) and opens a WebSocket to the gateway, <code>studio-ssh</code>
           (<code>ssh-gateway/</code>, behind Caddy at <code>/ssh/ws</code>), which redeems the ticket on the loopback and only
           then sees host and secret. The page asks for your password again, as <em>Settings → Security</em> does.</p>
+      </section>
+
+<!-- Tools: databases -->
+      <section class="doc-section" id="tools-databases">
+        <div class="section-header">
+          <span class="section-label">Tools</span>
+          <h2>Databases</h2>
+          <p><em>Tools → Databases</em> is a database client in the browser, in the spirit of TablePlus: MySQL, MariaDB,
+            PostgreSQL, SQLite, Redis and Valkey, reached from Studio's server directly or through an SSH tunnel. Browse and
+            edit rows, run SQL, change structures, import and export. Administrators and developers add connections; anybody
+            reaches the ones shared with their role on a project. Like the SSH terminal, it asks for your password again.</p>
+        </div>
+        <figure class="shot">
+          <img src="img/databases.png" alt="Tools → Databases: connections in coloured groups, favourites first, each with its engine, environment, tunnel and project" loading="lazy" width="2880" height="2000" />
+          <figcaption><strong>Every connection you reach.</strong> Yours and those shared with you, in groups of your own with their colours, favourites first; the environment tag on each (production in red).</figcaption>
+        </figure>
+        <ol>
+          <li><strong>A connection.</strong> <em>New connection</em>: the engine, host and port, user and password (stored
+            encrypted, never shown again), the database, TLS. Or <strong>paste a link</strong> as TablePlus writes it, or the
+            <code>DB_</code> / <code>REDIS_</code> lines of a Laravel <code>.env</code>, and <em>Fill in</em>.</li>
+          <li><strong>Through SSH.</strong> <em>Through an SSH tunnel</em> picks one of the SSH page's connections (or the
+            one a <code>+ssh</code> link brings, created when you save); the host is the database's address as that machine
+            sees it, usually <code>127.0.0.1</code>. <em>Test</em> shows a new host's key to accept first.</li>
+          <li><strong>Share it</strong> with a project: for each role, no access, <em>can read</em> or <em>can read and
+            write</em>. Members use your database credentials without ever seeing them; Studio's administrators read and
+            write every project connection.</li>
+        </ol>
+        <figure class="shot">
+          <img src="img/databases-new.png" alt="The New connection dialog filled from a mariadb+ssh link: a new SSH connection for the tunnel, the database's host, user and database, production environment" loading="lazy" width="2880" height="2500" />
+          <figcaption><strong>From a link.</strong> <code>mariadb+ssh://…</code> fills the database and the SSH host of the tunnel; the SSH host becomes one of your SSH connections when you save.</figcaption>
+        </figure>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Link</th><th>What it opens</th></tr></thead>
+            <tbody>
+              <tr><td><code>mysql://user:password@host:3306/db</code></td><td>MySQL (<code>mariadb://</code> MariaDB), directly</td></tr>
+              <tr><td><code>mariadb+ssh://ssh_user:ssh_pw@ssh_host/user:pw@127.0.0.1/db</code></td><td>MariaDB through an SSH tunnel; the SSH password may be left out to use one of your keys</td></tr>
+              <tr><td><code>postgres://user:pw@host/db?sslmode=require</code></td><td>PostgreSQL (<code>postgresql://</code>, <code>pgsql://</code>), with TLS</td></tr>
+              <tr><td><code>sqlite+ssh://deploy@web1/~/current/database/database.sqlite</code></td><td>a SQLite file on an SSH host, with its own <code>sqlite3</code> (3.33 or later); <code>//var/…</code> for an absolute path</td></tr>
+              <tr><td><code>redis://:pw@host:6379/0</code>, <code>rediss://</code>, <code>valkey+ssh://…</code></td><td>Redis or Valkey, the database number at the end; <code>rediss</code> with TLS</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Add <code>?name=Shop&amp;env=production&amp;tls=true</code> to any of them. Passwords with <code>/ ? # :</code> in
+          them are percent-encoded (an <code>@</code> works either way). A connection's menu copies its link, with the
+          passwords only for its owner.</p>
+        <figure class="shot">
+          <img src="img/database-data.png" alt="The SQL client: tables and views on the left, the orders table's rows with their types, filters, pages and export" loading="lazy" width="2880" height="2000" />
+          <figcaption><strong>Rows.</strong> Tables and views (rows and size where the engine knows them) on the left; a table's rows sorted by a click on a column, filtered (=, contains, in, is null, raw SQL…), paged by 50 to 1,000.</figcaption>
+        </figure>
+        <div class="walkthrough-grid">
+          <dl><dt>Edit in place</dt><dd>Double-click a cell, change it, Enter (or NULL). A row's menu edits it whole,
+            duplicates or deletes it; tick rows to delete many. Rows are found again by their primary key, by
+            <code>ctid</code> on PostgreSQL and <code>rowid</code> on SQLite when there is none.</dd></dl>
+          <dl><dt>Structure</dt><dd>Columns with type, null, default, key and comment; indexes; foreign keys and checks;
+            the DDL to copy. New tables, columns and indexes, renames, drops and emptying are SQL shown first, to read and
+            change before it runs.</dd></dl>
+          <dl><dt>SQL editor</dt><dd>Run the selection or everything (Ctrl/⌘+Enter): every statement gets its own result,
+            rows (the first 1,000) or rows changed, with its time; an error says which statement. Your history and your
+            saved queries on the side; a result's rows go to CSV or JSON in full.</dd></dl>
+          <dl><dt>Read only, production</dt><dd>Someone who may only read runs statements that read, inside a read-only
+            transaction. A production connection opens locked: unlock it for the session to change anything, and every
+            statement that writes asks first.</dd></dl>
+        </div>
+        <figure class="shot">
+          <img src="img/database-edit.png" alt="A cell of the orders table being edited in place, with NULL and Save" loading="lazy" width="2880" height="2000" />
+          <figcaption><strong>In place.</strong> Double-click, type, Enter.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/database-structure.png" alt="The Structure tab: columns, indexes and foreign keys of the orders table" loading="lazy" width="2880" height="2000" />
+          <figcaption><strong>Structure.</strong> Columns, indexes, foreign keys; every change is SQL to review.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/database-new-table.png" alt="The New table dialog: columns with type, default, null, key and auto increment" loading="lazy" width="2880" height="2000" />
+          <figcaption><strong>A new table</strong>, written for the engine (AUTO_INCREMENT, identity, AUTOINCREMENT).</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/database-sql.png" alt="The SQL editor with two statements run, each with its result, saved queries and history on the side" loading="lazy" width="2880" height="2200" />
+          <figcaption><strong>SQL.</strong> One result per statement; saved queries and history.</figcaption>
+        </figure>
+        <h3>Import &amp; export</h3>
+        <figure class="shot">
+          <img src="img/database-transfers.png" alt="Import & export: an SQL dump with structure, data, DROP and gzip; an import of a file; recent imports and exports with download and save to the drive" loading="lazy" width="2880" height="2200" />
+          <figcaption><strong>Import &amp; export.</strong> Their log as they go; exports to download or save to your drive for a few days.</figcaption>
+        </figure>
+        <div class="table-card">
+          <table>
+            <thead><tr><th></th><th>Export</th><th>Import</th></tr></thead>
+            <tbody>
+              <tr><td><strong>SQL</strong></td><td>the whole database or some tables, structure and/or data, DROP before
+                CREATE, gzip; with <code>mariadb-dump</code>/<code>mysqldump</code>, <code>pg_dump</code> or
+                <code>sqlite3 .dump</code> when they are there (else Studio writes it: portable INSERTs)</td><td>a
+                <code>.sql</code> or <code>.sql.gz</code> run with <code>mariadb</code>, <code>psql</code> or the host's
+                <code>sqlite3</code> (else statement by statement), stopping at the first error or going on</td></tr>
+              <tr><td><strong>CSV / JSON</strong></td><td>tables (a zip of files when there are several) or the rows of
+                a query</td><td>rows into a table, columns matched by name, empty values as NULL, the table emptied first if
+                you like</td></tr>
+              <tr><td><strong>Redis</strong></td><td>keys as JSON with their type, value and TTL</td><td>the same JSON, the
+                keys that exist kept or replaced</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Redis and Valkey</h3>
+        <p>The keys of a database page by page (SCAN, never KEYS) with a pattern and a type; each key's value by its type
+          (strings with JSON formatting, hashes, lists, sets, sorted sets, streams) to change in place, its TTL, rename and
+          delete; a console that speaks like <code>redis-cli</code> (FLUSHDB and the like ask first; MONITOR and SUBSCRIBE
+          do not run); the server's INFO.</p>
+        <h3>How the tunnels work</h3>
+        <p>For each SSH connection and credential Studio keeps one OpenSSH master connection open while it is used (fifteen
+          minutes idle by default), and forwards each database to a <strong>Unix socket</strong> in a folder only Studio's
+          user may enter, never to a port of <code>127.0.0.1</code> another process of the server (a workspace) could
+          reach. Only a host whose key was accepted is reached. <em>Whose SSH credential</em>: yours (members reach that
+          database through it, never a shell) or each person's own. Imports and exports run on a queue of their own,
+          served by the <code>studio-databases</code> worker; the installer adds <code>mariadb-client</code>,
+          <code>postgresql-client</code> and <code>sqlite3</code>. Every change made on a shared or production connection is
+          written to Studio's log with who made it.</p>
+        <div class="note"><strong>Read only means read only.</strong> Studio refuses statements that write and runs
+          the others in a read-only transaction, but a function with side effects can slip through any client: for a
+          guarantee, share a database user that may only <code>SELECT</code>.</div>
       </section>
 
 <!-- Tools: passwords -->

@@ -6,6 +6,41 @@ server is in `installer/upgrades/<version>.sh`.
 
 ## Unreleased
 
+### Databases
+- **Tools → Databases**, a database client in the spirit of TablePlus: MySQL, MariaDB, PostgreSQL, SQLite, Redis and
+  Valkey, reached from Studio's server directly or through an SSH tunnel. Administrators and developers add
+  connections; anybody reaches those shared with their role on a project. It asks for the password again, as the SSH
+  terminal does.
+- **Connections from a link**: paste `mysql://…`, `postgres://…`, `redis://…`, `rediss://…`, `sqlite+ssh://…` or a
+  TablePlus `mariadb+ssh://ssh_user:ssh_pw@ssh_host/user:pw@127.0.0.1/db` (with `?name=…&env=…&tls=…`), or the `DB_` and
+  `REDIS_` lines of a Laravel `.env`: the form fills in, and the SSH host of the link becomes one of your SSH
+  connections (or reuses the one with the same host, port and user). Each connection copies its own link back.
+- **Groups with colours and favourites**, each person's own: the connections shared with you go in your groups too.
+  An environment tag on each (local, development, testing, staging, production), as a bar across the client.
+- **SSH tunnels** through the SSH page's connections: one OpenSSH master per connection and credential, kept open while
+  used, each database forwarded to a Unix socket only Studio's user can open (never a port of 127.0.0.1 a workspace could
+  reach); the host key pinned, a new one shown to accept on *Test*. The owner's SSH credential opens the tunnel for the
+  members (who reach that database only), or each member's own.
+- **Sharing by role**: no access, read, or read and write for clients, PMs and developers of a project; members use the
+  owner's database credentials without seeing them. Read only: only statements that read, in a read-only transaction.
+  Production: changes locked until unlocked for the session, and every statement that writes asks first. Changes on
+  shared and production connections go to Studio's log with who made them.
+- **The client**: databases and schemas, tables and views with their size; rows sorted, filtered (=, contains, in,
+  null, raw SQL…) and paged; cells edited in place, rows added, edited, copied and deleted (by primary key, `ctid` or
+  `rowid`); structure (columns, indexes, foreign keys, checks) and DDL; new tables, columns and indexes, renames, drops
+  and truncates as SQL to review before it runs; new and dropped databases.
+- **SQL editor**: the selection or everything, one result per statement (1,000 rows shown, all of them exported), the
+  failing statement named; history and saved queries per person.
+- **Import & export** on a queue of their own (`studio-databases` worker): SQL dumps with `mariadb-dump`/`mysqldump`,
+  `pg_dump` or `sqlite3 .dump`, else written by Studio; tables or a query result as CSV or JSON (a zip for several);
+  `.sql`/`.sql.gz` run with `mariadb`, `psql` or the host's `sqlite3`, else statement by statement; CSV and JSON rows
+  into a table by column name; Redis keys to and from JSON. Exports kept a week to download or save to the drive;
+  files from the drive importable.
+- **Redis and Valkey**: keys by pattern and type (SCAN), each value by its type to change, TTL, rename, delete; a
+  console like `redis-cli`; the server's INFO.
+- The installer adds `sqlite3`, `mariadb-client`, `postgresql-client` and the `studio-databases` worker; the demo seeds a
+  shop database and connections in groups; docs and screenshots.
+
 ### Backups
 - **Tools → Backups**, for administrators: every backup in one place, from a folder over SSH or a bucket to a bucket or
   a folder on another host, in any direction (SSH → S3, S3 → S3, S3 → SSH). Each project has the same panel, filtered

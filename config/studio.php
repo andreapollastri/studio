@@ -124,6 +124,39 @@ return [
         'timeout' => (int) env('STUDIO_BACKUP_TIMEOUT', 21600),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Databases
+    |--------------------------------------------------------------------------
+    | Tools → Databases: MySQL, MariaDB, PostgreSQL, SQLite, Redis and Valkey,
+    | direct or through SSH tunnels (OpenSSH masters, forwards to Unix sockets
+    | under runtime/). Imports and exports run on the databases queue, which the
+    | studio-databases worker serves; the native tools are used when present.
+    */
+    'databases' => [
+        'ssh' => env('STUDIO_SSH_BINARY', 'ssh'),
+        'runtime' => env('STUDIO_DB_RUNTIME'),
+        // how long a tunnel nobody uses stays open, in seconds
+        'tunnel_idle' => (int) env('STUDIO_DB_TUNNEL_IDLE', 900),
+        'connect_timeout' => (int) env('STUDIO_DB_CONNECT_TIMEOUT', 10),
+        // a statement of the SQL editor, in seconds
+        'timeout' => (int) env('STUDIO_DB_TIMEOUT', 120),
+        'transfer_timeout' => (int) env('STUDIO_DB_TRANSFER_TIMEOUT', 21600),
+        // rows a statement of the editor shows at most
+        'row_limit' => (int) env('STUDIO_DB_ROW_LIMIT', 1000),
+        // days an export stays to download
+        'keep_exports_days' => (int) env('STUDIO_DB_KEEP_EXPORTS_DAYS', 7),
+        'max_import_mb' => (int) env('STUDIO_DB_MAX_IMPORT_MB', 100),
+        // empty: found on the PATH (mariadb-dump before mysqldump, mariadb before mysql)
+        'binaries' => [
+            'mysqldump' => env('STUDIO_MYSQLDUMP'),
+            'mysql' => env('STUDIO_MYSQL'),
+            'pg_dump' => env('STUDIO_PG_DUMP'),
+            'psql' => env('STUDIO_PSQL'),
+            'sqlite3' => env('STUDIO_SQLITE3'),
+        ],
+    ],
+
     // The drive (Tools → Drive): files on the local disk under storage/app/private/drive.
     'drive' => [
         'max_upload_mb' => (int) env('STUDIO_DRIVE_MAX_UPLOAD_MB', 100),

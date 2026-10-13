@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\SystemStatusController;
 use App\Http\Controllers\ConversationImageController;
+use App\Http\Controllers\DatabaseTransferController;
 use App\Http\Controllers\DoorController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
@@ -21,8 +22,11 @@ use App\Livewire\Projects\Settings as ProjectSettings;
 use App\Livewire\Ssh\Terminal as SshTerminal;
 use App\Livewire\Studio\Shell;
 use App\Livewire\Tools\Backups;
+use App\Livewire\Tools\DatabaseClient;
+use App\Livewire\Tools\Databases;
 use App\Livewire\Tools\Drive;
 use App\Livewire\Tools\Git;
+use App\Livewire\Tools\RedisClient;
 use App\Livewire\Tools\Vault;
 use Illuminate\Support\Facades\Route;
 
@@ -52,6 +56,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('ssh', SshTerminal::class)->middleware(['can:ssh', 'password.confirm'])->name('ssh');
     Route::get('passwords', Vault::class)->middleware('password.confirm')->name('vault');
     Route::get('drive', Drive::class)->name('drive');
+    // MySQL, MariaDB, PostgreSQL, SQLite, Redis and Valkey, direct or through SSH: the password again, as for the SSH terminal.
+    Route::middleware('password.confirm')->group(function () {
+        Route::get('databases', Databases::class)->name('databases');
+        Route::get('databases/{connection}', DatabaseClient::class)->name('databases.client');
+        Route::get('databases/{connection}/redis', RedisClient::class)->name('databases.redis');
+    });
+    Route::get('databases/exports/{transfer}', DatabaseTransferController::class)->name('databases.download');
     // Every backup: SSH and S3, any direction, on schedules, with their snapshots; for the administrators.
     Route::get('backups', Backups::class)->middleware('can:admin')->name('backups');
     Route::get('drive/files/{file}', DriveFileController::class)->name('drive.file');

@@ -11,3 +11,6 @@ if (config('studio.driver') === 'native') {
 
 // Tools → Backups: the schedules due this minute start their runs on the backups queue
 Schedule::command('studio:backups')->everyMinute()->withoutOverlapping();
+
+// Tools → Databases: old exports and imports' files go
+Schedule::command('studio:database-transfers')->dailyAt('04:40');

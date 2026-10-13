@@ -40,6 +40,11 @@
                             {{ __('SSH terminal') }}
                         </flux:sidebar.item>
                     @endcan
+                    @if (auth()->user()->canUseSsh() || \App\Models\DatabaseConnection::query()->visibleTo(auth()->user())->exists())
+                        <flux:sidebar.item icon="circle-stack" :href="route('databases')" :current="request()->routeIs('databases*')" wire:navigate>
+                            {{ __('Databases') }}
+                        </flux:sidebar.item>
+                    @endif
                     <flux:sidebar.item icon="key" :href="route('vault')" :current="request()->routeIs('vault')" wire:navigate>
                         {{ __('Password manager') }}
                     </flux:sidebar.item>
