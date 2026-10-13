@@ -170,6 +170,26 @@ final class ProjectSites
         $project->delete();
     }
 
+    /**
+     * The push webhook again, at Studio's address of now (the domain moved: the old webhook calls
+     * a host that is gone). The old one is removed when the git host still has it.
+     */
+    public function renewWebhook(Project $project): void
+    {
+        $git = $this->deployAccount($project);
+
+        if ($project->webhook_id && ($repo = $project->repositoryPath())) {
+            try {
+                $git->provider()->deleteWebhook($git->token(), $repo, $project->webhook_id);
+            } catch (RuntimeException $e) {
+                Log::info("The old push webhook of {$project->slug} could not be removed: {$e->getMessage()}");
+            }
+        }
+
+        $project->forceFill(['webhook_id' => null])->save();
+        $this->ensureWebhook($project, $git);
+    }
+
     /** The push webhook that deploys the site; registered once, with the repository account, on its host. */
     private function ensureWebhook(Project $project, GitAccount $git): void
     {

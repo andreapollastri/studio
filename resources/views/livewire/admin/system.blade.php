@@ -239,6 +239,55 @@
 
     <flux:separator />
 
+    {{-- The domain and who sees the dashboard --}}
+    <section id="domain" class="space-y-4">
+        <flux:heading size="lg">{{ __('Domain & visibility') }}</flux:heading>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+            <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                <flux:text class="text-xs uppercase tracking-wide">{{ __('Domain') }}</flux:text>
+                <div class="mt-1 break-all font-mono text-lg">{{ $domain }}</div>
+                <flux:text class="text-xs">{{ __('studio.:domain, <project>.:domain, <person>-<project>.:domain', ['domain' => $domain]) }}</flux:text>
+            </div>
+            <div class="rounded-xl border border-zinc-200 p-4 sm:col-span-2 dark:border-zinc-700">
+                <flux:text class="text-xs uppercase tracking-wide">{{ __('Change it, or its certificates') }}</flux:text>
+                <flux:text class="mt-1 text-sm">{{ __('On the server, as root: the DNS, the certificates and the move to another domain, with every site, preview and webhook following.') }}</flux:text>
+                <code class="mt-2 block overflow-x-auto rounded-md bg-zinc-100 px-2 py-1 font-mono text-xs dark:bg-zinc-800">sudo studio-domain status · check · change &lt;new-domain&gt; · renew · prune</code>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="min-w-0 max-w-2xl">
+                    <flux:heading>{{ __('Show Studio to anyone') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">
+                        @if ($hidden)
+                            {{ __('Hidden: whoever is not signed in gets the page of an address nobody configured, here and on unknown names, and nothing links to Studio. People come in through the link below, once per browser; a password reset link from an email works too.') }}
+                        @else
+                            {{ __('Public: https://studio.:domain shows its sign-in page to anyone, as any app does.', ['domain' => $domain]) }}
+                        @endif
+                    </flux:text>
+                </div>
+                <flux:switch wire:model.live="visible" :label="$visible ? __('Public') : __('Hidden')" />
+            </div>
+
+            @if ($hidden)
+                <div class="mt-4 space-y-2">
+                    <flux:input :value="$doorUrl" readonly copyable :label="__('The way in')" />
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <flux:text class="text-xs">{{ __('Give it with a new person\'s first password. Root reads it on the server with sudo studio-recover door.') }}</flux:text>
+                        <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="rotateDoor"
+                            wire:confirm="{{ __('Make a new link? The current one stops working, and so does every browser that came in through it but is not signed in.') }}">
+                            {{ __('New link') }}
+                        </flux:button>
+                    </div>
+                </div>
+            @endif
+        </div>
+    </section>
+
+    <flux:separator />
+
     {{-- SSH keys of the installation, shared with projects --}}
     <section id="keys" class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">

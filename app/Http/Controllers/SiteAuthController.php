@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Project;
+use App\Server\DashboardVisibility;
 use App\Server\SiteAccess;
 use App\Server\SitePass;
 use Illuminate\Http\RedirectResponse;
@@ -24,7 +25,7 @@ class SiteAuthController extends Controller
 
         // A name nobody configured: Caddy hands this answer to the visitor as is, so it is Studio's welcome page.
         if ($target === null) {
-            return response()->view('site.welcome', ['host' => $host], 404);
+            return response()->view('site.welcome', ['host' => $host, 'hidden' => app(DashboardVisibility::class)->hidden()], 404);
         }
 
         $uri = (string) $request->header('X-Forwarded-Uri', '/');

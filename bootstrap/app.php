@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Middleware\AuthenticateBridge;
+use App\Http\Middleware\HideDashboard;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -20,6 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'bridge' => AuthenticateBridge::class,
         ]);
+
+        // A hidden dashboard shows nothing to who has neither a session nor the door's cookie.
+        // Before `auth`, or a guest would get its redirect to the sign-in page instead.
+        $middleware->appendToGroup('web', HideDashboard::class);
+        $middleware->prependToPriorityList(before: AuthenticatesRequests::class, prepend: HideDashboard::class);
 
         // While an update migrates the database, Caddy still asks before issuing
         // certificates and before serving protected project hosts, and the bridges

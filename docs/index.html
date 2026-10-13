@@ -1822,6 +1822,7 @@
       <a href="#setup-mcp">MCP servers</a>
       <a href="#setup-email">Email</a>
       <a href="#setup-updates">Updates</a>
+      <a class="sub" href="#setup-domain">Domain &amp; visibility</a>
 
       <div class="docs-nav-label">Work</div>
       <a href="#work-home">Home &amp; the menu</a>
@@ -2070,6 +2071,7 @@
               <tr><td><code>studio-admin</code></td><td>The privileged helper in <code>/usr/local/sbin</code>: the only thing the <code>studio</code> user may run as root, through sudo, for a fixed list of commands. Everything on the server is done through it.</td></tr>
               <tr><td><code>studio-update</code></td><td>The updater in <code>/usr/local/sbin</code>, run by root: nightly by a systemd timer, on demand from <em>Administration → System</em>. See <a href="#setup-updates">Updates</a>.</td></tr>
               <tr><td><code>studio-recover</code></td><td>Root's tool in <code>/usr/local/sbin</code>, mode 0700: resets the main administrator from an SSH session when every account is locked out, and edits and reloads Studio's <code>.env</code> (outgoing <a href="#setup-email">email</a>). Nothing in Studio calls it. See <a href="#setup-recovery">Locked out</a>.</td></tr>
+              <tr><td><code>studio-domain</code></td><td>Root's tool in <code>/usr/local/sbin</code>, mode 0700: the domain's DNS, its move to another domain, and the certificates. See <a href="#setup-domain">Domain &amp; visibility</a>.</td></tr>
               <tr><td>ufw, fail2ban</td><td>Ports 22, 80 and 443 open; brute force on SSH banned.</td></tr>
             </tbody>
           </table>
@@ -3020,6 +3022,65 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             </li>
           </ol>
         </div>
+
+        <h3 id="setup-domain">Domain &amp; visibility</h3>
+        <p>Every host hangs under the one domain chosen at install: <code>studio.&lt;domain&gt;</code>,
+          <code>&lt;project&gt;.&lt;domain&gt;</code>, <code>&lt;person&gt;-&lt;project&gt;.&lt;domain&gt;</code>, with a wildcard
+          DNS record and certificates Caddy issues on demand and renews by itself. When the domain itself has to change,
+          or a certificate needs a hand, root has <code>studio-domain</code>:</p>
+        <div class="install-commands">
+          <div class="install-commands-header">On the server, as root</div>
+          <ol class="install-commands-list">
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">?</span>
+              <code class="install-command-text">studio-domain status           # domain, DNS, visibility, every certificate</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-domain status" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">✓</span>
+              <code class="install-command-text">studio-domain check studio.agency.test   # does *.domain point here?</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-domain check studio.agency.test" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">→</span>
+              <code class="install-command-text">studio-domain change studio.agency.test  # move everything there</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-domain change studio.agency.test" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">⟳</span>
+              <code class="install-command-text">studio-domain renew [host|all] # the late ones · a new one for a host · for all</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-domain renew" title="Copy command">Copy</button>
+            </li>
+            <li class="install-command">
+              <span class="install-command-num" aria-hidden="true">✕</span>
+              <code class="install-command-text">studio-domain prune            # certificates of hosts no longer served</code>
+              <button type="button" class="install-copy-btn" data-copy="sudo studio-domain prune" title="Copy command">Copy</button>
+            </li>
+          </ol>
+        </div>
+        <p><strong>Changing the domain</strong>: create <code>*.&lt;new&gt;  A  &lt;this server&gt;</code> first; <code>change</code>
+          checks it and refuses to go on until it resolves here (<code>--skip-dns</code> goes on anyway). It backs up every
+          file it touches in <code>/var/backups/studio-domain</code>, puts Studio in maintenance for a minute, moves every
+          site, preview and sandbox (<code>&lt;name&gt;.&lt;old&gt;</code> becomes <code>&lt;name&gt;.&lt;new&gt;</code> in its Caddy
+          host and in the <code>APP_URL</code>, <code>ASSET_URL</code>, <code>REVERB_HOST</code> and session lines of its
+          <code>.env</code>), Studio's own <code>.env</code> and Caddyfile, the hosts kept in the database, and registers every
+          push webhook again at the new address. If a step fails, everything is put back on the old domain. Afterwards
+          everyone signs in again, and passkeys, which belong to the old host, are added again in <em>Settings → Security</em>
+          (passwords and 2FA codes keep working). An app with Reverb on keeps the old host in its built assets until its
+          next build; the command lists them. Once nobody uses the old names, <code>prune</code> removes their certificates.</p>
+        <p><strong>Certificates</strong>: <code>renew</code> alone does what the nightly check does (renews the late ones);
+          <code>renew &lt;host&gt;</code> throws that host's certificate away and gets a new one, <code>renew all</code> every host's.
+          Caddy restarts for it, so open terminals reconnect. Let's Encrypt allows 50 new certificates a week per registered
+          domain and 5 for the same host: renewing everything is for when something is really wrong.</p>
+        <p><strong>Hiding the dashboard</strong>: <em>Administration → System → Domain &amp; visibility</em> switches
+          <code>studio.&lt;domain&gt;</code> from public (its sign-in page to anyone, as any app) to hidden. Hidden, whoever is not
+          signed in gets the page of an address nobody configured, on every path, and the welcome page of unknown names no
+          longer links to Studio. People get in through the door: a secret link shown on that page and next to a new
+          account's password, opened once per browser (it leaves a cookie for a year). A signed-in session is enough, and so
+          is a good password reset link from an email. <em>New link</em> closes every door handed out until then. From the
+          server, <code>studio-recover door</code> prints the link (<code>--rotate</code> makes a new one) and
+          <code>studio-recover public</code> / <code>hidden</code> switch it. Project sites and previews keep their own rules
+          (<a href="#setup-settings-access">Who opens the hosts</a>); a hidden dashboard only hides Studio itself.</p>
 
         <h3 id="setup-recovery">Locked out</h3>
         <p>A forgotten password or a lost 2FA device is an administrator's job: the key icon in <em>Administration →

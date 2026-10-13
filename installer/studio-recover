@@ -16,6 +16,10 @@
 #                                       the like
 #   studio-recover reload               after a change to .env by hand: rebuild Studio's
 #                                       caches from it and restart its services
+#   studio-recover door [--rotate]      the link that opens a hidden dashboard (Administration →
+#                                       System → Domain & visibility); --rotate makes a new one
+#                                       and closes the old
+#   studio-recover public | hidden      show the dashboard's sign-in page to anyone, or hide it
 #
 # A reset gives the account a new password (printed once, here), removes its 2FA,
 # closes every session it had, gives it the admin role and a verified email. Git
@@ -29,7 +33,7 @@ set -euo pipefail
 umask 077
 
 ETC=/etc/studio
-usage() { sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+usage() { sed -n '3,31p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 
 [ "$(id -u)" = 0 ] || { echo "studio-recover must run as root" >&2; exit 1; }
 [ -f "$ETC/studio.env" ] || { echo "Studio is not installed here ($ETC/studio.env is missing)" >&2; exit 1; }
@@ -102,8 +106,21 @@ cmd_env() {
     if [ "$before" = "$after" ]; then echo "No change."; else cmd_reload; fi
 }
 
+# The dashboard's visibility and its door: the way back to a hidden Studio whose link nobody kept
+cmd_visibility() {
+    local state=$1; shift
+    local args=()
+    case "$state" in
+        door) [ $# -eq 0 ] || [ "$*" = --rotate ] || usage; [ $# -eq 0 ] || args+=(--rotate) ;;
+        public|hidden) [ $# -eq 0 ] || usage; args+=("$state") ;;
+    esac
+    logger -t studio-recover -p auth.notice "studio-recover $state $* by ${SUDO_USER:-root}" 2>/dev/null || true
+    artisan studio:visibility ${args[@]+"${args[@]}"}
+}
+
 case ${1:-} in
     admin) shift; cmd_admin "$@" ;;
+    door|public|hidden) cmd_visibility "$@" ;;
     env) shift; cmd_env "$@" ;;
     reload) shift; cmd_reload "$@" ;;
     *) usage ;;

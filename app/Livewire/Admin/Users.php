@@ -5,6 +5,7 @@ namespace App\Livewire\Admin;
 use App\Enums\UserRole;
 use App\Models\Project;
 use App\Models\User;
+use App\Server\DashboardVisibility;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Str;
@@ -134,6 +135,7 @@ class Users extends Component
         return view('livewire.admin.users', [
             'users' => User::query()->with(['projects' => fn ($q) => $q->orderBy('name')])->withCount(['projects', 'gitAccounts'])->orderBy('name')->get(),
             'roles' => UserRole::cases(),
+            'doorUrl' => $this->generatedPassword && ($visibility = app(DashboardVisibility::class))->hidden() ? $visibility->doorUrl() : null,
         ]);
     }
 }

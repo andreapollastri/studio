@@ -152,6 +152,20 @@ server is in `installer/upgrades/<version>.sh`.
   write, owner), keys (the secret shows once), and a bucket with its own key and the `.env` lines of a Laravel `s3`
   disk in one step. Turned on in *Administration → Connectors*; a bucket attaches to a project like anything else.
 
+### Domain and visibility
+- **`studio-domain`**, root's tool for the domain on the server: `status` (the domain, whether the wildcard
+  points here, every certificate Caddy keeps with its days left, issuer and whether a host is still served),
+  `check [domain]`, `change <domain>`, `renew [host|all]`, `prune`. `change` moves the dashboard and every
+  site, preview and sandbox to the new domain (their Caddy hosts, the `APP_URL`/`REVERB_HOST` of their `.env`,
+  the rows of the database) and registers every push webhook again; a backup of every file goes to
+  `/var/backups/studio-domain`, and a step that fails puts everything back. Passkeys belong to the old host:
+  people add them again.
+- **A hidden dashboard**: *Administration → System → Domain & visibility* switches `studio.<domain>` from public
+  to hidden. Hidden, whoever is not signed in gets the page of an unknown address, on every path, and the
+  welcome page of unknown names no longer links to Studio. People come in through a secret link (shown there,
+  with a new account's password, and to root by `studio-recover door`), once per browser; a signed-in session
+  and a good password reset link are enough too. `studio-recover public|hidden` switches it from the server.
+
 ### Fixed
 - Creating a workspace stopped on the server with `studio-admin stopped (exit 1) at: [ -n "$claude_api_key" ]`
   for everyone without an API key: Studio sends the key empty since it goes with each turn, and the empty test

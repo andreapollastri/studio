@@ -5,11 +5,13 @@ namespace App\Livewire\Admin;
 use App\Livewire\Concerns\CreatesSshKeys;
 use App\Models\Project;
 use App\Models\SshKey;
+use App\Server\DashboardVisibility;
 use App\Server\ServerException;
 use App\Server\Updates;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -36,6 +38,9 @@ class System extends Component
     /** Every package on the server to its newest version, every night. */
     public bool $serverAutomatic = true;
 
+    /** Whether studio.<domain> shows its sign-in page to anyone; the switch on the page. */
+    public bool $visible = true;
+
     /** The uuid of the system key whose projects the modal edits. */
     public ?string $sharing = null;
 
@@ -50,6 +55,25 @@ class System extends Component
         $this->automatic = (bool) ($updates->state()['auto'] ?? true);
         $this->channel = $updates->channel();
         $this->serverAutomatic = (bool) ($updates->systemState()['auto'] ?? true);
+        $this->visible = ! app(DashboardVisibility::class)->hidden();
+    }
+
+    public function updatedVisible(bool $on): void
+    {
+        app(DashboardVisibility::class)->setHidden(! $on);
+        Log::notice('Studio\'s dashboard is now '.($on ? 'public' : 'hidden').', by '.auth()->user()->email);
+
+        Flux::toast(variant: 'success', text: $on
+            ? __('Studio shows its sign-in page to anyone again.')
+            : __('Studio is hidden. Keep the link to get in: you are signed in, this browser already has it.'));
+    }
+
+    public function rotateDoor(): void
+    {
+        app(DashboardVisibility::class)->rotateDoor();
+        Log::notice('A new door link for Studio\'s dashboard, by '.auth()->user()->email);
+
+        Flux::toast(variant: 'success', text: __('New link made: the previous one no longer opens Studio.'));
     }
 
     public function updatedAutomatic(bool $on): void
@@ -239,6 +263,7 @@ class System extends Component
     {
         $updates = app(Updates::class);
         $state = $updates->state();
+        $visibility = app(DashboardVisibility::class);
 
         return view('livewire.admin.system', [
             'managed' => $updates->managed(),
@@ -251,6 +276,9 @@ class System extends Component
             'waiting' => $updates->waiting(),
             'releaseUrl' => fn (string $tag) => $updates->releaseUrl($tag),
             'projectCount' => Project::query()->count(),
+            'domain' => (string) config('studio.domain'),
+            'hidden' => $visibility->hidden(),
+            'doorUrl' => $visibility->hidden() ? $visibility->doorUrl() : null,
             'shown' => $this->shownKey ? $this->keys()->firstWhere('uuid', $this->shownKey) : null,
             'sharingKey' => $this->sharing ? $this->keys()->firstWhere('uuid', $this->sharing) : null,
             'projects' => $this->sharing ? Project::query()->orderBy('name')->get(['id', 'uuid', 'name']) : collect(),

@@ -42,7 +42,7 @@ jobs:
         run: npm test
 
       - name: Installer scripts (shellcheck)
-        run: shellcheck -S warning -x installer/install.sh installer/studio-admin installer/studio-update installer/studio-recover installer/lib/system.sh installer/templates/askpass tests/installer/studio-update.test.sh tests/installer/system-lib.test.sh tests/installer/studio-admin.test.sh
+        run: shellcheck -S warning -x installer/install.sh installer/studio-admin installer/studio-update installer/studio-recover installer/studio-domain installer/lib/system.sh installer/templates/askpass tests/installer/studio-update.test.sh tests/installer/system-lib.test.sh tests/installer/studio-admin.test.sh tests/installer/studio-domain.test.sh
 
       - name: Updater, end to end in a sandbox (release tags, failures, rollback, signatures)
-        run: bash tests/installer/studio-update.test.sh && bash tests/installer/system-lib.test.sh && bash tests/installer/studio-admin.test.sh
+        run: bash tests/installer/studio-update.test.sh && bash tests/installer/system-lib.test.sh && bash tests/installer/studio-admin.test.sh && bash tests/installer/studio-domain.test.sh

@@ -1,0 +1,377 @@
+#!/usr/bin/env bash
+#
+# studio-domain — Studio's domain and its certificates, for whoever holds root on the server.
+#
+#   studio-domain status              the domain, this server's address, whether the wildcard
+#                                     points here, the dashboard's visibility, every certificate
+#                                     Caddy keeps (days left, issuer, still served or not)
+#   studio-domain check [DOMAIN]      do *.DOMAIN and studio.DOMAIN point at this server? The
+#                                     current domain when omitted: run it before a change
+#   studio-domain change DOMAIN [--skip-dns] [--yes]
+#                                     move Studio to DOMAIN: the dashboard, every project site,
+#                                     preview and sandbox (<name>.OLD becomes <name>.DOMAIN), their
+#                                     .env files, Caddy, the push webhooks; a backup of every file
+#                                     changed goes to /var/backups/studio-domain first
+#   studio-domain renew               the certificates that are late, as the nightly check does
+#   studio-domain renew HOST [--yes]  a new certificate for that host now (the old one is removed)
+#   studio-domain renew all [--yes]   a new certificate for every host Studio serves
+#   studio-domain prune [--yes]       remove the certificates of hosts Studio no longer serves:
+#                                     the old domain after a change, deleted projects and previews
+#
+# Caddy issues every certificate on demand, after asking Studio whether it serves the host,
+# and renews it by itself: nothing here is needed day to day. Let's Encrypt allows 50 new
+# certificates a week per registered domain, and 5 for the same host: renew all sparingly.
+#
+# Installed by the updater as /usr/local/sbin/studio-domain, mode 0700: root only, no sudo
+# rule, nothing in Studio calls it. Every change is written to syslog and to Studio's log.
+#
+set -euo pipefail
+# bash 5.2 expands `&` in ${var//pattern/replacement}: values must stay literal
+shopt -u patsub_replacement 2>/dev/null || true
+
+ETC=${STUDIO_ETC:-/etc/studio}
+SITES=${CADDY_SITES:-/etc/caddy/sites}
+
+usage() { sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+say()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+note() { printf '    %s\n' "$*"; }
+warn() { printf '\033[1;33m    ! %s\033[0m\n' "$*"; }
+die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# ------------------------------------------------------------ pure helpers --
+
+valid_domain() { [[ "$1" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]]; }
+
+# rehost VALUE OLD NEW — every host <name>.OLD in VALUE (a host, a URL, a list of them) on NEW;
+# OLD alone, or OLD inside a longer name (x.OLD.org, myOLD), stays as it is
+rehost() {
+    local re=${2//./\\.}
+    printf '%s' "$1" | sed -E "s#([a-z0-9-])\\.${re}([:/,; \"']|\$)#\\1.${3}\\2#g"
+}
+
+# rehost_site FILE OLD NEW — a host file of /etc/caddy/sites: its host on the new domain.
+# Prints the app directory it serves (its `root`), whose .env follows.
+rehost_site() {
+    local f=$1 old=$2 new=$3 tmp
+    tmp=$(mktemp)
+    awk -v old="$old" -v new="$new" '
+        $1 ~ /^@/ && $2 == "host" {
+            for (i = 3; i <= NF; i++) {
+                n = length($i) - length(old) - 1
+                if (n > 0 && substr($i, n + 1) == "." old) { $i = substr($i, 1, n) "." new }
+            }
+        }
+        { print }' "$f" > "$tmp"
+    cat "$tmp" > "$f"; rm -f "$tmp"
+    awk '$1 == "root" && $2 == "*" { sub(/\/public$/, "", $3); print $3; exit }' "$f"
+}
+
+# rehost_env FILE OLD NEW — the keys of an app's .env that name its own host
+rehost_env() {
+    local f=$1 old=$2 new=$3 key v nv
+    for key in APP_URL ASSET_URL REVERB_HOST SESSION_DOMAIN SANCTUM_STATEFUL_DOMAINS; do
+        v=$(sed -n "s/^${key}=//p" "$f" | tail -n1)
+        [ -n "$v" ] || continue
+        nv=$(rehost "$v" "$old" "$new")
+        [ "$nv" = "$v" ] || env_set "$f" "$key" "$nv"
+    done
+}
+
+[ "${STUDIO_DOMAIN_LIB:-}" = 1 ] && return 0
+
+# ------------------------------------------------------------------ setup ---
+
+[ "$(id -u)" = 0 ] || die "studio-domain must run as root"
+[ -f "$ETC/studio.env" ] || die "Studio is not installed here ($ETC/studio.env is missing)"
+# shellcheck disable=SC1091
+. "$ETC/studio.env"
+STUDIO_HOME=${STUDIO_HOME:-/opt/studio}
+CURRENT=$STUDIO_HOME/current
+SHARED_ENV=$STUDIO_HOME/shared/.env
+[ -f "$CURRENT/artisan" ] || die "no Studio release at $CURRENT"
+# The installed release's helpers: env_get/env_set, render_tpl, restart_studio, the certificates'
+# shellcheck disable=SC1091
+. "$CURRENT/installer/lib/system.sh"
+load_requirements "$CURRENT"
+
+artisan() {
+    sudo -u studio env -i HOME=/var/lib/studio PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        "php$STUDIO_PHP" "$CURRENT/artisan" "$@" --no-interaction --no-ansi
+}
+
+who() { local from=${SSH_CLIENT:-local}; printf '%s@%s' "${SUDO_USER:-root}" "${from%% *}"; }
+record() { logger -t studio-domain -p auth.notice "$* (by $(who))" 2>/dev/null || true; }
+
+public_ip() {
+    curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null \
+        || curl -4 -fsS --max-time 5 https://ifconfig.me/ip 2>/dev/null \
+        || hostname -I | awk '{print $1}'
+}
+
+resolve() { # resolve HOST -> its first IPv4 at a public resolver (dig), or the system's
+    if command -v dig >/dev/null 2>&1; then
+        dig +short +time=3 +tries=1 @1.1.1.1 A "$1" 2>/dev/null | grep -E '^[0-9.]+$' | head -n1
+    else
+        getent ahostsv4 "$1" 2>/dev/null | awk '{print $1; exit}'
+    fi
+}
+
+# dns_ok DOMAIN IP — a random name under the wildcard and studio.DOMAIN both resolve to IP
+dns_ok() {
+    local domain=$1 ip=$2 probe got_probe got_studio
+    probe="probe-$(openssl rand -hex 3).$domain"
+    got_probe=$(resolve "$probe" || true)
+    got_studio=$(resolve "studio.$domain" || true)
+    if [ "$got_probe" = "$ip" ] && [ "$got_studio" = "$ip" ]; then
+        note "✓ *.$domain and studio.$domain point at $ip"
+        return 0
+    fi
+    warn "*.$domain → ${got_probe:-nothing}, studio.$domain → ${got_studio:-nothing} (this server is $ip)"
+    note "  the record:  *.$domain    A    $ip"
+    return 1
+}
+
+confirm() { # confirm "Question" — skipped by --yes
+    [ "${YES:-0}" = 1 ] && return 0
+    local ans; printf '%s [y/N]: ' "$1"; read -r ans < /dev/tty || true
+    [[ "$ans" =~ ^[Yy] ]]
+}
+
+issuer_of() { openssl x509 -in "$1" -noout -issuer 2>/dev/null | sed -n 's/.*O *= *\([^,]*\).*/\1/p' | head -n1; }
+
+# Studio answers Caddy's question: without it, every host would look unwanted
+ask_answers() { host_wanted "studio.$DOMAIN"; }
+
+# forget HOST — every certificate Caddy keeps for HOST, from every issuer
+forget() { find "$CADDY_CERTIFICATES" -mindepth 2 -maxdepth 2 -type d -name "$1" -exec rm -rf {} + 2>/dev/null || true; }
+
+# certificate_on HOST -> "issuer · until DATE" of what the local Caddy serves for HOST now
+certificate_on() {
+    local pem
+    pem=$(echo | openssl s_client -connect 127.0.0.1:443 -servername "$1" 2>/dev/null | openssl x509 2>/dev/null) || true
+    [ -n "$pem" ] || { echo "none yet"; return; }
+    printf '%s · until %s' "$(printf '%s' "$pem" | openssl x509 -noout -issuer | sed -n 's/.*O *= *\([^,]*\).*/\1/p')" \
+        "$(printf '%s' "$pem" | openssl x509 -noout -enddate | cut -d= -f2)"
+}
+
+# --------------------------------------------------------------- commands ---
+
+cmd_status() {
+    [ $# -eq 0 ] || usage
+    local ip hidden host file end now days state served
+    ip=$(public_ip)
+    say "Domain"
+    note "Domain:     $DOMAIN"
+    note "Dashboard:  https://studio.$DOMAIN"
+    note "Server:     $ip"
+    dns_ok "$DOMAIN" "$ip" || true
+    hidden=$(artisan studio:visibility --json 2>/dev/null | jq -r '.hidden' 2>/dev/null || echo unknown)
+    case "$hidden" in
+        true) note "Visibility: hidden (who is not signed in sees nothing of Studio · studio-recover door)" ;;
+        false) note "Visibility: public (the sign-in page to anyone)" ;;
+        *) warn "Visibility: Studio did not answer" ;;
+    esac
+
+    say "Certificates (Caddy, on demand)"
+    now=$(date +%s)
+    local rows=0
+    while read -r host file; do
+        end=$(cert_epoch "$file" enddate) || continue
+        state=$(cert_state "$(cert_epoch "$file" startdate || echo "$now")" "$end" "$now")
+        days=$(( (end - now + 43200) / 86400 ))
+        if host_wanted "$host"; then served=served; else served="not served (prune)"; fi
+        printf '    %-52s %4s days  %-8s %-14s %s\n' "$host" "$days" "$state" "$(issuer_of "$file")" "$served"
+        rows=$((rows + 1))
+    done < <(latest_certificates)
+    [ "$rows" -gt 0 ] || note "none yet: Caddy issues each one at the first visit of its host"
+}
+
+cmd_check() {
+    [ $# -le 1 ] || usage
+    local domain=${1:-$DOMAIN}
+    valid_domain "$domain" || die "\"$domain\" is not a domain"
+    dns_ok "$domain" "$(public_ip)"
+}
+
+cmd_renew() {
+    local target="" arg report
+    for arg in "$@"; do case "$arg" in --yes) YES=1 ;; -*) usage ;; *) [ -z "$target" ] || usage; target=$arg ;; esac; done
+    ask_answers || die "Studio does not answer Caddy's question (is it up?): nothing renewed"
+
+    if [ -z "$target" ]; then
+        say "The certificates that are late"
+        report=$(mktemp)
+        check_certificates "$report"
+        if [ -s "$report" ]; then
+            while read -r host days state; do printf '    %-52s %4s days  %s\n' "$host" "$days" "$state"; done < "$report"
+        else
+            note "no certificate yet"
+        fi
+        rm -f "$report"
+        return
+    fi
+
+    local hosts=()
+    if [ "$target" = all ]; then
+        while read -r host _; do host_wanted "$host" && hosts+=("$host"); done < <(latest_certificates)
+        hosts+=("studio.$DOMAIN")
+        mapfile -t hosts < <(printf '%s\n' "${hosts[@]}" | sort -u)
+    else
+        target=${target,,}
+        host_wanted "$target" || die "Studio does not serve $target: Caddy would not get it a certificate"
+        hosts=("$target")
+    fi
+
+    warn "${#hosts[@]} new certificate(s). Let's Encrypt allows 50 a week for $DOMAIN's registered domain, 5 for the same host."
+    warn "Caddy restarts to forget the old ones: open SSH terminals and live previews reconnect."
+    confirm "Renew ${hosts[*]}?" || die "nothing renewed"
+    record "certificates renewed by hand: ${hosts[*]}"
+
+    for host in "${hosts[@]}"; do forget "$host"; done
+    systemctl restart caddy
+    for host in "${hosts[@]}"; do
+        renew_by_handshake "$host"
+        note "$host: $(certificate_on "$host")"
+    done
+}
+
+cmd_prune() {
+    local arg host file gone=()
+    for arg in "$@"; do case "$arg" in --yes) YES=1 ;; *) usage ;; esac; done
+    ask_answers || die "Studio does not answer Caddy's question (is it up?): nothing removed"
+    while read -r host file; do host_wanted "$host" || gone+=("$host"); done < <(latest_certificates)
+    [ "${#gone[@]}" -gt 0 ] || { note "every certificate is of a host Studio serves"; return; }
+    printf '    %s\n' "${gone[@]}"
+    confirm "Remove these ${#gone[@]} certificate(s)?" || die "nothing removed"
+    for host in "${gone[@]}"; do forget "$host"; done
+    record "certificates of hosts no longer served removed: ${gone[*]}"
+    note "removed; Caddy drops them from memory at its next restart"
+}
+
+# change_rollback — the EXIT trap of a change: unless it got to the end, every file back from
+# its backup, the database's hosts back on the old domain, Studio up again on it
+change_rollback() {
+    local rc=$? f
+    # every step of the way back is tried, whatever fails before it
+    set +e
+    artisan up >/dev/null 2>&1
+    [ "${CHANGE_DONE:-1}" = 1 ] && return
+    warn "the change stopped halfway (exit $rc): putting $CHANGE_OLD back"
+    cp -p "$CHANGE_BACKUP/studio.env" "$ETC/studio.env"
+    cp -p "$CHANGE_BACKUP/.env" "$SHARED_ENV"
+    cp -p "$CHANGE_BACKUP/Caddyfile" /etc/caddy/Caddyfile
+    cp -p "$CHANGE_BACKUP/sites/"*.caddy "$SITES/" 2>/dev/null || true
+    while IFS= read -r f; do cp -p "$f" "${f#"$CHANGE_BACKUP/apps"}"; done < <(find "$CHANGE_BACKUP/apps" -name .env 2>/dev/null)
+    rm -f /etc/caddy/Caddyfile.new
+    artisan optimize --quiet || true
+    [ "$CHANGE_DB" = 1 ] && { artisan studio:move-domain "$CHANGE_NEW" "$CHANGE_OLD" || warn "the database's hosts could not be moved back"; }
+    restart_studio || true
+    record "domain change from $CHANGE_OLD to $CHANGE_NEW rolled back"
+    warn "Studio is on $CHANGE_OLD again; the files of before are also in $CHANGE_BACKUP"
+}
+
+cmd_change() {
+    local new="" arg skip_dns=0 old=$DOMAIN ip backup f app moved=0 reverb=()
+    for arg in "$@"; do
+        case "$arg" in
+            --skip-dns) skip_dns=1 ;;
+            --yes) YES=1 ;;
+            -*) usage ;;
+            *) [ -z "$new" ] || usage; new=${arg,,} ;;
+        esac
+    done
+    [ -n "$new" ] || usage
+    valid_domain "$new" || die "\"$new\" is not a domain"
+    [ "$new" != "$old" ] || die "Studio is already on $new"
+
+    ip=$(public_ip)
+    say "DNS of $new"
+    if ! dns_ok "$new" "$ip"; then
+        [ "$skip_dns" = 1 ] || die "create the record, wait for it, run this again (or --skip-dns: certificates fail until it points here)"
+        warn "going on without it (--skip-dns)"
+    fi
+
+    say "From $old to $new"
+    note "https://studio.$old       →  https://studio.$new"
+    note "<project>.$old            →  <project>.$new  (every site, preview and sandbox)"
+    note "Every person signs in again. Passkeys belong to studio.$old and stop working there:"
+    note "  passwords and 2FA codes still do; people add their passkeys again in Settings → Security."
+    note "The push webhooks are registered again at studio.$new. Links and bookmarks to $old break;"
+    note "  keep its DNS record for a while if people use them, nothing here answers for $old any more."
+    confirm "Move Studio to $new now? It is in maintenance for a minute." || die "nothing changed"
+
+    backup=/var/backups/studio-domain/$(date -u +%Y%m%dT%H%M%SZ)-$old
+    mkdir -p "$backup/sites" "$backup/apps"; chmod 700 /var/backups/studio-domain "$backup"
+    cp -p "$ETC/studio.env" "$SHARED_ENV" /etc/caddy/Caddyfile "$backup/"
+    cp -p "$SITES"/*.caddy "$backup/sites/" 2>/dev/null || true
+    record "domain change from $old to $new started; backup in $backup"
+    note "backup of every file this changes: $backup"
+
+    say "Maintenance"
+    artisan down --retry=30 >/dev/null 2>&1 || true
+    # Whatever stops this halfway puts every file back from the backup, and Studio comes back up
+    CHANGE_OLD=$old CHANGE_NEW=$new CHANGE_BACKUP=$backup CHANGE_DONE=0 CHANGE_DB=0
+    trap change_rollback EXIT
+
+    say "Project sites, previews and sandboxes"
+    for f in "$SITES"/*.caddy; do
+        [ -f "$f" ] || continue
+        app=$(rehost_site "$f" "$old" "$new")
+        [ -n "$app" ] && [ -f "$app/.env" ] || continue
+        mkdir -p "$backup/apps$app"
+        cp -p "$app/.env" "$backup/apps$app/.env"
+        rehost_env "$app/.env" "$old" "$new"
+        # a cached configuration keeps the old APP_URL: the app reads its .env again
+        rm -f "$app/bootstrap/cache/config.php"
+        grep -qE '^REVERB_HOST=.+' "$app/.env" && reverb+=("$app")
+        moved=$((moved + 1))
+    done
+    note "$moved app(s) on $new"
+
+    say "Studio"
+    env_set "$SHARED_ENV" STUDIO_DOMAIN "$new"
+    env_set "$SHARED_ENV" APP_URL "https://studio.$new"
+    env_set "$SHARED_ENV" REVERB_HOST "studio.$new"
+    if [ "$(env_get "$SHARED_ENV" MAIL_FROM_ADDRESS)" = "studio@$old" ]; then env_set "$SHARED_ENV" MAIL_FROM_ADDRESS "studio@$new"; fi
+    env_set "$ETC/studio.env" DOMAIN "$new"
+    render_tpl "$ETC/templates/Caddyfile.tpl" /etc/caddy/Caddyfile.new DOMAIN="$new" ACME_EMAIL="$ACME_EMAIL" STUDIO_DIR="$CURRENT"
+    caddy_readable
+    caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile >/dev/null 2>&1 \
+        || { rm -f /etc/caddy/Caddyfile.new; die "the new Caddyfile did not validate"; }
+    mv -f /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+    # the configuration Studio runs on, then its rows and webhooks on the new domain
+    artisan optimize --quiet
+    CHANGE_DB=1
+    artisan studio:move-domain "$old" "$new" --webhooks || warn "some webhooks could not be registered again: deploy those sites from their settings"
+
+    say "Services"
+    restart_studio
+    systemctl try-restart 'studio-prj-*' 'studio-ws-*' >/dev/null 2>&1 || true
+    CHANGE_DONE=1
+    trap - EXIT
+    artisan up >/dev/null 2>&1 || true
+    DOMAIN=$new
+
+    say "The dashboard's certificate"
+    renew_by_handshake "studio.$new"
+    note "studio.$new: $(certificate_on "studio.$new")"
+    record "domain changed from $old to $new"
+
+    printf '\n\033[1;32m  Studio is on https://studio.%s\033[0m\n' "$new"
+    note "The other hosts get their certificate at their first visit."
+    note "When nobody uses $old any more:  studio-domain prune   (its certificates)"
+    if [ "${#reverb[@]}" -gt 0 ]; then
+        note "These apps use Reverb: their built assets still connect to the old host until the next"
+        note "build (a deploy of the site, npm run build in the workspace):"
+        printf '      %s\n' "${reverb[@]}"
+    fi
+}
+
+case ${1:-} in
+    status) shift; cmd_status "$@" ;;
+    check) shift; cmd_check "$@" ;;
+    change) shift; cmd_change "$@" ;;
+    renew) shift; cmd_renew "$@" ;;
+    prune) shift; cmd_prune "$@" ;;
+    *) usage ;;
+esac

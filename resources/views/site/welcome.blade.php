@@ -1,13 +1,17 @@
 {{-- Served on any <name>.<domain> nobody configured, through Caddy's forward_auth: no Vite build, no
-     asset of this host (every other path of it answers with this same page), so everything is inline. --}}
+     asset of this host (every other path of it answers with this same page), so everything is inline.
+     $hidden: the dashboard is hidden (DashboardVisibility), so the page says nothing of Studio. --}}
+@php($hidden = $hidden ?? false)
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title>Studio</title>
-    <link rel="icon" href="{{ rtrim((string) config('app.url'), '/') }}/favicon.svg" type="image/svg+xml">
+    <title>{{ $hidden ? __('Not found') : 'Studio' }}</title>
+    @unless ($hidden)
+        <link rel="icon" href="{{ rtrim((string) config('app.url'), '/') }}/favicon.svg" type="image/svg+xml">
+    @endunless
     <style>
         :root {
             --bg: #fafafa;
@@ -83,6 +87,7 @@
 </head>
 <body>
     <main>
+        @unless ($hidden)
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
             <rect width="32" height="32" rx="7" fill="#111a08"/>
             <g fill="#a3e635">
@@ -105,11 +110,14 @@
             </g>
         </svg>
         <p class="brand">Studio</p>
+        @endunless
         <h1>{{ __('Nothing here yet') }}</h1>
         <p>{{ __('This address is not linked to any project or preview on this server.') }}</p>
         <code>{{ $host }}</code>
-        <br>
-        <a href="{{ config('app.url') }}">{{ __('Open Studio') }}</a>
+        @unless ($hidden)
+            <br>
+            <a href="{{ config('app.url') }}">{{ __('Open Studio') }}</a>
+        @endunless
     </main>
 </body>
 </html>

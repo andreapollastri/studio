@@ -540,6 +540,8 @@ install_release_files() {
     install_file "$rel/installer/studio-update" /usr/local/sbin/studio-update 0755
     # root only, no sudo rule: the way back in when every administrator is locked out
     install_file "$rel/installer/studio-recover" /usr/local/sbin/studio-recover 0700
+    # root only too: the domain, its move to another one, the certificates
+    [ -f "$rel/installer/studio-domain" ] && install_file "$rel/installer/studio-domain" /usr/local/sbin/studio-domain 0700
     install_file "$rel/installer/templates/askpass" /usr/local/lib/studio/askpass 0755
     rm -rf "$STUDIO_ETC/templates.new"; mkdir -p "$STUDIO_ETC/templates.new"
     cp "$rel"/installer/templates/* "$STUDIO_ETC/templates.new/"

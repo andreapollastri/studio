@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\SystemStatusController;
 use App\Http\Controllers\ConversationImageController;
+use App\Http\Controllers\DoorController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
 use App\Infrastructure\Git\Forges;
@@ -22,6 +23,9 @@ use App\Livewire\Tools\Drive;
 use App\Livewire\Tools\Git;
 use App\Livewire\Tools\Vault;
 use Illuminate\Support\Facades\Route;
+
+// The way in when the dashboard is hidden (Administration → System): leaves a cookie, opens the sign-in page.
+Route::get('door/{key}', DoorController::class)->middleware('throttle:20,1')->name('door');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     // What waits for the person now, across every project and git account.

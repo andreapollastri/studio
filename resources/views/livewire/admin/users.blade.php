@@ -72,6 +72,9 @@
                 <flux:heading size="lg">{{ __('New password for :name', ['name' => $resetFor]) }}</flux:heading>
                 <flux:text>{{ __('It will not be shown again: hand it over in person or on a channel you trust. Their sessions are closed and 2FA is off; they choose their own password in Settings and set 2FA up again.') }}</flux:text>
                 <flux:input :value="$generatedPassword" readonly copyable />
+                @if ($doorUrl)
+                    <flux:input :value="$doorUrl" readonly copyable :label="__('Where they sign in')" :description="__('Studio is hidden (Administration → System): give them this link too.')" />
+                @endif
                 <div class="flex justify-end">
                     <flux:modal.close><flux:button variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>
                 </div>
@@ -81,6 +84,9 @@
                 <flux:heading size="lg">{{ __('Account created') }}</flux:heading>
                 <flux:text>{{ __('This initial password will not be shown again. The person can change it in Settings, then add their git and Claude accounts in Settings → Accounts.') }}</flux:text>
                 <flux:input :value="$generatedPassword" readonly copyable />
+                @if ($doorUrl)
+                    <flux:input :value="$doorUrl" readonly copyable :label="__('Where they sign in')" :description="__('Studio is hidden (Administration → System): give them this link too.')" />
+                @endif
                 <div class="flex justify-end">
                     <flux:modal.close><flux:button variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>
                 </div>
