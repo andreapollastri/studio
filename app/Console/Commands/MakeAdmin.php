@@ -51,7 +51,8 @@ class MakeAdmin extends Command
         }
 
         if ($token = $this->option('git-token')) {
-            $git = GitProvider::current();
+            // the host the installer asked for, with the administrator's token there
+            $git = GitProvider::make((string) config('studio.git.provider', 'github'), config('studio.git.url'));
 
             try {
                 $who = $git->whoAmI($token);

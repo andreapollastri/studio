@@ -4,24 +4,22 @@ namespace App\Livewire\Settings;
 
 use App\Claude\ClaudeLogin;
 use App\Enums\ClaudeAuthMode;
-use App\Infrastructure\Git\Forges;
 use App\Models\ClaudeAccount;
-use App\Models\ConnectorAccount;
 use App\Models\ProjectGroup;
 use App\Models\ProjectPreference;
 use App\Ssh\Gateway;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * What a person brings to their workspaces. Git accounts (personal GitHub,
- * work Azure DevOps, a client's GitLab…), each with the identity its commits
- * carry, are added under Tools on each git host and listed here. Claude
+ * What a person brings to their work, in one place (Settings → Accounts): git
+ * accounts (personal GitHub, work Azure DevOps, a client's GitLab…), each with
+ * the identity its commits carry (GitAccounts), SSH keys (SshKeys), and Claude
  * accounts are kept here, as many as the person has: API keys, stored
  * encrypted, and subscriptions, each a sign-in to Claude Code in a folder of
  * its own in the person's home on the server, through Anthropic's own flow
@@ -29,9 +27,13 @@ use Livewire\Component;
  * projects or a single project may use another (Projects).
  */
 #[Layout('layouts::app')]
-#[Title('Connections')]
+#[Title('Accounts')]
 class Connections extends Component
 {
+    /** claude, git or ssh */
+    #[Url]
+    public string $tab = 'claude';
+
     /** The Claude account being added: an API key or a subscription. */
     public string $new_kind = 'api_key';
 
@@ -259,16 +261,12 @@ class Connections extends Component
     public function render(): View
     {
         $user = auth()->user();
-        /** @var Collection<int, ConnectorAccount> $gitAccounts */
-        $gitAccounts = $user->gitAccounts()->orderBy('connector')->orderBy('name')->get();
+        $this->tab = in_array($this->tab, ['claude', 'git', 'ssh'], true) ? $this->tab : 'claude';
 
         return view('livewire.settings.connections', [
             'user' => $user,
             'claudeAccounts' => $user->claudeAccounts()->orderBy('id')->get(),
-            'gitAccounts' => $gitAccounts,
-            'forges' => Forges::enabled(),
             'claudeUsage' => $this->usage('claude_account_id'),
-            'gitUsage' => $this->usage('git_account_id'),
         ]);
     }
 }

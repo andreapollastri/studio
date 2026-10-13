@@ -9,9 +9,11 @@ use Illuminate\Http\Request;
 use RuntimeException;
 
 /**
- * The remote forge of this Studio installation: GitHub, GitLab, Bitbucket
- * Cloud or Azure DevOps, the same four Larapilot integrates with. One per
- * installation; every project lives there and every person connects to it.
+ * A git host as the server side of Studio needs it: GitHub, GitLab, Bitbucket
+ * Cloud or Azure DevOps, the same four Larapilot integrates with, at an address
+ * (github.com, a self-managed GitLab, an Azure DevOps organization). Made from
+ * an account (GitAccount::provider) or a project (Project::gitProvider); the
+ * dashboards of the same hosts are App\Infrastructure\Git\Forges, by the same keys.
  *
  * Studio needs little from it: who a token belongs to, where the token may
  * create repositories, the repository itself, and the push webhook that
@@ -19,7 +21,7 @@ use RuntimeException;
  */
 abstract class GitProvider
 {
-    /** Every provider Studio supports, by key: the same ones Larapilot does. */
+    /** Every host Studio supports, by key: the same ones Larapilot does, and the keys of Forges::ALL. */
     public const PROVIDERS = [
         'github' => GitHub::class,
         'gitlab' => GitLab::class,
@@ -28,12 +30,6 @@ abstract class GitProvider
     ];
 
     public function __construct(protected readonly string $baseUrl) {}
-
-    /** The provider configured for this installation. */
-    public static function current(): self
-    {
-        return self::make((string) config('studio.git.provider', 'github'), config('studio.git.url'));
-    }
 
     public static function make(string $key, mixed $url = null): self
     {

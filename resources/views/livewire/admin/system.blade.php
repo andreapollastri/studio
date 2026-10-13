@@ -282,24 +282,16 @@
 
     <flux:separator />
 
-    {{-- Git provider --}}
+    {{-- Git hosts --}}
     <section class="space-y-3">
-        <flux:heading size="lg">{{ __('Git provider') }}</flux:heading>
-        <div class="flex flex-wrap items-center gap-3">
-            <flux:badge size="lg" icon="code-bracket">{{ $git->label() }}</flux:badge>
-            <span class="font-mono text-sm">{{ $git->baseUrl() }}</span>
-            <flux:text class="text-xs">{{ $git->cli() ? __('agents use :cli', ['cli' => $git->cli()]) : __('Larapilot uses the REST API') }}</flux:text>
+        <flux:heading size="lg">{{ __('Git hosts') }}</flux:heading>
+        <div class="flex flex-wrap gap-2">
+            @foreach (\App\Infrastructure\Git\Forges::all() as $forge)
+                <flux:badge size="lg" :icon="$forge->icon()">{{ $forge->label() }}</flux:badge>
+            @endforeach
         </div>
         <flux:text>
-            {{ __('Chosen once, in the installer: every project is a repository there and every person connects a token for it. Studio never mixes providers and keeps no history of a previous one.') }}
-        </flux:text>
-        <flux:text class="text-xs">
-            @if ($projectCount === 0)
-                {{ __('There are no projects yet, so the provider can still change on the server:') }}
-                <code class="font-mono">php artisan studio:git-provider gitlab --url=https://git.example.com</code>
-            @else
-                {{ __('There are projects on :provider, so the provider stays: another provider means another Studio.', ['provider' => $git->label()]) }}
-            @endif
+            {{ __('A project\'s repository may live on any of them, and a person may have accounts on all of them. The command-line tool the agents open pull requests with (gh, glab, az) is put in place on the server the first time a workspace of that host needs it. Service accounts for deploying the sites are in Administration → Connectors.') }}
         </flux:text>
     </section>
 

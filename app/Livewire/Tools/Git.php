@@ -4,8 +4,6 @@ namespace App\Livewire\Tools;
 
 use App\Infrastructure\Git\Forge;
 use App\Infrastructure\Git\Forges;
-use App\Infrastructure\Git\GitClient;
-use App\Jobs\SyncWorkspaceCredentials;
 use App\Livewire\Infrastructure\Console;
 use App\Models\ConnectorAccount;
 use Illuminate\Database\Eloquent\Collection;
@@ -13,36 +11,38 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 
 /**
- * Tools → a git host (GitHub, GitLab, Bitbucket, Azure DevOps): pull
- * requests waiting for a review, issues, repositories with their branches,
- * pipelines and releases. The connector page, run with the person's own
- * accounts: they add as many as they work with (personal, work, a client's),
- * each with the name and email its commits carry, and act as themselves.
+ * Tools → Git: what waits on the git hosts (pull requests asking for a review,
+ * issues, notifications) and every repository with its branches, pipelines and
+ * releases, through any of the person's own accounts, on any host: the picker
+ * moves between their personal GitHub, the company's Azure DevOps and a
+ * client's GitLab. The accounts themselves are kept in Settings → Accounts.
  */
 #[Layout('layouts::app')]
 class Git extends Console
 {
-    /** The commit identity of the account in the form. */
-    public string $git_name = '';
-
-    public string $git_email = '';
-
-    public function mount(string $connector): void
+    public function mount(?string $connector = null): void
     {
-        abort_unless(Forges::isEnabled($connector), 404);
+        $accounts = $this->accounts();
+        $chosen = $accounts->firstWhere('uuid', $this->account)
+            ?? ($connector !== null ? $accounts->firstWhere('connector', $connector) : null)
+            ?? $accounts->first();
 
-        $this->connector = $connector;
+        abort_unless($connector === null || Forges::isEnabled($connector), 404);
+
+        $this->connector = $chosen->connector ?? $connector ?? 'github';
+        $this->account = $chosen?->uuid;
         $this->open();
     }
 
     protected function allowed(): bool
     {
-        return Forges::isEnabled($this->connector);
+        return true;
     }
 
+    /** The accounts are kept in Settings → Accounts. */
     protected function managesAccounts(): bool
     {
-        return true;
+        return false;
     }
 
     protected function personal(): bool
@@ -57,7 +57,7 @@ class Git extends Console
 
     protected function pageTitle(): string
     {
-        return $this->definition()->label().' · '.__('Tools');
+        return __('Git').' · '.$this->definition()->label();
     }
 
     #[Computed]
@@ -66,59 +66,46 @@ class Git extends Console
         return Forges::make($this->connector);
     }
 
-    /** @return Collection<int, ConnectorAccount> */
+    /**
+     * Every git account of the person, on every host.
+     *
+     * @return Collection<int, ConnectorAccount>
+     */
     #[Computed]
     public function accounts(): Collection
     {
-        return ConnectorAccount::query()->gitFor(auth()->user())->where('connector', $this->connector)->orderBy('name')->get();
+        return ConnectorAccount::query()->gitFor(auth()->user())->orderBy('connector')->orderBy('name')->get();
     }
 
-    protected function fillAccountForm(?ConnectorAccount $account): void
+    public function currentAccount(): ?ConnectorAccount
     {
-        parent::fillAccountForm($account);
-
-        $this->git_name = (string) $account?->git_name;
-        $this->git_email = (string) $account?->git_email;
+        return $this->accounts()->where('connector', $this->connector)->firstWhere('uuid', $this->account);
     }
 
-    protected function accountRules(): array
+    /** Another account, maybe on another host: its own lists, from the first. */
+    public function useAccount(string $uuid): void
     {
-        return [
-            'git_name' => ['nullable', 'string', 'max:255'],
-            'git_email' => ['nullable', 'email', 'max:255'],
-        ];
-    }
+        $account = $this->accounts()->firstWhere('uuid', $uuid);
 
-    /** Who the token belongs to; the commit identity as typed, or as the provider tells it. */
-    protected function completeAccount(ConnectorAccount $account, object $client): void
-    {
-        /** @var GitClient $client */
-        $who = $this->definition()->identity($client);
-
-        $account->fill([
-            'login' => $who['login'],
-            'host' => $this->definition()->host($this->credentials),
-            'git_name' => trim($this->git_name) ?: ($who['name'] ?: auth()->user()->name),
-            'git_email' => trim($this->git_email) ?: ($who['email'] ?: auth()->user()->email),
-        ]);
-
-        $this->git_name = (string) $account->git_name;
-        $this->git_email = (string) $account->git_email;
-    }
-
-    /** The workspaces take a new token or identity at once; the first account also names the person's home and hosts. */
-    protected function accountSaved(ConnectorAccount $account, bool $credentialsChanged): void
-    {
-        $user = auth()->user();
-        $user->ensureHandle();
-
-        if ($credentialsChanged || $account->wasChanged(['git_name', 'git_email'])) {
-            SyncWorkspaceCredentials::dispatch($user);
+        if ($account === null) {
+            return;
         }
-    }
 
-    protected function accountRemoved(ConnectorAccount $account): void
-    {
-        SyncWorkspaceCredentials::dispatch(auth()->user());
+        $moved = $account->connector !== $this->connector;
+        $this->account = $account->uuid;
+
+        if ($moved) {
+            $this->connector = $account->connector;
+            unset($this->definition);
+            $this->tab = null;
+            $this->scope = [];
+            $this->search = '';
+            $this->tab = $this->section()->key;
+            $this->filters = $this->defaultFilters($this->section());
+        } elseif ($this->section()->isChild()) {
+            $this->back();
+        }
+
+        unset($this->listing);
     }
 }

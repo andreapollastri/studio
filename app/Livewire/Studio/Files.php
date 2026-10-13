@@ -288,7 +288,7 @@ class Files extends Component
     {
         $user = auth()->user();
 
-        return $user !== null && $user->canChat() && ($this->workspace->user_id === $user->id || $user->isAdmin());
+        return $user !== null && $user->can('chat', $this->workspace->project) && ($this->workspace->user_id === $user->id || $user->isAdmin());
     }
 
     public function render(): View

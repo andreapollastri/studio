@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\UserRole;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\SshConnectionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -97,10 +98,10 @@ class SshConnection extends Model
         $query->where(function (Builder $query) use ($user) {
             $query->where('user_id', $user->id);
 
-            if ($user->canUseSsh()) {
-                $query->orWhere(fn (Builder $shared) => $user->isAdmin()
-                    ? $shared->whereNotNull('project_id')
-                    : $shared->whereIn('project_id', $user->projects()->select('projects.id')));
+            if ($user->isAdmin()) {
+                $query->orWhereNotNull('project_id');
+            } elseif (($projects = $user->projectIdsAs(UserRole::Dev)) !== []) {
+                $query->orWhereIn('project_id', $projects);
             }
         });
     }

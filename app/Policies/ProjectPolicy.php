@@ -35,6 +35,12 @@ class ProjectPolicy
     /** Open a workspace and talk to the agent on this project. */
     public function chat(User $user, Project $project): bool
     {
-        return $user->canAccess($project) && $user->canChat();
+        return (bool) $user->roleIn($project)?->canChat();
+    }
+
+    /** The project's settings, members and attached resources: the administrators. */
+    public function manage(User $user, Project $project): bool
+    {
+        return $user->isAdmin();
     }
 }

@@ -98,7 +98,7 @@ test('administrators turn connectors on and off', function () {
 
     Livewire::actingAs($admin)->test(AdminConnectors::class)
         ->call('toggle', 'cipi')
-        ->assertSee('Administrators only');
+        ->assertSee('Administrators; projects by role');
 
     expect(ConnectorSetting::for('cipi')->enabled)->toBeTrue();
 

@@ -2,6 +2,7 @@
 
 namespace App\Drive;
 
+use App\Enums\UserRole;
 use App\Models\DriveFile;
 use App\Models\DriveFolder;
 use App\Models\Project;
@@ -30,13 +31,15 @@ final class Access
     /** @var array<int, string|null> */
     private array $levels = [];
 
-    /** @var array<int, true> */
+    /** @var array<int, string> project id => this person's role there */
     private array $memberOf;
 
     public function __construct(private readonly User $user)
     {
         $this->folders = DriveFolder::query()->get(['id', 'uuid', 'user_id', 'parent_id', 'project_id', 'project_access', 'name'])->keyBy('id');
-        $this->memberOf = array_fill_keys($user->projects()->pluck('projects.id')->all(), true);
+        $this->memberOf = $user->projects()->get()->mapWithKeys(fn (Project $project) => [
+            $project->id => ($project->membership->role ?? $user->defaultRole())->value,
+        ])->all();
     }
 
     public function user(): User
@@ -173,7 +176,7 @@ final class Access
     /**
      * Everyone who sees a folder and how, for the sharing table.
      *
-     * @return Collection<int, array{user: User, level: string, via: string}>
+     * @return Collection<int, array{user: User, role?: UserRole, level: string, via: string}>
      */
     public function audience(int $folderId): Collection
     {
@@ -195,9 +198,10 @@ final class Access
         if ($source !== null) {
             $members = Project::query()->find($projectId)?->members()->orderBy('name')->get() ?? collect();
             foreach ($members as $member) {
-                $level = ($source->project_access ?? [])[$member->role->value] ?? null;
+                $role = $member->membership->role ?? $member->defaultRole();
+                $level = ($source->project_access ?? [])[$role->value] ?? null;
                 if ($level !== null && ! $people->has($member->id)) {
-                    $people->put($member->id, ['user' => $member, 'level' => $level, 'via' => 'project']);
+                    $people->put($member->id, ['user' => $member, 'role' => $role, 'level' => $level, 'via' => 'project']);
                 }
             }
         }
@@ -241,7 +245,7 @@ final class Access
             return null;
         }
 
-        $level = ($tied->project_access ?? [])[$this->user->role->value] ?? null;
+        $level = ($tied->project_access ?? [])[$this->memberOf[(int) $tied->project_id]] ?? null;
 
         return in_array($level, [self::READ, self::WRITE], true) ? $level : null;
     }

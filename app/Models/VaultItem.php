@@ -107,9 +107,11 @@ class VaultItem extends Model
             if ($user->isAdmin()) {
                 $query->orWhereNotNull('project_id');
             } else {
-                $query->orWhere(fn (Builder $q) => $q
-                    ->whereIn('project_id', $user->projects()->select('projects.id'))
-                    ->whereJsonContains('project_roles', $user->role->value));
+                foreach (UserRole::projectRoles() as $role) {
+                    if (($ids = $user->projectIdsAs($role)) !== []) {
+                        $query->orWhere(fn (Builder $q) => $q->whereIn('project_id', $ids)->whereJsonContains('project_roles', $role->value));
+                    }
+                }
             }
         });
     }
@@ -141,15 +143,15 @@ class VaultItem extends Model
     /**
      * Everyone who sees the item and why, for the sharing table.
      *
-     * @return Collection<int, array{user: User, via: string, can_edit: bool}>
+     * @return Collection<int, array{user: User, role: UserRole|null, via: string, can_edit: bool}>
      */
     public function audience(): Collection
     {
-        $people = collect([$this->user_id => ['user' => $this->user, 'via' => 'owner', 'can_edit' => true]]);
+        $people = [$this->user_id => $this->entry($this->user, null, 'owner', true)];
 
         $editors = DB::table('vault_item_user')->where('vault_item_id', $this->id)->pluck('can_edit', 'user_id');
         foreach ($this->sharedWith as $user) {
-            $people->put($user->id, ['user' => $user, 'via' => 'direct', 'can_edit' => (bool) ($editors[$user->id] ?? false)]);
+            $people[$user->id] = $this->entry($user, null, 'direct', (bool) ($editors[$user->id] ?? false));
         }
 
         if ($this->project_id !== null) {
@@ -157,19 +159,21 @@ class VaultItem extends Model
             $members = User::query()
                 ->where(fn (Builder $q) => $q
                     ->where('role', UserRole::Admin->value)
-                    ->orWhere(fn (Builder $q) => $q
-                        ->whereIn('role', $roles === [] ? ['-'] : $roles)
-                        ->whereHas('projects', fn (Builder $p) => $p->whereKey($this->project_id))))
+                    ->orWhere(fn (Builder $q) => $q->withRoleIn($this->project_id, $roles)))
                 ->orderBy('name')
                 ->get();
 
             foreach ($members as $user) {
-                if (! $people->has($user->id)) {
-                    $people->put($user->id, ['user' => $user, 'via' => $user->isAdmin() ? 'admin' : 'project', 'can_edit' => $user->isAdmin()]);
-                }
+                $people[$user->id] ??= $this->entry($user, $user->roleIn($this->project), $user->isAdmin() ? 'admin' : 'project', $user->isAdmin());
             }
         }
 
-        return $people->values();
+        return collect(array_values($people));
+    }
+
+    /** @return array{user: User, role: UserRole|null, via: string, can_edit: bool} */
+    private function entry(User $user, ?UserRole $role, string $via, bool $canEdit): array
+    {
+        return ['user' => $user, 'role' => $role, 'via' => $via, 'can_edit' => $canEdit];
     }
 }

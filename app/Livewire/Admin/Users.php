@@ -3,7 +3,6 @@
 namespace App\Livewire\Admin;
 
 use App\Enums\UserRole;
-use App\Git\Providers\GitProvider;
 use App\Models\Project;
 use App\Models\User;
 use Flux\Flux;
@@ -15,7 +14,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts::app')]
-#[Title('Users · Administration')]
+#[Title('People · Administration')]
 class Users extends Component
 {
     public string $name = '';
@@ -90,7 +89,9 @@ class Users extends Component
 
         $user->forceFill(['role' => $role])->save();
 
-        Flux::toast(text: __(':name is now :role.', ['name' => $user->name, 'role' => $role->label()]));
+        Flux::toast(text: $role === UserRole::Admin
+            ? __(':name is now an administrator.', ['name' => $user->name])
+            : __(':name is a member, :role by default; their roles on each project stay as they are.', ['name' => $user->name, 'role' => $role->label()]));
     }
 
     /**
@@ -131,9 +132,8 @@ class Users extends Component
     public function render(): View
     {
         return view('livewire.admin.users', [
-            'users' => User::query()->withCount(['projects', 'gitAccounts'])->orderBy('name')->get(),
+            'users' => User::query()->with(['projects' => fn ($q) => $q->orderBy('name')])->withCount(['projects', 'gitAccounts'])->orderBy('name')->get(),
             'roles' => UserRole::cases(),
-            'git' => GitProvider::current(),
         ]);
     }
 }

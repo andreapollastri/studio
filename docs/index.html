@@ -1801,17 +1801,22 @@
 
       <div class="docs-nav-label">Set up</div>
       <a href="#setup-git">The git hosts</a>
+      <a class="sub" href="#setup-git-service">Service accounts</a>
       <a href="#setup-project">A project</a>
       <a href="#setup-people">People</a>
       <a href="#setup-connections">Git &amp; Claude</a>
+      <a class="sub" href="#setup-ssh-keys">SSH keys</a>
       <a class="sub" href="#setup-groups">Groups of projects</a>
       <a href="#setup-site">The project site</a>
       <a href="#setup-settings">Project settings</a>
+      <a class="sub" href="#setup-members">Members &amp; roles</a>
       <a href="#setup-mcp">MCP servers</a>
       <a href="#setup-email">Email</a>
       <a href="#setup-updates">Updates</a>
 
       <div class="docs-nav-label">Work</div>
+      <a href="#work-home">Home &amp; the menu</a>
+      <a href="#work-project">The project's tabs</a>
       <a href="#work-chat">The chat</a>
       <a href="#work-permissions">Permissions</a>
       <a href="#work-settings">Model, effort, autopilot</a>
@@ -1830,6 +1835,7 @@
       <a class="sub" href="#infra-accounts">Accounts</a>
       <a class="sub" href="#infra-page">Working on a page</a>
       <a class="sub" href="#infra-troubleshooting">When it does not work</a>
+      <a href="#infra-projects">Attached to projects</a>
       <a href="#infra-aws">AWS</a>
       <a href="#infra-digitalocean">DigitalOcean</a>
       <a href="#infra-hetzner">Hetzner</a>
@@ -1917,18 +1923,20 @@
             the dashboard's address and the email, in a yellow box before anything is installed, and again at the end. Save
             it then; nothing shows it later. Studio has no public sign-up and no social login: accounts are created here and
             in the dashboard, and people sign in with a password.</li>
-          <li><strong>The git provider.</strong> GitHub, GitLab (gitlab.com or your own), Bitbucket Cloud or Azure DevOps (with
-            its organization): one for the whole Studio, the same forges Larapilot integrates with. See
+          <li><strong>Your git host.</strong> GitHub, GitLab (gitlab.com or your own), Bitbucket Cloud or Azure DevOps (with
+            its organization): the host of your first token. It does not tie Studio to it: all four, the same forges
+            Larapilot integrates with, are there for everyone, and a project may live on any of them. See
             <a href="#setup-git">The git hosts</a>.</li>
           <li><strong>Your token there.</strong> With the instructions on screen you create it; the script verifies it with the
-            provider and stores it for your account. It clones and deploys project sites and creates new repositories. Every
-            other person adds their own later.</li>
+            host and stores it as your first git account. It can create repositories and deploy project sites. Every other
+            person adds their own later; the team's <a href="#setup-git-service">service accounts</a> are added in the
+            dashboard.</li>
         </ol>
 
         <p>Then it installs the newest release of Studio, the latest published <code>vX.Y.Z</code> tag (the head of the main
           branch only while no release is published; the first release then replaces it), with what it needs:
-          Caddy, PHP 8.3, 8.4 and 8.5 (8.5 alone on Ubuntu 26.04, see below), Composer, Node, Claude Code, the provider's CLI
-          (<code>gh</code>, <code>glab</code> or the Azure CLI), MariaDB, PostgreSQL and redis. Ten minutes later:</p>
+          Caddy, PHP 8.3, 8.4 and 8.5 (8.5 alone on Ubuntu 26.04, see below), Composer, Node, Claude Code, the CLI of your git
+          host (<code>gh</code>, <code>glab</code> or the Azure CLI), MariaDB, PostgreSQL and redis. Ten minutes later:</p>
 
         <div class="install-commands">
           <div class="install-commands-header">Open the dashboard</div>
@@ -1940,13 +1948,13 @@
             </li>
           </ol>
         </div>
-        <p>Sign in, turn on two-factor authentication, add your Claude credential in <em>Settings → Connections</em>, create
-          the first project in <em>Administration → Projects</em>, invite the team. From then on Studio updates itself every
+        <p>Sign in, turn on two-factor authentication, add your Claude credential in <em>Settings → Accounts</em>, create
+          the first project in <em>Administration → Projects</em>, invite the team and put them on it. From then on Studio updates itself every
           night to the newest release; see <a href="#setup-updates">Updates</a>.</p>
 
         <p class="install-requirements"><strong>Requires:</strong> Ubuntu 24.04 or 26.04 LTS (with <code>sudo</code> or Ubuntu
           26.04's <code>sudo-rs</code>), amd64 or arm64, 4 GB of
-          memory or more · a domain with a wildcard record · an account per person on the git provider · a Claude subscription or an
+          memory or more · a domain with a wildcard record · a git account per person on the host of their projects · a Claude subscription or an
           Anthropic API key per person who chats · Laravel projects with Larapilot (Studio installs it, with Laravel Boost, in
           the repositories it creates).</p>
 
@@ -1975,7 +1983,7 @@
               <tr><td>Caddy</td><td>HTTPS for every host under the domain, with certificates issued <em>on demand</em>: before issuing one, Caddy asks Studio whether the host is known. No DNS API token, no per-host certbot runs.</td></tr>
               <tr><td>PHP 8.3, 8.4, 8.5</td><td>From <code>ppa:ondrej/php</code>, with the usual extensions and PHP-FPM. Each project picks its version; a pool per site and per workspace runs as its own user. The list comes from the release's <code>installer/requirements.env</code>, so a later release can add a version. Where the PPA does not serve the Ubuntu release yet (26.04 at first), PHP comes from Ubuntu's own archive, which carries PHP 8.5 alone: Studio runs on it and projects can pick it; the next update adds 8.3 and 8.4 once the PPA serves 26.04.</td></tr>
               <tr><td>Composer, Node 22, Claude Code</td><td>What a Laravel project and the agent need. Claude Code is installed once, system-wide; each workspace runs it with its own login, and every update of Studio brings the newest one.</td></tr>
-              <tr><td>The provider's CLI</td><td><code>gh</code> for GitHub, <code>glab</code> for GitLab, the Azure CLI with the <code>azure-devops</code> extension for Azure DevOps; nothing for Bitbucket, whose REST API Larapilot calls directly. The agents open pull requests with it.</td></tr>
+              <tr><td>The git hosts' CLIs</td><td><code>gh</code> for GitHub, <code>glab</code> for GitLab, the Azure CLI with the <code>azure-devops</code> extension for Azure DevOps; nothing for Bitbucket, whose REST API Larapilot calls directly. The installer puts in the one of the first token's host; another is installed the first time a workspace on its host needs it. The agents open pull requests with it.</td></tr>
               <tr><td>MariaDB, PostgreSQL, redis</td><td>Each project picks an engine; every site and every workspace gets a database and a user of its own. Redis is shared with a prefix per site.</td></tr>
               <tr><td>Studio</td><td>The newest release tag (or, for beta testers, the head of main) in <code>/opt/studio/releases/&lt;build&gt;</code>, with <code>/opt/studio/current</code> pointing at it and the <code>.env</code> and <code>storage</code> shared in <code>/opt/studio/shared</code>; built, migrated, served at <code>studio.&lt;domain&gt;</code>; a queue worker, a scheduler and Reverb as systemd services.</td></tr>
               <tr><td><code>studio-admin</code></td><td>The privileged helper in <code>/usr/local/sbin</code>: the only thing the <code>studio</code> user may run as root, through sudo, for a fixed list of commands. Everything on the server is done through it.</td></tr>
@@ -1994,11 +2002,11 @@
 /etc/studio/
   studio.env                           <span class="comment">the domain, paths, Studio's PHP, the repository, AUTO_UPDATE, UPDATE_CHANNEL, SYSTEM_UPDATE, SYSTEM_REBOOT; root only</span>
   update-signers                       <span class="comment">optional: SSH keys allowed to sign release tags</span>
-  projects/&lt;slug&gt;.env                  <span class="comment">the deploy token and database password of a site</span>
-  workspaces/&lt;user&gt;--&lt;slug&gt;.env        <span class="comment">one person's tokens for one workspace, readable by their Linux user only</span>
+  projects/&lt;key&gt;.env                   <span class="comment">the deploy token and database password of a site</span>
+  workspaces/&lt;user&gt;--&lt;key&gt;.env         <span class="comment">one person's tokens for one workspace, readable by their Linux user only</span>
   templates/                           <span class="comment">Caddy, PHP-FPM and systemd templates the helper renders</span>
-/srv/studio/projects/&lt;slug&gt;/app        <span class="comment">a project site: user prj-&lt;slug&gt;</span>
-/srv/studio/workspaces/&lt;user&gt;/&lt;slug&gt;   <span class="comment">a workspace: user ws-&lt;user&gt;, home /home/ws-&lt;user&gt;</span>
+/srv/studio/projects/&lt;key&gt;/app         <span class="comment">a project site: user prj-&lt;key&gt;</span>
+/srv/studio/workspaces/&lt;user&gt;/&lt;key&gt;    <span class="comment">a workspace: user ws-&lt;user&gt;, home /home/ws-&lt;user&gt;</span>
 /etc/caddy/sites/*.caddy               <span class="comment">one host matcher per site and per workspace</span>
 /etc/php/&lt;ver&gt;/fpm/pool.d/studio-*.conf
 /etc/systemd/system/studio-*.service   <span class="comment">Studio's queue, Reverb and scheduler; a bridge per workspace; queue workers per site and preview (Horizon, Reverb, Pulse when on)</span>
@@ -2012,7 +2020,7 @@
         <h3 id="quickstart-dns">DNS and certificates</h3>
         <p>One wildcard record is enough: <code>*.&lt;domain&gt;</code> → the server. When a browser asks for
           <code>maria-shop.&lt;domain&gt;</code> for the first time, Caddy calls
-          <code>http://127.0.0.1:8081/api/tls/ask?domain=…</code>; Studio answers 200 for its own host, a project slug or a
+          <code>http://127.0.0.1:8081/api/tls/ask?domain=…</code>; Studio answers 200 for its own host, a project key or a
           workspace preview it knows, and Caddy issues the certificate. Any other name under the domain shows Studio's
           welcome page; it gets a certificate too, but only for a few new names a day
           (<code>STUDIO_WELCOME_CERTIFICATES_PER_DAY</code>, default 3), so that strangers typing random names cannot use up
@@ -2039,15 +2047,17 @@
         <div class="layer-stack">
           <div class="layer-card">
             <strong>Project</strong>
-            <p>A Laravel repository with Larapilot installed, its deploy branch, the PHP version and database it needs, the
-              staging site where the deploy branch runs, and the people who may open it. An administrator creates it; the
-              repository is never touched by Studio itself.</p>
+            <p>A Laravel repository with Larapilot installed, on any of the four git hosts, its deploy branch, the PHP version
+              and database it needs, the staging site where the deploy branch runs, and the people on it, each with a role
+              there: PM, developer or client. An administrator creates it and Studio gives it a key (<code>shop-k2mx7p</code>)
+              that names its hosts and its place on the server. Its page has tabs for the workspace, the repository, the
+              infrastructure and the access of the person's role. The repository is never touched by Studio itself.</p>
           </div>
           <div class="layer-card">
             <strong>Workspace</strong>
             <p>One clone per person × project on the server, under a Linux user of that person: the repository on the deploy
               branch, dependencies installed, a database of its own copied from the project site, Claude Code running with
-              that person's credential, the bridge. Served at <code>&lt;user&gt;-&lt;project&gt;.&lt;domain&gt;</code>. A PM
+              that person's credential, the bridge. Served at <code>&lt;user&gt;-&lt;key&gt;.&lt;domain&gt;</code>. A PM
               has one just like a developer: the skills that write the PRD or approve a story need a checkout to commit to.</p>
           </div>
           <div class="layer-card">
@@ -2063,8 +2073,8 @@
           </div>
           <div class="layer-card">
             <strong>Project site</strong>
-            <p>The deploy branch, served by the same server at <code>&lt;project&gt;.&lt;domain&gt;</code>. Studio creates it
-              when the project is created, registers a push webhook on the git provider, and redeploys it on every push to the
+            <p>The deploy branch, served by the same server at <code>&lt;key&gt;.&lt;domain&gt;</code>. Studio creates it
+              when the project is created, registers a push webhook on its git host, and redeploys it on every push to the
               deploy branch.
               Its Larapilot dashboard is what the PM watches; its API feeds the Board; its database seeds new workspaces.</p>
           </div>
@@ -2077,7 +2087,7 @@
             <tbody>
               <tr><td><strong>Browser</strong></td><td>Studio's interface: projects, the chat, and next to it the preview, the changes and the history, a terminal and an editor; the administration</td><td>Nothing but the session cookie</td></tr>
               <tr><td><strong>The server</strong></td><td>Caddy, Studio (Laravel 13 + Reverb), PHP-FPM pools, MariaDB and PostgreSQL, redis; one Linux user per person for their workspaces, one per project for its site; a bridge service per workspace</td><td>Accounts, projects, transcripts, permission decisions, encrypted tokens; the clones, the databases, each person's Claude login in their home</td></tr>
-              <tr><td><strong>Outside</strong></td><td>The git provider: GitHub, GitLab, Bitbucket or Azure DevOps (repositories, pull requests, the push webhook); Anthropic (Claude Code with each person's subscription or key)</td><td>Code, the tokens each person created</td></tr>
+              <tr><td><strong>Outside</strong></td><td>The git hosts: GitHub, GitLab, Bitbucket Cloud and Azure DevOps (repositories, pull requests, the push webhook); Anthropic (Claude Code with each person's subscription or key)</td><td>Code, the tokens each person created</td></tr>
             </tbody>
           </table>
         </div>
@@ -2093,8 +2103,8 @@
 
         <figure class="shot">
           <img src="img/projects.png" alt="The Projects page: two project cards, one with a running workspace" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Projects.</strong> Maria sees the projects she is a member of and the state of her workspace on
-            each. Opening one creates the workspace the first time, a clone and a build in about two minutes; after that it is
+          <figcaption><strong>Projects.</strong> Maria sees the projects she is on, her role on each and the state of her
+            workspace there. Opening one creates the workspace the first time, a clone and a build in about two minutes; after that it is
             a click.</figcaption>
         </figure>
 
@@ -2119,7 +2129,7 @@
             same files in an editor.</figcaption>
         </figure>
 
-        <p>When the story is reviewed and merged on the deploy branch, the git provider calls Studio's webhook and the project site at
+        <p>When the story is reviewed and merged on the deploy branch, the git host calls Studio's webhook and the project site at
           <code>shop-acme.&lt;domain&gt;</code> pulls, builds and migrates. Its Larapilot dashboard at <code>/larapilot</code>
           shows the backlog as it is now, to the people of the project once they are logged in to Studio.</p>
 
@@ -2160,24 +2170,46 @@
         <div class="section-header">
           <span class="section-label">Roles</span>
           <h2>Four roles, one interface</h2>
-          <p>A role decides whether a person can chat and how much Claude may do before asking.</p>
+          <p>A role decides whether a person can chat on a project and how much Claude may do before asking. An administrator
+            is one everywhere; everyone else has a role per project.</p>
         </div>
 
         <div class="table-card">
           <table>
             <thead><tr><th>Role</th><th>Can</th><th>Permission preset</th></tr></thead>
             <tbody>
-              <tr><td><strong>Administrator</strong></td><td>Everything: projects and their settings, MCP servers, people; a workspace on every project; the <a href="#infra">infrastructure connectors</a>, which no other role sees</td><td><code>acceptEdits</code></td></tr>
-              <tr><td><strong>PM</strong></td><td>Chat on their projects, approve; preview, changes and history, terminal and files of their own workspace</td><td><code>default</code>: Claude asks before commands and edits outside the automatic scope</td></tr>
-              <tr><td><strong>Developer</strong></td><td>The same as a PM, with the developer's preset: implement, test, open pull requests</td><td><code>acceptEdits</code>: edits run, commands still ask</td></tr>
-              <tr><td><strong>Client</strong></td><td>Look: the project site as preview, and its Larapilot dashboard; no chat, no workspace</td><td>—</td></tr>
+              <tr><td><strong>Administrator</strong></td><td>Everything, on every project: projects and their settings, members and roles, MCP servers, people; a workspace on every project; the <a href="#infra">infrastructure connectors</a>, whose pages no other role sees</td><td><code>acceptEdits</code></td></tr>
+              <tr><td><strong>PM</strong></td><td>On the projects where they are PM: chat, approve; preview, changes and history, terminal and files of their own workspace; the project's repository</td><td><code>default</code>: Claude asks before commands and edits outside the automatic scope</td></tr>
+              <tr><td><strong>Developer</strong></td><td>The same as a PM, with the developer's preset: implement, test, open pull requests; and the project's SSH connections</td><td><code>acceptEdits</code>: edits run, commands still ask</td></tr>
+              <tr><td><strong>Client</strong></td><td>Look: the project site as preview, its Larapilot dashboard, and what is shared with the project's clients; no chat, no workspace</td><td>—</td></tr>
             </tbody>
           </table>
         </div>
 
+        <h3 id="roles-per-project">A role per project</h3>
+        <p>A person is either an <strong>administrator</strong>, who sees and runs everything on every project, or a
+          <strong>member</strong>, whose role is the project's: a developer on one project may be the PM of another and a
+          client on a third. An administrator sets it in the project's <a href="#setup-members">Settings → Members &amp;
+          roles</a>, or in the form of a new project. The role on the person (<em>Administration → People</em>, column
+          <em>Access</em>) says only <em>Administrator</em> or <em>Member · &lt;role&gt; by default</em>: the role a new
+          membership starts with. Changing it leaves the roles on each project as they are.</p>
+        <p>Everything that belongs to a project reads the role on that project:</p>
+        <ul>
+          <li>the chat and the workspace, for PMs and developers, and the project's <a href="#work-project">Repository</a>
+            tab with them;</li>
+          <li>the permission preset a new conversation starts with, and the modes it may switch to;</li>
+          <li>the project's <a href="#setup-mcp">MCP servers</a>, given by role;</li>
+          <li>passwords, drive folders and SSH connections shared with the project by role;</li>
+          <li>the <a href="#infra-projects">infrastructure attached to the project</a>: who sees it and who acts on it.</li>
+        </ul>
+        <p>The <a href="#tools-ssh">SSH terminal</a> opens to administrators, to developers by default, and to whoever is a
+          developer on at least one project; a project's SSH connections open only to its developers. A change of role
+          counts from the person's next click. Memberships from before roles were per project kept the role their person
+          had.</p>
+
         <p>Presets map to Claude Code's <code>--permission-mode</code> and are set per role in <code>config/studio.php</code>.
-          A conversation starts with its role's preset; <a href="#work-settings">Model &amp; mode</a> switches it among the
-          modes the role may use (all four for administrators, PMs and developers). Larapilot's skills and the repository's
+          A conversation starts with the preset of the person's role on the project; <a href="#work-settings">Model &amp;
+          mode</a> switches it among the modes that role may use (all four for administrators, PMs and developers). Larapilot's skills and the repository's
           own are typed as slash commands; see <a href="#work-skills">Skills &amp; Claude's questions</a>.</p>
 
         <div class="note"><strong>One Claude per person.</strong> Every conversation drives the Claude Code signed in with that
@@ -2185,16 +2217,17 @@
           interface; that is what the terms require and what keeps usage and cost attributable.</div>
       </section>
 
-<!-- Setup: git provider -->
+<!-- Setup: git hosts -->
       <section class="doc-section" id="setup-git">
         <div class="section-header">
           <span class="section-label">Set up</span>
           <h2>The git hosts</h2>
           <p>Projects live on GitHub, GitLab, Bitbucket Cloud or Azure DevOps, the same remote forges
             <a href="https://larapilot.web.ap.it/#deep-dive-integrations--remote-forges" target="_blank" rel="noopener">Larapilot
-            integrates with</a>, and on several of them at once: the installer picks the default one, <em>Administration →
-            Connectors → Git hosting</em> turns the others on. Every person adds their own accounts there, as many as they work
-            with (see <a href="#setup-connections">Git &amp; Claude</a>).</p>
+            integrates with</a>. All four are always there: a project's repository may live on any of them, and a team on several
+            at once. Every person adds their own accounts in <em>Settings → Accounts → Git</em>, as many as they work with
+            (see <a href="#setup-connections">Git &amp; Claude</a>); administrators add the team's
+            <a href="#setup-git-service">service accounts</a>.</p>
         </div>
 
         <div class="table-card">
@@ -2209,9 +2242,9 @@
           </table>
         </div>
 
-        <p>The installer asks for the default provider, the address of a self-managed GitLab or the Azure DevOps organization,
-          checks the administrator's token there (it becomes their first account) and installs the provider's CLI; the CLI of
-          another host is installed the first time a workspace on it needs it. In every workspace the token of the person's
+        <p>The installer asks for the host of the first administrator's token, with the address of a self-managed GitLab or
+          the Azure DevOps organization, checks the token there (it becomes their first account) and installs that host's
+          CLI; the CLI of another host is installed the first time a workspace on it needs it. In every workspace the token of the person's
           account on the repository's host is in the
           environment three ways: for git, through the askpass helper and with the user name the provider expects
           (<code>x-access-token</code>, <code>oauth2</code>, <code>x-bitbucket-api-token-auth</code>); for the CLI; and for
@@ -2219,10 +2252,14 @@
           (<code>larapilot:settings-set --gitlab=YES</code> and so on); in an existing repository the team turns it on once and
           commits <code>.larapilot/config.yaml</code>.</p>
 
-        <div class="note"><strong>Changing the default.</strong>
-          <code>php artisan studio:git-provider gitlab --url=https://git.example.com</code> on the server makes another host the
-          default, with projects too: nothing moves and nobody's accounts are forgotten. <code>sudo studio-update ensure</code>
-          then installs its CLI.</div>
+        <h3 id="setup-git-service">Service accounts</h3>
+        <p>A project site is cloned, given its push webhook and deployed with one git account. An administrator's own token
+          works, but it goes when they leave. In <em>Administration → Connectors → Git hosting</em> administrators keep the
+          team's own tokens instead: a bot user, a project or group access token. Service accounts create repositories,
+          register the webhooks and deploy the sites, whoever the administrator is. They are offered first in the new-project
+          form and in the project's <em>Settings → General → Deployed with</em>. Nobody commits with them: people work with
+          their own accounts. A service account that deploys projects cannot be removed until those projects use another
+          one. Its token needs the administrators' scopes below.</p>
 
         <h3 id="setup-git-github">GitHub</h3>
         <p><strong>Organizations.</strong> A new repository goes to your account or to an organization you belong to; the form
@@ -2246,8 +2283,9 @@
         <h3 id="setup-git-gitlab">GitLab</h3>
         <p><strong>Groups.</strong> A new repository goes to your personal namespace or to a group or subgroup where you are at
           least Developer and the group lets that role create projects; the form lists those groups by their full path. A
-          self-managed GitLab is set once, in the installer (<code>STUDIO_GIT_URL=https://git.example.com</code>), and the
-          agent's <code>glab</code> gets it as <code>GITLAB_HOST</code>. Registering the deploy webhook needs the Maintainer role
+          self-managed GitLab is the address given with the account (<code>https://git.example.com</code>; the installer's
+          <code>STUDIO_GIT_URL</code> for the first administrator's), and the agent's <code>glab</code> gets it as
+          <code>GITLAB_HOST</code>. Registering the deploy webhook needs the Maintainer role
           on the repository.</p>
         <ol class="steps">
           <li><strong>Where.</strong> On your GitLab: avatar → Edit profile → Access tokens → Add new token.</li>
@@ -2255,7 +2293,8 @@
             and for administrators the new repositories and the webhook. <code>read_repository</code> and
             <code>write_repository</code> alone let git work, not merge requests.</li>
           <li><strong>Expiration.</strong> GitLab asks for a date. Replace the token in Studio before it expires.</li>
-          <li><strong>Copy it</strong> into <em>Tools → GitLab → My accounts</em>. It starts with <code>glpat-</code>.</li>
+          <li><strong>Copy it</strong> into <em>Settings → Accounts → Git → Add an account → GitLab</em>. It starts with
+            <code>glpat-</code>.</li>
         </ol>
 
         <h3 id="setup-git-bitbucket">Bitbucket Cloud</h3>
@@ -2277,10 +2316,11 @@
         </ol>
 
         <h3 id="setup-git-azure">Azure DevOps</h3>
-        <p><strong>Organization and projects.</strong> One Studio works with one Azure DevOps organization, set in the installer
-          (<code>STUDIO_GIT_URL=https://dev.azure.com/acme</code>; <code>acme.visualstudio.com</code> addresses work too).
+        <p><strong>Organization and projects.</strong> An Azure DevOps account belongs to one organization, given with the
+          account (<code>https://dev.azure.com/acme</code>; <code>acme.visualstudio.com</code> addresses work too; the
+          installer's <code>STUDIO_GIT_URL</code> for the first administrator's). Another organization is another account.
           Repositories live in the organization's projects: the form lists them, and a new repository follows the visibility
-          of its project. Addresses of another organization are refused. Creating repositories needs the <em>Create
+          of its project. A project's address must be in the organization of the account that creates or deploys it. Creating repositories needs the <em>Create
           repository</em> permission on the project; registering the push service hook needs Project Administrator.</p>
         <ol class="steps">
           <li><strong>Where.</strong> <code>https://dev.azure.com/&lt;organization&gt;</code> → User settings → Personal access
@@ -2299,51 +2339,60 @@
         <div class="section-header">
           <span class="section-label">Set up</span>
           <h2>A project</h2>
-          <p>Adding a project is a form. Saving it clones the repository, creates its database, serves it at
-            <code>&lt;slug&gt;.&lt;domain&gt;</code> and registers the push webhook on the git provider that redeploys it on every
-            push.</p>
+          <p>Adding a project is a form in <em>Administration → Projects</em>. Saving it gives the project its key, clones the
+            repository, creates its database, serves it at <code>&lt;key&gt;.&lt;domain&gt;</code> and registers the push
+            webhook on the git host that redeploys it on every push. Everything else about it is on its own
+            <a href="#setup-settings">Settings</a> page.</p>
         </div>
 
         <figure class="shot">
-          <img src="img/admin-projects.png" alt="Administration → Projects: a table with repository, stack, site status and members" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Administration → Projects.</strong> Every project with its repository, stack, the site's state
-            and the last deployed commit. <em>Deploy</em> redeploys by hand; the webhook does it on push.</figcaption>
+          <img src="img/admin-projects.png" alt="Administration → Projects: a table with name and key, repository, deploy account, site status and team" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Administration → Projects.</strong> Every project with its name and key, its repository and
+            stack, the account that deploys it (<em>service · &lt;name&gt;</em>, or <em>&lt;person&gt;'s token</em> in amber), the
+            site's state and last deployed commit, and how many members and attached resources it has. <em>Deploy</em>
+            redeploys by hand; the webhook does it on push. <em>Settings</em> opens the project's settings.</figcaption>
         </figure>
 
         <figure class="shot">
-          <img src="img/admin-project-form.png" alt="The project form: name, slug, repository, deploy branch, PHP, database, members" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>The form.</strong> Six fields and the members. The slug is the hostname label of the site and of
-            every preview.</figcaption>
+          <img src="img/admin-project-form.png" alt="The project form: name, git account, repository, deploy branch, PHP, database, members and roles" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>The form.</strong> Six fields and the members with their role. The key is Studio's: it is
+            the hostname label of the site and of every preview.</figcaption>
         </figure>
 
         <div class="table-card">
           <table>
             <thead><tr><th>Field</th><th>Used for</th></tr></thead>
             <tbody>
-              <tr><td><strong>Name</strong>, <strong>Slug</strong></td><td>The slug names the site (<code>shop.&lt;domain&gt;</code>), the previews (<code>maria-shop.&lt;domain&gt;</code>), the Linux user, the directories and the databases. Lower-case letters, digits and dashes; derived from the name when empty.</td></tr>
-              <tr><td><strong>Repository</strong></td><td>The HTTPS address of a repository on the installation's provider: <code>https://github.com/owner/repo</code>, <code>https://gitlab.com/group/repo</code> (or your GitLab), <code>https://bitbucket.org/workspace/repo</code>, <code>https://dev.azure.com/org/project/_git/repo</code>. Addresses of another provider are refused. Cloned with your token for the site, with each member's token for their workspace.</td></tr>
+              <tr><td><strong>Name</strong></td><td>What people read. Free text: two projects may share it, such as an "API" for two clients.</td></tr>
+              <tr><td><strong>Key</strong></td><td>Not a field: Studio makes it from the name, cut short, a dash and six random characters without <code>0</code>, <code>o</code>, <code>1</code>, <code>l</code> or <code>i</code> (<code>api-9usaf9</code>). It names the site (<code>api-9usaf9.&lt;domain&gt;</code>), the previews (<code>maria-api-9usaf9.&lt;domain&gt;</code>), the Linux user, the databases and the folders, and never changes. Projects created before keys keep their slug as their key.</td></tr>
+              <tr><td><strong>Git account</strong></td><td>The account that creates or reads the repository, registers the push webhook and deploys the site, on any host: a <a href="#setup-git-service">service account</a> of the team, offered first, or one of yours.</td></tr>
+              <tr><td><strong>Repository</strong></td><td>An existing one, or <em>Create it now</em> (below). The HTTPS address of a repository on the host of the chosen account: <code>https://github.com/owner/repo</code>, <code>https://gitlab.com/group/repo</code> (or your GitLab), <code>https://bitbucket.org/workspace/repo</code>, <code>https://dev.azure.com/org/project/_git/repo</code>. Cloned with that account for the site, with each member's own account on that host for their workspace.</td></tr>
               <tr><td><strong>Deploy branch</strong></td><td>What the site runs and what workspaces start from. A push to it deploys the site.</td></tr>
               <tr><td><strong>PHP</strong>, <strong>Database</strong></td><td>A PHP version installed on the server (8.3, 8.4 or 8.5 today) and MariaDB or PostgreSQL, for the site and for every workspace of the project.</td></tr>
-              <tr><td><strong>Members</strong></td><td>Who may open the project. Administrators see every project without being members.</td></tr>
+              <tr><td><strong>Members &amp; roles</strong></td><td>For each person, <em>Not on the project</em> or their role on it: PM, developer or client. Administrators see every project without being members.</td></tr>
             </tbody>
           </table>
         </div>
+        <p>The rest is on the project's own page, for administrators: <em>Settings</em> in the list, or the
+          <em>Settings</em> tab of the project (<code>p/&lt;key&gt;/settings</code>). Name, repository, the account it is
+          deployed with, branch and stack, members and roles, server, access and MCP servers are changed there; see
+          <a href="#setup-settings">Project settings</a>.</p>
 
         <h3>Or let Studio create the repository</h3>
         <figure class="shot">
           <img src="img/admin-project-new.png" alt="The project form with Create it now selected: owner, repository name, private" loading="lazy" width="2880" height="1800" />
           <figcaption><strong>Create it now.</strong> Pick where it goes, a name and whether it is private. Studio creates the
-            empty repository on the git provider; the server installs the latest Laravel, Laravel Boost and Larapilot, commits,
+            empty repository on the git host with the account chosen; the server installs the latest Laravel, Laravel Boost and Larapilot, commits,
             pushes the deploy branch, then provisions the site as for any other project.</figcaption>
         </figure>
-        <p>Where a new repository can go depends on the provider: your account or one of your organizations on GitHub, your
+        <p>Where a new repository can go depends on the host: the account or one of its organizations on GitHub, its
           namespace or a group on GitLab, a workspace or one of its projects on Bitbucket, a project of the organization on
-          Azure DevOps. Your token needs the right to create repositories there; the scopes are in
+          Azure DevOps. The chosen account's token needs the right to create repositories there; the scopes are in
           <a href="#setup-git">The git hosts</a>. What lands in the new repository: <code>composer create-project
           laravel/laravel</code> at its current release; <code>laravel/boost</code> and <code>andreapollastri/larapilot</code>
           as dev dependencies, with <code>larapilot:install</code> and <code>boost:install</code> run (Boost is always there:
           if its install fails, the project stops with the reason instead of going on without it); Larapilot's integration for
-          the provider turned on in <code>.larapilot/config.yaml</code>; and one commit on the deploy branch (plus
+          the host turned on in <code>.larapilot/config.yaml</code>; and one commit on the deploy branch (plus
           <code>main</code> when the deploy branch is another name).</p>
 
         <h3>What an existing repository must have</h3>
@@ -2368,27 +2417,32 @@
         </div>
 
         <figure class="shot">
-          <img src="img/admin-users.png" alt="Administration → Users: name, email, role selector, git provider and Claude badges, project count" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Administration → Users.</strong> Role is a dropdown; the badges say who has connected the git
-            provider and Claude and who turned on two-factor authentication.</figcaption>
+          <img src="img/admin-users.png" alt="Administration → People: name, email, access selector, git and Claude badges, projects with their roles" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Administration → People.</strong> <em>Access</em> is a dropdown: <em>Administrator</em>, or
+            <em>Member · &lt;role&gt; by default</em>. <em>Projects</em> lists each project with the person's role there; a
+            click opens its <em>Members &amp; roles</em>. The badges say who has added git and Claude accounts and who turned
+            on two-factor authentication.</figcaption>
         </figure>
 
         <figure class="shot">
-          <img src="img/admin-user-form.png" alt="The New user dialog: name, email, role and an optional handle" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>New user.</strong> Name, email and role; the handle is optional and comes from the login on the
-            git provider when the person connects.</figcaption>
+          <img src="img/admin-user-form.png" alt="The New user dialog: name, email, access and an optional handle" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>New user.</strong> Name, email and access; the handle is optional and comes from the login of
+            their first git account, or their email.</figcaption>
         </figure>
 
         <ol class="steps">
-          <li><strong>Create the account.</strong> Name, email, role. Studio shows a one-time initial password; share it once,
-            it is never shown again.</li>
+          <li><strong>Create the account.</strong> Name, email, access: <em>Administrator</em>, or <em>Member</em> with the
+            role their memberships start with (see <a href="#roles">Roles</a>). Studio shows a one-time initial password;
+            share it once, it is never shown again.</li>
           <li><strong>They sign in</strong> with email and password, change it, and turn on two-factor in <em>Settings →
             Security</em>: an authenticator app or a passkey.</li>
-          <li><strong>They add their accounts</strong>: git in <em>Tools → GitHub</em> (GitLab, Bitbucket, Azure DevOps), Claude in
-            <em>Settings → Connections</em>. Until there is an account on the host of a project's repository and a Claude
-            account, the project opens on a page that says so instead of a chat.</li>
-          <li><strong>They open a project.</strong> Studio shows the projects they are members of. The first open builds the
-            workspace.</li>
+          <li><strong>They add their accounts</strong>: git and Claude in <em>Settings → Accounts</em> (<em>My accounts</em>
+            in the user menu). Until there is an account on the host of a project's repository and a Claude account, the
+            project opens on a page that says so instead of a chat. Their <a href="#work-home">Home</a> lists what is
+            missing.</li>
+          <li><strong>They get on projects.</strong> An administrator puts them on a project, with their role there, in the
+            project's <a href="#setup-members">Settings → Members &amp; roles</a> or when creating it. Studio shows the
+            projects they are on; the first open builds the workspace.</li>
         </ol>
 
         <figure class="shot">
@@ -2403,23 +2457,27 @@
           <span class="section-label">Set up</span>
           <h2>Git &amp; Claude</h2>
           <p>Each person brings their own accounts, as many as they work with, stored encrypted and handed only to their own
-            workspaces; groups of projects say which ones each project uses.</p>
+            workspaces; groups of projects say which ones each project uses. <em>Settings → Accounts</em> (<em>My
+            accounts</em> in the user menu; it was <em>Connections</em>, and the old address leads there) has three tabs:
+            <em>Claude</em>, <em>Git</em> and <em>SSH keys</em>.</p>
         </div>
 
         <figure class="shot">
-          <img src="img/connections.png" alt="Settings → Connections: the git accounts with their identities, the Claude accounts with their kind" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Settings → Connections.</strong> Every git account with the name and email its commits carry, every
-            Claude account (subscription or API key) with where it is used.</figcaption>
+          <img src="img/connections.png" alt="Settings → Accounts: the Claude, Git and SSH keys tabs, with the accounts of each" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Settings → Accounts.</strong> Every Claude account (subscription or API key) with where it is
+            used, every git account with the name and email its commits carry, every SSH key.</figcaption>
         </figure>
 
         <h3>Git accounts</h3>
-        <p>Added in <em>Tools → GitHub</em> (GitLab, Bitbucket, Azure DevOps), with the scopes in
-          <a href="#setup-git">The git hosts</a>: a personal GitHub, the company's Azure DevOps organization, a client's
+        <p>Added in <em>Settings → Accounts → Git</em>: <em>Add an account</em>, the host, a name and the token, with the
+          scopes in <a href="#setup-git">The git hosts</a> (and the address of a self-managed GitLab or of the Azure DevOps
+          organization). Checked, edited and removed there too; the arrow on an account opens it in
+          <a href="#git">Tools → Git</a>. Add as many as you work with: a personal GitHub, the company's Azure DevOps organization, a client's
           self-managed GitLab, another GitHub for work. Each one keeps its token and the <strong>identity its commits
           carry</strong>: the name and email the provider gives (or the address it accepts for commits), which you can change,
           so the company account commits as <code>you@company.com</code> and the personal one with your own address. Studio
           verifies the token and reads the login; the first account's login also gives your handle, once: your previews are
-          <code>&lt;handle&gt;-&lt;project&gt;.&lt;domain&gt;</code> and your Linux user on the server is
+          <code>&lt;handle&gt;-&lt;key&gt;.&lt;domain&gt;</code> and your Linux user on the server is
           <code>ws-&lt;handle&gt;</code>, whatever accounts come and go.</p>
         <p>A workspace works with <strong>your account on the host of the project's repository</strong>: the one chosen for the
           project, else the one of its group, else your account on that host. Git pushes and the provider's CLI opens pull
@@ -2440,6 +2498,12 @@
         <p>The account goes with every message: changing it needs no restart, and a conversation resumes where it was on the
           new account. The status bar of the chat says which account the next message runs on and why.</p>
 
+        <h3 id="setup-ssh-keys">SSH keys</h3>
+        <p>The keys the <a href="#tools-ssh">SSH terminal</a> opens your connections with, and those of the projects where
+          you are a developer. <em>New key</em> generates an Ed25519 or RSA key, or imports one you already use; the public
+          half is there to copy to the server. Removing a key asks first, and says how many connections use it. Keys are
+          stored encrypted and reach only the SSH gateway.</p>
+
         <h3 id="setup-groups">Groups of projects</h3>
         <p>On <em>Projects</em>, <em>New group</em>: Personal, Open source, Work, Clients… Each person's groups are their own, in
           the order they give them; a project moves in from its menu. A group picks the <strong>Claude account</strong> its
@@ -2458,20 +2522,20 @@
         <div class="section-header">
           <span class="section-label">Set up</span>
           <h2>The project site</h2>
-          <p><code>&lt;slug&gt;.&lt;domain&gt;</code> is the deploy branch, running on the same server. It is the project's
+          <p><code>&lt;key&gt;.&lt;domain&gt;</code> is the deploy branch, running on the same server. It is the project's
             staging, its dashboard and the source of every workspace's data.</p>
         </div>
 
         <ol class="steps">
           <li><strong>Creation.</strong> When the project is saved, the helper creates a Linux user, clones the deploy branch
-            with the administrator's token, creates the database, writes the <code>.env</code> with <code>APP_ENV=staging</code>
+            with the account that deploys it (a service account or an administrator's token), creates the database, writes the <code>.env</code> with <code>APP_ENV=staging</code>
             and a fresh <code>LARAPILOT_API_TOKEN</code>, runs Composer (dev dependencies included: the site is a staging
             environment, and Larapilot and Boost are dev dependencies whose dashboard and API it serves), npm, migrations, a
             PHP-FPM pool, a Caddy host and a queue worker. Studio registers a push webhook on the repository.</li>
-          <li><strong>Every push to the deploy branch</strong> reaches <code>/api/git/webhook/&lt;slug&gt;</code> with the
+          <li><strong>Every push to the deploy branch</strong> reaches <code>/api/git/webhook/&lt;key&gt;</code> with the
             project's secret: an HMAC signature from GitHub and Bitbucket, the secret token in a header from GitLab and Azure
             DevOps. Studio queues a deploy: fetch, reset to the branch, build, migrate, restart the worker.
-            <em>Deploy</em> in the admin page does the same by hand.</li>
+            <em>Deploy</em> in <em>Administration → Projects</em> does the same by hand.</li>
           <li><strong>The Larapilot dashboard</strong> is <code>/larapilot</code> on that host, behind the Studio login like
             every other address of the project. The PM's bookmark.</li>
           <li><strong>New workspaces</strong> copy the site's database (a dump and a restore, MariaDB or PostgreSQL), so a
@@ -2493,15 +2557,28 @@
         <div class="section-header">
           <span class="section-label">Set up</span>
           <h2>Project settings</h2>
-          <p>What the server runs for a project, who may open its hosts, and which MCP servers its chats get.
-            <em>Settings</em> on a project in Administration &rarr; Projects has three sections: <em>Server</em>,
-            <em>Access</em> and <em>MCP</em>. Saving applies the first two to the site and to every workspace preview;
-            MCP servers are saved one by one (see <a href="#setup-mcp">MCP servers</a>).</p>
+          <p>What the project is, who works on it and as what, what the server runs for it, who may open its hosts, what
+            the agent gets and which MCP servers its chats get. The <em>Settings</em> tab of a project, for administrators
+            (<code>p/&lt;key&gt;/settings</code>; <em>Settings</em> in Administration &rarr; Projects leads there), has six
+            sections: <em>General</em>, <em>Members &amp; roles</em>, <em>Server</em>, <em>Who opens the hosts</em>,
+            <em>Agent</em> and <em>MCP servers</em>. Each saves on its own. <em>Server</em>, <em>Who opens the hosts</em> and
+            <em>Agent</em> are applied to the site and to every workspace preview; MCP servers are saved one by one (see
+            <a href="#setup-mcp">MCP servers</a>).</p>
         </div>
         <figure class="shot">
           <img src="img/admin-project-settings.png" alt="The Server section of the project settings: scheduler, queues, Horizon, Reverb and Pulse" loading="lazy" width="2880" height="2500" />
-          <figcaption><strong>Project settings.</strong> The <em>Server</em> section; <em>Access</em> holds the rules for the hosts.</figcaption>
+          <figcaption><strong>Project settings.</strong> The <em>Server</em> section; <em>Who opens the hosts</em> holds the rules for the hosts.</figcaption>
         </figure>
+        <h3 id="setup-settings-general">General</h3>
+        <p>The name, the repository's address, the account it is <em>Deployed with</em> (a
+          <a href="#setup-git-service">service account</a>, or an administrator's own token on the repository's host), the
+          deploy branch, PHP and the database. The address must be on the host of the deploying account. The key is shown,
+          not edited: it never changes.</p>
+        <h3 id="setup-members">Members &amp; roles</h3>
+        <p>Every person who is not an administrator, with <em>Not on the project</em> or their role on it: PM, developer or
+          client. Administrators are listed as on every project. A role counts from the person's next click; what it opens is
+          in <a href="#roles">Roles</a>. <em>Administration → People</em> lists each person's projects with their role, and
+          a click there opens this section.</p>
         <h3>Server features</h3>
         <div class="walkthrough-grid">
           <dl><dt>Scheduler</dt><dd>A cron line runs <code>php artisan schedule:run</code> every minute as the host's own
@@ -2526,7 +2603,7 @@
           <dl><dt>HTTPS</dt><dd>Nothing to switch on: Caddy issues a certificate for every host the first time it is
             opened, the deploy site and each workspace preview alike (see <a href="#deep-dive-server">The server</a>).</dd></dl>
         </div>
-        <h3>Who can open the hosts</h3>
+        <h3>Who opens the hosts</h3>
         <p>Every address of a project is behind the Studio login: the site, its <code>/larapilot</code> dashboard and API,
           each workspace preview, any path. The visitor must be logged in to Studio and assigned to the project, in any
           role (developer, PM, client), or be an administrator; anyone else is sent to the Studio login page and comes back
@@ -2549,6 +2626,10 @@
           logs in there if needed, and comes back with a one-time token valid for two minutes. The gatekeeper swaps it
           for a pass cookie bound to that host alone, good for twelve hours; it is useless on any other host and in
           Studio.</p>
+        <h3>Agent</h3>
+        <p><em>Browser for the agent</em> gives every chat a headless Chromium signed in to the preview as the person, through
+          the same access rules. <em>Conversations in a sandbox</em> lets a conversation work in a git worktree of the
+          workspace with its own database and preview; <em>Sandboxes per person</em> caps how many each person keeps.</p>
       </section>
 
 <!-- Set up: MCP servers -->
@@ -2564,15 +2645,15 @@
           <figcaption><strong>MCP servers.</strong> Each with its URL, who gets it, its header and the answer of the last test.</figcaption>
         </figure>
         <div class="walkthrough-grid">
-          <dl><dt>Add one</dt><dd><em>Settings &rarr; MCP</em> on the project: a name (it becomes part of the tool names,
+          <dl><dt>Add one</dt><dd><em>Settings &rarr; MCP servers</em> on the project: a name (it becomes part of the tool names,
             <code>mcp__docs__search</code>), the URL of the server, and usually one header such as
             <code>Authorization: Bearer …</code>. The value is stored encrypted and never shown again; editing without
             typing a new value keeps it.</dd></dl>
-          <dl><dt>Who gets it</dt><dd>Tick the roles. A PM can have the documentation server while only administrators and
+          <dl><dt>Who gets it</dt><dd>Tick the roles, as people have them on this project. A PM can have the documentation server while only administrators and
             developers get the one that reads production errors. Clients get nothing unless you tick them.</dd></dl>
           <dl><dt>Test</dt><dd>Studio makes the <code>initialize</code> call Claude Code would make, with the header, and keeps
             the answer: <code>ok</code> with the server's name and version, a refused header, a wrong URL.</dd></dl>
-          <dl><dt>In the chat</dt><dd>Each person's chat gets the enabled servers their role may use, from the next message
+          <dl><dt>In the chat</dt><dd>Each person's chat gets the enabled servers their role on the project may use, from the next message
             on; <em>Model &amp; mode</em> lists them. Their tools ask for permission like any other tool, unless the mode
             lets them through. <em>Turn off</em> takes a server out of every chat without forgetting it.</dd></dl>
         </div>
@@ -2597,7 +2678,7 @@
 
         <h3>What works without it</h3>
         <p>Accounts are created by an administrator, who hands over the first password in person; a person who forgets
-          theirs asks an administrator, who gives them a new one from <em>Administration → Users</em> (the key icon: the
+          theirs asks an administrator, who gives them a new one from <em>Administration → People</em> (the key icon: the
           old sessions close, 2FA is removed, the new password shows once). Until email is set up, the <em>Forgot your
           password?</em> page explains exactly that instead of promising a link. Whoever holds root has
           <a href="#setup-recovery"><code>studio-recover admin</code></a> for the administrators themselves.</p>
@@ -2669,15 +2750,15 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <span class="section-label">Set up</span>
           <h2>Updates</h2>
           <p>Studio keeps itself up to date. <code>studio-update</code>, run by root, installs every new build of its channel
-            together with what it needs on the server: a new PHP, a newer Node, a package, the provider's CLI, a changed
+            together with what it needs on the server: a new PHP, a newer Node, a package, a git host's CLI, a changed
             service. The stable channel follows the release tags; beta testers follow the main branch.</p>
         </div>
 
         <figure class="shot">
-          <img src="img/admin-system.png" alt="Administration → System: installed and newest release, Check now, Force update and Update buttons, the nightly switch, the channel, the last update with its log, the git provider" loading="lazy" width="2880" height="1920" />
+          <img src="img/admin-system.png" alt="Administration → System: installed and newest release, Check now, Force update and Update buttons, the nightly switch, the channel, the last update with its log, the git hosts" loading="lazy" width="2880" height="1920" />
           <figcaption><strong>Administration → System.</strong> The installed build and the newest one, <em>Check now</em>,
             <em>Force update</em> and <em>Update to</em>, the nightly switch, the channel, the last run with its log, and the
-            git provider of the installation. While an update runs the page follows it live, through the maintenance of the
+            four git hosts. While an update runs the page follows it live, through the maintenance of the
             switch, and reloads onto the new release when it is done.</figcaption>
         </figure>
 
@@ -2723,7 +2804,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             commit) must carry a valid SSH signature by one of those keys.</li>
           <li><strong>System step, as root</strong>, from the new build: its <code>installer/requirements.env</code> names the
             PHP versions, the PHP that runs Studio and the Node major; <code>installer/lib/system.sh</code> installs what is
-            missing, refreshes Composer and Claude Code, and the provider's CLI. Nothing is removed.</li>
+            missing, refreshes Composer and Claude Code, and the CLI of the first administrator's git host. Nothing is removed.</li>
           <li><strong>Upgrade scripts</strong>, phase <em>before</em>: <code>installer/upgrades/&lt;version&gt;.sh</code> of every
             version after the installed one up to the new one, in order, as root, for what a release needs beyond packages. On
             beta, where several builds share a version, a script that changed since it ran runs again.</li>
@@ -2813,7 +2894,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
 
         <h3 id="setup-recovery">Locked out</h3>
         <p>A forgotten password or a lost 2FA device is an administrator's job: the key icon in <em>Administration →
-          Users</em> gives the person a new password, shown once, and removes their 2FA (with <a href="#setup-email">email
+          People</em> gives the person a new password, shown once, and removes their 2FA (with <a href="#setup-email">email
           set up</a>, people also get the usual <em>Forgot your password?</em> link). Administrators do the same for each
           other. What is left is the last administrator: nobody above them in Studio, and the server itself fine. The one
           key that is never in Studio is root on the server. From an SSH session:</p>
@@ -2850,6 +2931,64 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           too if beta servers check signatures, and put the allowed signers, in <code>ssh-keygen</code>'s allowed-signers
           format, in <code>/etc/studio/update-signers</code> on each server. What a release needs on the server goes in
           <code>installer/requirements.env</code>, or in an upgrade script (<code>installer/upgrades/README.md</code>).</p>
+      </section>
+
+<!-- Work: home -->
+      <section class="doc-section" id="work-home">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>Home &amp; the menu</h2>
+          <p>Studio opens on <em>Home</em>: what waits for you now, across every project and every git account.</p>
+        </div>
+        <div class="walkthrough-grid">
+          <dl><dt>Waiting for you</dt><dd>Your conversations that ask a question or a permission, or failed. Below them, those
+            finished since you last opened them, and those working now. A click opens the conversation.</dd></dl>
+          <dl><dt>Needs attention</dt><dd>Your workspaces that failed, and the sites of your projects that failed.</dd></dl>
+          <dl><dt>Projects</dt><dd>Yours, the ones you worked on last first, each with its group and your role there.</dd></dl>
+          <dl><dt>On your git hosts</dt><dd>A card per git account, read after the page is drawn so a slow host never holds it:
+            pull requests asking for your review, your open ones, issues assigned to you. <em>Open Git</em> goes to
+            <a href="#git">Tools → Git</a>.</dd></dl>
+        </div>
+        <p>A new person sees <em>Get started</em> instead: add a git account, connect Claude, get on a project. An
+          administrator creates the first project; everyone else is put on theirs.</p>
+        <h3>The menu</h3>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Group</th><th>Entries</th><th>Who</th></tr></thead>
+            <tbody>
+              <tr><td>—</td><td><em>Home</em>, <em>Projects</em></td><td>Everyone</td></tr>
+              <tr><td><strong>Tools</strong></td><td><em>Git</em>, <em>SSH terminal</em>, <em>Password manager</em>, <em>Drive</em></td><td>Everyone; the SSH terminal as <a href="#tools-ssh">its section</a> says</td></tr>
+              <tr><td><strong>Infrastructure</strong></td><td>A folding group with the connectors that are on</td><td>Administrators</td></tr>
+              <tr><td><strong>Administration</strong></td><td>A folding group: <em>Projects</em>, <em>People</em>, <em>Connectors</em>, <em>System</em></td><td>Administrators</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The user menu has <em>My accounts</em> (<a href="#setup-connections">Settings → Accounts</a>), <em>Settings</em> and
+          <em>Log out</em>.</p>
+      </section>
+
+<!-- Work: the project's tabs -->
+      <section class="doc-section" id="work-project">
+        <div class="section-header">
+          <span class="section-label">Work</span>
+          <h2>The project's tabs</h2>
+          <p>A project opens on its workspace; the tabs in its header lead to the rest of it. A tab shows only to who has
+            something there. On a phone they fold into a menu.</p>
+        </div>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Tab</th><th>What is there</th><th>Who</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Workspace</strong></td><td>The conversations, the chat and the right pane: preview, changes, terminal, files. The sections below.</td><td>Everyone on the project; clients get the preview</td></tr>
+              <tr><td><strong>Repository</strong></td><td>The pull requests, issues, branches, pipelines (Actions on GitHub) and releases of the project's repository, read and run with your own git account on its host, the one your workspace commits with. You may do here what the host lets that account do.</td><td>The roles that chat: PMs, developers, administrators</td></tr>
+              <tr><td><strong>Infrastructure</strong></td><td>The servers, zones, apps and services attached to the project for your role; see <a href="#infra-projects">Attached to projects</a>.</td><td>Who has something there for their role; administrators</td></tr>
+              <tr><td><strong>Access</strong></td><td>The passwords, SSH connections and drive folders tied to the project that your role opens, each opening in its own tool.</td><td>Everyone on the project</td></tr>
+              <tr><td><strong>Settings</strong></td><td>General, members and roles, server, who opens the hosts, agent, MCP servers; see <a href="#setup-settings">Project settings</a>.</td><td>Administrators</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Without an account on the repository's host, the <em>Repository</em> tab says so and leads to <em>Settings →
+          Accounts → Git</em>.</p>
       </section>
 
 <!-- Work: chat -->
@@ -2941,8 +3080,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             </tbody>
           </table>
         </div>
-        <p>Which modes a role may pick is <code>modes_by_role</code> in <code>config/studio.php</code>; the role's starting
-          mode is <code>permission_mode</code>. Bypass mode, the one with no review at all, is not offered and is disabled in
+        <p>Which modes a person may pick follows their role on the project: <code>modes_by_role</code> in
+          <code>config/studio.php</code>; the role's starting mode is <code>permission_mode</code>. Bypass mode, the one with no review at all, is not offered and is disabled in
           every workspace by the managed settings: autopilot is as far as it goes.</p>
       </section>
 
@@ -2984,7 +3123,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </div>
         <div class="walkthrough-grid">
           <dl><dt>Preview</dt><dd>The Laravel app of your workspace on your branch, served by the server at
-            <code>&lt;you&gt;-&lt;project&gt;.&lt;domain&gt;</code>. <em>Open</em> puts it in a tab, which always works; inside
+            <code>&lt;you&gt;-&lt;key&gt;.&lt;domain&gt;</code>. <em>Open</em> puts it in a tab, which always works; inside
             the pane the app must not forbid framing (<code>X-Frame-Options</code>). While the workspace is stopped, and for
             clients, the pane shows the project site.</dd></dl>
           <dl><dt>Changes</dt><dd>Branch, <code>git status</code>, the stat and the diff of the working tree, read through
@@ -3163,12 +3302,14 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="section-header">
           <span class="section-label">Work</span>
           <h2>Clients</h2>
-          <p>A client account sees the projects it belongs to and their staging site as preview, with its Larapilot
-            dashboard behind the same login. No chat, no workspace, no terminal or files, no cost.</p>
+          <p>A client on a project sees it and its staging site as preview, with its Larapilot dashboard behind the same
+            login, and what is shared with the project's clients: passwords, folders, infrastructure. No chat, no workspace,
+            no repository, terminal or files, no cost.</p>
         </div>
         <p>It is the role for the person who pays: they follow what is in review and what shipped without opening another
-          tool, and without an email thread. If a client should also talk to the project, give them the PM role; from then on
-          they have a workspace and a Claude plan of their own.</p>
+          tool, and without an email thread. If a client should also talk to the project, give them the PM role on it in
+          <a href="#setup-members">Settings → Members &amp; roles</a>; from then on they have a workspace there and need a
+          Claude plan of their own. On their other projects they stay what they were.</p>
       </section>
 
 <!-- Tools: SSH -->
@@ -3176,17 +3317,19 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="section-header">
           <span class="section-label">Tools</span>
           <h2>SSH terminal</h2>
-          <p><em>Tools → SSH terminal</em>, for administrators and developers: real terminals in the browser to any server,
-            opened from Studio's server.</p>
+          <p><em>Tools → SSH terminal</em>, for administrators, developers by default and whoever is a developer on at least
+            one project: real terminals in the browser to any server, opened from Studio's server.</p>
         </div>
         <div class="walkthrough-grid">
           <dl><dt>Connections</dt><dd>Host, port, user and a key or a password, saved per person; favourites stay on top. A
             click opens a terminal; open as many as you like, in tabs or all side by side.</dd></dl>
           <dl><dt>Keys</dt><dd>Generate Ed25519 or RSA 4096, or import yours (OpenSSH, PEM, PuTTY, with its passphrase, which is
-            not kept). The page shows the public key and the command that adds it to <code>authorized_keys</code>.</dd></dl>
+            not kept). The page shows the public key and the command that adds it to <code>authorized_keys</code>. The same keys
+            are in <a href="#setup-ssh-keys">Settings → Accounts → SSH keys</a>.</dd></dl>
           <dl><dt>Host keys</dt><dd>The first connection shows the server's fingerprint and asks; from then on a different key
             is refused.</dd></dl>
-          <dl><dt>Shared with a project</dt><dd>Tie a connection to a project and its administrators and developers find host,
+          <dl><dt>Shared with a project</dt><dd>Tie a connection to a project and the administrators and the project's
+            developers find host,
             port and user ready, tagged with your name. Each connects with a key or password of their own: credentials are
             never shared.</dd></dl>
         </div>
@@ -3207,7 +3350,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <li><strong>Items</strong>: title, URL, username, password, notes and a two-factor secret (base32 or
             <code>otpauth://</code>), for which Studio shows the current code. A generator makes passwords of any length.</li>
           <li><strong>Folders</strong>: yours, nested, to put your own items in order.</li>
-          <li><strong>Projects</strong>: tie an item to a project and tick who of its members sees it: clients, PMs,
+          <li><strong>Projects</strong>: tie an item to a project and tick which roles on that project see it: clients, PMs,
             developers. Administrators see every project item.</li>
           <li><strong>People</strong>: share an item with a single person, to view or to edit. The sharing dialog shows who
             sees it and why.</li>
@@ -3228,8 +3371,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <li><strong>Files</strong>: upload with the button or by dropping them on the page, up to
             <code>STUDIO_DRIVE_MAX_UPLOAD_MB</code> (100) each; rename, move, remove, download; images and PDFs open in the
             browser.</li>
-          <li><strong>Access</strong>: tie a folder to a project and choose, for clients, PMs and developers, no access, view,
-            or view and edit. It applies to everything inside, down to a folder tied to another project. The owner of a top
+          <li><strong>Access</strong>: tie a folder to a project and choose, for its clients, PMs and developers (their role on
+            that project), no access, view, or view and edit. It applies to everything inside, down to a folder tied to another project. The owner of a top
             folder and the administrators always read and write; everyone but clients creates folders.</li>
           <li><strong>Into the workspace</strong>: from a folder tied to a project, <em>Copy</em> or <em>Move into the
             workspace</em> sends a file, a selection or the whole folder into your workspace of that project, where you
@@ -3242,20 +3385,20 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="section-header">
           <span class="section-label">Tools</span>
           <h2>Git hosting</h2>
-          <p><em>Tools → GitHub</em> (or GitLab, Bitbucket, Azure DevOps): what waits for you on the git hosts you work
-            with, and the actions to clear it, with your own accounts.</p>
+          <p><em>Tools → Git</em>: what waits for you on the git hosts you work with, and the actions to clear it, with your
+            own accounts on any of them.</p>
         </div>
         <ol>
-          <li><strong>Which hosts.</strong> The installation's provider is in the menu from the start. <em>Administration →
-            Connectors → Git hosting</em> turns the others on (or that one off) for everyone; a host that is off is gone
-            from the menu and keeps everyone's accounts.</li>
-          <li><strong>Your accounts.</strong> On the host's page, <em>My accounts → Add an account</em>: a name
+          <li><strong>Which hosts.</strong> GitHub, GitLab (gitlab.com or self-managed), Bitbucket Cloud and Azure DevOps: all
+            four, for everyone. There is nothing to turn on.</li>
+          <li><strong>Your accounts.</strong> In <em>Settings → Accounts → Git</em> (<em>My accounts</em> on the Git page leads
+            there), <em>Add an account</em>: the host, a name
             (<em>Personal</em>, <em>Work</em>, <em>Client X</em>), the token described below and, if you want, the name
             and email your commits carry with that account. Left empty, Studio takes them from the provider (your primary
             or commit email, or the provider's noreply address) and otherwise from your Studio profile. Add as many accounts
-            as you work with, on as many hosts; only you see them. The token you saved in <em>Settings →
-            Connections</em> before this release is already there as your first account.</li>
-          <li><strong>Work.</strong> Pick the account at the top. <em>Overview</em> lists what waits for you: pull requests
+            as you work with, on as many hosts; only you see them. Check, edit and remove them there too.</li>
+          <li><strong>Work.</strong> Pick the account at the top: the picker holds all your accounts, on every host, and
+            moves between them. <em>Overview</em> lists what waits for you: pull requests
             asking for your review, your open ones, issues assigned to you. The other tabs: pull requests and issues across
             every repository (whose: waiting for my review, opened by me, assigned to me…; which state), notifications or
             to-dos, and the repositories, each with its pull requests, issues, branches, pipelines and releases.</li>
@@ -3271,7 +3414,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             (start one on a branch, read the jobs, retry, cancel); releases (with notes, publish a draft, delete).</dd></dl>
         </div>
         <p>Titles open the page on the provider in a new tab. What Studio reads stays fresh for two minutes; whatever you do
-          from the page clears it. Every action is written to Studio's log with who did it and with which account.</p>
+          from the page clears it. Every action is written to Studio's log with who did it and with which account. A
+          project's own repository is also in its <a href="#work-project">Repository</a> tab.</p>
       </section>
 
       <section class="doc-section" id="git-github">
@@ -3355,10 +3499,11 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             security findings, without opening seven consoles.</p>
         </div>
         <div class="walkthrough-grid">
-          <dl><dt>For administrators</dt><dd>Connectors exist only for administrators. PMs, developers and clients never see
-            the menu, the pages or the accounts, whatever their projects.</dd></dl>
+          <dl><dt>For administrators</dt><dd>Connector pages exist only for administrators. PMs, developers and clients never
+            see the menu, the pages or the accounts; they see only what an administrator
+            <a href="#infra-projects">attached to their project</a>, in its <em>Infrastructure</em> tab.</dd></dl>
           <dl><dt>On or off</dt><dd>A connector is off until an administrator turns it on. Only the ones that are on appear in
-            the menu, under <em>Infrastructure</em>, between <em>Studio</em> and <em>Tools</em>.</dd></dl>
+            the menu, in the folding <em>Infrastructure</em> group after <em>Tools</em>.</dd></dl>
           <dl><dt>Many accounts</dt><dd>Each connector holds any number of accounts: several AWS accounts, a DigitalOcean team
             per client, a Hetzner project each, one Cipi server each, several Boogle or Hackly instances.</dd></dl>
           <dl><dt>Credentials</dt><dd>Checked against the provider before they are saved, stored encrypted with
@@ -3367,11 +3512,14 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
 
         <h3 id="infra-enable">Turn a connector on</h3>
         <ol>
-          <li><em>Administration → Connectors</em>. Each card says what the connector drives and how many accounts it has.</li>
+          <li><em>Administration → Connectors</em>. Each card says what the connector drives, how many accounts it has and how
+            many of its things are attached to projects. Below the cards, <em>Git hosting</em> holds the team's git
+            <a href="#setup-git-service">service accounts</a>.</li>
           <li>Flip the switch. The connector shows in the menu right away; <em>Open</em> (or <em>Add an account</em> when it has
             none) takes you to its page.</li>
-          <li>Turning it off removes it from the menu and closes its pages at the next click. Its accounts stay, ready for when
-            it is turned on again; delete them from the connector page if they should go.</li>
+          <li>Turning it off removes it from the menu and closes its pages at the next click. Its accounts, and what is attached
+            to projects, stay, ready for when it is turned on again; delete them from the connector page if they should
+            go.</li>
         </ol>
 
         <h3 id="infra-accounts">Accounts</h3>
@@ -3407,6 +3555,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             actions that make sense in its state show (no <em>Start</em> on a running server). Buttons on the row itself open
             what lives inside it, such as the DNS records of a zone or the aliases of a Cipi app; the arrow at the top left
             goes back.</li>
+          <li><strong>Attach to a project</strong>: the <em>…</em> menu of a row also has <em>Attach to a project…</em>, and
+            a badge on the row names each project it is attached to. See <a href="#infra-projects">Attached to
+            projects</a>.</li>
           <li><strong>Confirmations</strong>: anything that stops, deletes or overwrites asks first, in words that say what
             will happen. Actions with a form ask when the form is sent.</li>
           <li><strong>Results</strong>: what an action hands back (a new root password, a generated private key, a database
@@ -3424,7 +3575,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           narrowest token that does its job (read only where nobody needs to act), and keep tokens with an expiry where the
           provider offers one. Every action is written to Studio's log, <code>/opt/studio/shared/storage/logs/laravel.log</code>
           on the server, as an <code>infrastructure</code> line with the person, the connector, the account, the tab, the
-          action and the row: <code>grep '"infrastructure"' laravel.log</code>.</div>
+          action and the row, and the project resource when it ran from a project's tab:
+          <code>grep '"infrastructure"' laravel.log</code>.</div>
 
         <h3 id="infra-troubleshooting">When something does not work</h3>
         <div class="table-card">
@@ -3439,6 +3591,42 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
               <tr><td>An empty list where you expect things</td><td>Another account, region or filter</td><td>Check the account at the top and the filters; AWS lists one region at a time</td></tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+<!-- Infrastructure: attached to projects -->
+      <section class="doc-section" id="infra-projects">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Attached to projects</h2>
+          <p>The members of a project never see a connector's page. An administrator hands them what belongs to their
+            project instead: the Droplet it runs on, its Cloudflare zone, its Cipi app, its Boogle project, with the actions
+            their role may run.</p>
+        </div>
+        <ol>
+          <li><strong>Attach.</strong> On the connector's page, find the row and choose <em>Attach to a project…</em> in its
+            <em>…</em> menu. The filters and the region the list was read with are kept, so the project reads it the same
+            way.</li>
+          <li><strong>The dialog.</strong> The project; the name shown in the project; <em>Who sees it</em> (PM, Developer,
+            Client); <em>Who acts on it</em>; and <em>What they may do</em>: the row's own actions, plus the row and list
+            actions of the lists it opens (the DNS records of a zone, the exceptions of a project), each with its list and
+            marked when it is destructive. PMs and developers see it and developers act on it at first; no action is ticked
+            until you tick it.</li>
+          <li><strong>The badge.</strong> The row then shows a badge for each project it is attached to. A click on the badge
+            opens the dialog again: change it, or <em>Detach</em>. Nothing changes at the provider either way.</li>
+        </ol>
+        <div class="walkthrough-grid">
+          <dl><dt>What members see</dt><dd>The project's <em>Infrastructure</em> tab lists what is attached for their role.
+            Each opens as that row alone, read with the administrators' account, and the lists it opens. They never see the
+            account, its token or any other row.</dd></dl>
+          <dl><dt>What they may do</dt><dd>Only the actions handed to their role, and only when their role acts on it (a role
+            that acts on it also sees it). List actions of the resource's own list, such as creating another Droplet, are
+            never handed over.</dd></dl>
+          <dl><dt>From the project</dt><dd>Administrators see everything attached in the tab, and change who sees and does
+            what, or detach it, from there too. The tab's <em>Attach</em> menu leads to the connectors' pages.</dd></dl>
+          <dl><dt>Logged</dt><dd>Every action is written to Studio's log, as on a connector's page, with who did it and the
+            project resource. <em>Administration → Connectors</em> shows how many things each connector has
+            attached.</dd></dl>
         </div>
       </section>
 
@@ -3751,8 +3939,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
    └──── Reverb broadcasts ───────┴──── POST /api/bridge/events ──┘      <span class="comment">per-workspace callback token</span>
 
 Studio ──sudo──▶ studio-admin     <span class="comment">create sites and workspaces, deploy, start, stop (JSON in, JSON out)</span>
-Studio ──HTTPS──▶ &lt;slug&gt;.&lt;domain&gt;  <span class="comment">GET /larapilot/api/specs, /metrics</span>
-Git provider ──webhook──▶ Studio  <span class="comment">push on the deploy branch → deploy the site</span>
+Studio ──HTTPS──▶ &lt;key&gt;.&lt;domain&gt;   <span class="comment">GET /larapilot/api/specs, /metrics</span>
+Git host ──webhook──▶ Studio      <span class="comment">push on the deploy branch → deploy the site</span>
 studio-update (root) ──▶ /opt/studio <span class="comment">the channel's newest build: system step, build, migrate, switch, or roll back</span>
 Caddy  ──ask──▶ Studio            <span class="comment">may I issue a certificate for this host?</span>
 Caddy  ──forward_auth──▶ Studio   <span class="comment">may this visitor open this site or preview? (projects with access rules)</span>
@@ -3772,6 +3960,9 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
             <code>Bitbucket</code>, <code>AzureDevOps</code> behind one <code>GitProvider</code>: who a token belongs to, where it
             may create repositories, the repository itself, the push webhook and how its deliveries are verified, the git user
             name and the variables the agent's CLI and Larapilot read.</p></div>
+          <div class="layer-card"><strong>App\Models\ProjectMember</strong>, <strong>ProjectResource</strong><p>A person's
+            role on a project; a connector's row attached to a project, with the roles that see it, the roles that act on it
+            and the actions handed over.</p></div>
           <div class="layer-card"><strong>App\Server\Updates</strong><p>Reads the updater's state for
             <em>Administration → System</em> and asks the helper to check, to start an update (forced or not), to switch the
             channel or the nightly timer.</p></div>
@@ -3861,12 +4052,12 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
           <table>
             <thead><tr><th>Command</th><th>Does</th></tr></thead>
             <tbody>
-              <tr><td><code>project-bootstrap &lt;slug&gt;</code></td><td>For a repository Studio just created: the latest Laravel, Laravel Boost and Larapilot, installed, committed and pushed.</td></tr>
-              <tr><td><code>project-create &lt;slug&gt;</code></td><td>Linux user, clone with the deploy token, database, <code>.env</code>, build with dev dependencies, migrations, PHP-FPM pool, Caddy host, the services of the project settings (cron, queue workers or Horizon, Reverb, Pulse) and the access check when the project has rules. Returns the Larapilot API token and the commit.</td></tr>
-              <tr><td><code>project-deploy &lt;slug&gt;</code></td><td>Fetch, reset to the branch, build, migrate, restart the services. Returns the commit.</td></tr>
+              <tr><td><code>project-bootstrap &lt;key&gt;</code></td><td>For a repository Studio just created: the latest Laravel, Laravel Boost and Larapilot, installed, committed and pushed.</td></tr>
+              <tr><td><code>project-create &lt;key&gt;</code></td><td>Linux user, clone with the deploy token, database, <code>.env</code>, build with dev dependencies, migrations, PHP-FPM pool, Caddy host, the services of the project settings (cron, queue workers or Horizon, Reverb, Pulse) and the access check when the project has rules. Returns the Larapilot API token and the commit.</td></tr>
+              <tr><td><code>project-deploy &lt;key&gt;</code></td><td>Fetch, reset to the branch, build, migrate, restart the services. Returns the commit.</td></tr>
               <tr><td><code>project-configure</code>, <code>workspace-configure</code></td><td>Apply changed project settings to the site or to one preview: services, cron, Caddy host and access check.</td></tr>
-              <tr><td><code>project-delete &lt;slug&gt;</code></td><td>Removes services, host, pool, database, user and files.</td></tr>
-              <tr><td><code>workspace-create &lt;user&gt; &lt;slug&gt;</code></td><td>Linux user <code>ws-&lt;user&gt;</code> if new, the env file with the person's tokens, clone with their token, database copied from the site, <code>.env</code>, build, custom skills registered, pool, Caddy host, the bridge as a systemd service.</td></tr>
+              <tr><td><code>project-delete &lt;key&gt;</code></td><td>Removes services, host, pool, database, user and files.</td></tr>
+              <tr><td><code>workspace-create &lt;user&gt; &lt;key&gt;</code></td><td>Linux user <code>ws-&lt;user&gt;</code> if new, the env file with the person's tokens, clone with their token, database copied from the site, <code>.env</code>, build, custom skills registered, pool, Caddy host, the bridge as a systemd service.</td></tr>
               <tr><td><code>workspace-env</code></td><td>Rewrites the tokens (the git token and user name, the provider's variables for the agent, the Claude credential) and restarts the bridge.</td></tr>
               <tr><td><code>workspace-start</code>, <code>-stop</code>, <code>-status</code>, <code>-delete</code></td><td>What they say. Stop also kills the person's processes in that directory.</td></tr>
               <tr><td><code>update-check</code>, <code>update-start [force]</code>, <code>update-channel</code>, <code>update-auto</code></td><td>For the System page: ask <code>studio-update</code> what the channel would install, start <code>studio-update.service</code> or <code>studio-update-force.service</code> (their own units, so they outlive the queue worker they restart), switch the channel and the nightly timer.</td></tr>
@@ -3882,8 +4073,8 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
       <section class="deep-dive-sub" id="deep-dive-security">
         <h3>Security</h3>
         <ul>
-          <li><strong>Accounts</strong>: invite-only; email and password with two-factor and passkeys; roles enforced by
-            policies on every page and action.</li>
+          <li><strong>Accounts</strong>: invite-only; email and password with two-factor and passkeys; roles, read on each
+            project, enforced by policies on every page and action.</li>
           <li><strong>Previews and sites</strong>: served over HTTPS by Caddy. A preview runs with <code>APP_DEBUG=true</code>:
             every project host is behind the Studio login and the project assignment, narrowed by the
             <a href="#setup-settings">access rules</a> (address lists, branch overrides), which Caddy checks before the app
@@ -3893,7 +4084,7 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
             callbacks carry a second token per workspace that Studio stores hashed and matches on every request.</li>
           <li><strong>Root</strong>: only <code>studio-admin</code>, through sudo, for named commands with validated arguments.
             Studio never runs shell commands of its own.</li>
-          <li><strong>Secrets</strong>: git provider and Claude tokens, bridge and callback tokens, webhook secrets, MCP server headers
+          <li><strong>Secrets</strong>: git and Claude tokens, bridge and callback tokens, webhook secrets, MCP server headers
             and the Larapilot API token are encrypted at rest with the app key. On the server, each person's tokens sit in a root-owned file
             readable by their Linux user only, and git gets the token from the environment through an askpass helper, never
             from a file.</li>
@@ -3921,7 +4112,7 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
             <tbody>
               <tr><td><code>STUDIO_DOMAIN</code></td><td>The domain every host hangs under</td></tr>
               <tr><td><code>STUDIO_WORKSPACE_DRIVER</code></td><td><code>native</code> on a server, <code>local</code> while developing Studio</td></tr>
-              <tr><td><code>STUDIO_GIT_PROVIDER</code>, <code>STUDIO_GIT_URL</code></td><td><code>github</code>, <code>gitlab</code>, <code>bitbucket</code> or <code>azure</code>; the address of a self-managed GitLab, or <code>https://dev.azure.com/&lt;organization&gt;</code> (required for Azure DevOps). Change them only with <code>php artisan studio:git-provider</code>, while there are no projects</td></tr>
+              <tr><td><code>STUDIO_GIT_PROVIDER</code>, <code>STUDIO_GIT_URL</code></td><td>Only the installer's: the host of the first administrator's token (<code>github</code>, <code>gitlab</code>, <code>bitbucket</code> or <code>azure</code>, with the address of a self-managed GitLab or <code>https://dev.azure.com/&lt;organization&gt;</code>) and the CLI it preinstalls. Every host works whatever they say</td></tr>
               <tr><td><code>STUDIO_PHP_VERSIONS</code></td><td>The PHP versions a project can pick, kept by the installer and the updater in step with what is installed (<code>8.3,8.4,8.5</code>)</td></tr>
               <tr><td><code>STUDIO_UPDATE_STATE</code>, <code>STUDIO_UPDATE_REPOSITORY</code></td><td>Where the updater leaves its state (<code>/var/lib/studio-update/state.json</code>); the repository the release links point at</td></tr>
               <tr><td><code>STUDIO_HELPER</code>, <code>STUDIO_HELPER_SUDO</code>, <code>STUDIO_HELPER_TIMEOUT</code></td><td>Path of <code>studio-admin</code>, whether to go through sudo, seconds a command may take (1200)</td></tr>
@@ -3967,7 +4158,7 @@ Studio ──HTTPS──▶ MCP servers     <span class="comment">the Test butto
         </div>
         <p>The bridge drives the <code>claude</code> on your machine with your login. Create a project in Administration, add
           yourself, open it: with the <code>local</code> driver the workspace is running at once and the chat talks to that
-          bridge, no git provider or Claude connection needed. <code>php artisan db:seed --class=DemoSeeder</code> gives the agency of
+          bridge, no git or Claude account needed. <code>php artisan db:seed --class=DemoSeeder</code> gives the agency of
           the screenshots, password <code>password</code> for everyone.</p>
         <div class="install-commands">
           <div class="install-commands-header">Checks</div>

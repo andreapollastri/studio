@@ -366,7 +366,7 @@
                                 <tr wire:key="vault-audience-{{ $entry['user']->uuid }}">
                                     <td class="px-3 py-1.5">
                                         <div>{{ $entry['user']->name }}</div>
-                                        <div class="text-xs text-zinc-500">{{ $entry['user']->role->label() }}</div>
+                                        <div class="text-xs text-zinc-500">{{ ($entry['role'] ?? $entry['user']->role)?->label() }}</div>
                                     </td>
                                     <td class="px-3 py-1.5 text-xs text-zinc-500">
                                         {{ match ($entry['via']) { 'owner' => __('owner'), 'direct' => __('shared directly'), 'admin' => __('administrator'), default => __('project role') } }}

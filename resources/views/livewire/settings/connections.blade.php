@@ -1,75 +1,23 @@
 <section class="w-full">
     @include('partials.settings-heading')
 
-    <x-pages::settings.layout :heading="__('Connections')" :subheading="__('Your workspaces clone and push as you, and run Claude on your own plans and keys.')">
+    <x-pages::settings.layout :heading="__('Accounts')" :subheading="__('What you bring to your work: your Claude plans and keys, your accounts on the git hosts, your SSH keys. Your workspaces clone and push as you, and run Claude on your own plans.')">
         <div class="my-6 w-full space-y-10">
 
-            {{-- Git accounts: added on each git host, under Tools --}}
-            <div class="space-y-4">
-                <div class="flex flex-wrap items-center gap-3">
-                    <flux:heading size="lg">{{ __('Git accounts') }}</flux:heading>
-                    <flux:badge size="sm" :color="$gitAccounts->isNotEmpty() ? 'green' : 'yellow'">{{ trans_choice(':count account|:count accounts', $gitAccounts->count()) }}</flux:badge>
-                    @if ($forges !== [])
-                        <flux:dropdown position="bottom" align="end" class="ms-auto">
-                            <flux:button size="sm" icon="plus">{{ __('Add an account') }}</flux:button>
-                            <flux:menu>
-                                @foreach ($forges as $forge)
-                                    <flux:menu.item :icon="$forge->icon()" :href="route('git', $forge->key())" wire:navigate>{{ $forge->label() }}</flux:menu.item>
-                                @endforeach
-                            </flux:menu>
-                        </flux:dropdown>
-                    @endif
-                </div>
-                <flux:text>
-                    {{ __('As many as you work with: your personal GitHub, the company’s Azure DevOps, a client’s GitLab. Each one keeps its token and the name and email its commits carry; a project uses the account on the host of its repository, the one of its group, or the one you choose for it.') }}
-                </flux:text>
+            <flux:radio.group wire:model.live="tab" variant="segmented" class="max-sm:w-full">
+                <flux:radio value="claude" label="Claude" icon="sparkles" />
+                <flux:radio value="git" :label="__('Git')" icon="code-bracket-square" />
+                <flux:radio value="ssh" :label="__('SSH keys')" icon="key" />
+            </flux:radio.group>
 
-                @if ($gitAccounts->isEmpty())
-                    <div class="rounded-xl border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
-                        <flux:icon.code-bracket-square class="mx-auto size-8 text-zinc-400" />
-                        <flux:text class="mt-2">{{ __('No git account yet: add the one of the projects you work on.') }}</flux:text>
-                    </div>
-                @else
-                    <div class="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-700">
-                        @foreach ($gitAccounts as $account)
-                            @php($forge = \App\Infrastructure\Git\Forges::make($account->connector))
-                            @php($used = $gitUsage[$account->id] ?? null)
-                            <div class="flex flex-wrap items-center gap-3 px-4 py-3" wire:key="git-{{ $account->uuid }}">
-                                <flux:icon :name="$forge->icon()" class="size-5 shrink-0 text-zinc-400" />
-                                <div class="min-w-0 flex-1">
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <span class="font-medium">{{ $account->name }}</span>
-                                        <flux:badge size="sm">{{ $account->host ?: $forge->label() }}</flux:badge>
-                                        @unless ($account->isHealthy())
-                                            <flux:badge size="sm" color="red" icon="exclamation-triangle">{{ __('check the token') }}</flux:badge>
-                                        @endunless
-                                    </div>
-                                    <div class="truncate font-mono text-xs text-zinc-500">
-                                        {{ $account->gitCredentials()['name'] }} &lt;{{ $account->gitCredentials()['email'] }}&gt;
-                                        @if ($account->login)<span class="font-sans"> · {{ '@'.$account->login }}</span>@endif
-                                    </div>
-                                    @if ($used)
-                                        <div class="text-xs text-zinc-500">
-                                            {{ collect([
-                                                $used['groups'] ? __('default of :groups', ['groups' => implode(', ', $used['groups'])]) : null,
-                                                $used['projects'] ? trans_choice('chosen for :count project|chosen for :count projects', $used['projects']) : null,
-                                            ])->filter()->implode(' · ') }}
-                                        </div>
-                                    @endif
-                                </div>
-                                <flux:button size="sm" variant="ghost" icon:trailing="arrow-right" :href="route('git', $account->connector)" wire:navigate>{{ __('Manage') }}</flux:button>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-
+            @if ($tab === 'git')
+                <livewire:settings.git-accounts />
                 @if ($user->handle)
                     <flux:text class="text-xs">{{ __('Your previews live at :host', ['host' => $user->handle.'-<project>.'.config('studio.domain')]) }}</flux:text>
                 @endif
-            </div>
-
-            <flux:separator />
-
+            @elseif ($tab === 'ssh')
+                <livewire:settings.ssh-keys />
+            @else
             {{-- Claude accounts --}}
             @php($onServer = \App\Claude\ClaudeLogin::onServer())
             <div class="space-y-4" x-data="claudeLogin" @if ($onServer && $claudeAccounts->contains(fn ($a) => $a->isSubscription())) wire:init="refreshSubscriptions" @endif>
@@ -211,6 +159,7 @@
                     </div>
                 </flux:modal>
             </div>
+            @endif
         </div>
     </x-pages::settings.layout>
 </section>

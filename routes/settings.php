@@ -7,7 +7,9 @@ Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
 
     Route::livewire('settings/profile', 'pages::settings.profile')->name('profile.edit');
-    Route::get('settings/connections', Connections::class)->name('connections.edit');
+    // Claude, git and SSH: what a person brings; the old address still leads there.
+    Route::get('settings/accounts', Connections::class)->name('connections.edit');
+    Route::redirect('settings/connections', 'settings/accounts');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

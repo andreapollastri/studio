@@ -288,7 +288,7 @@
                                 @forelse ($this->audience as $member)
                                     <tr wire:key="ssh-audience-{{ $member['user']->uuid }}">
                                         <td class="px-3 py-1.5">{{ $member['user']->name }}</td>
-                                        <td class="px-3 py-1.5 text-zinc-500">{{ $member['user']->role->label() }}</td>
+                                        <td class="px-3 py-1.5 text-zinc-500">{{ ($member['role'] ?? $member['user']->role)?->label() }}</td>
                                         <td class="px-3 py-1.5 text-end">
                                             @if ($member['has_credential'])
                                                 <flux:badge size="sm" color="green">{{ __('ready') }}</flux:badge>

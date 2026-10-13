@@ -5,17 +5,13 @@ namespace App\Livewire\Admin;
 use App\Enums\SiteStatus;
 use App\Enums\UserRole;
 use App\Git\GitAccount;
-use App\Git\Providers\GitProvider;
-use App\Jobs\ConfigureProjectSite;
 use App\Jobs\DeployProjectSite;
 use App\Jobs\DestroyProjectSite;
 use App\Jobs\ProvisionProjectSite;
-use App\Mcp\McpProbe;
+use App\Livewire\Projects\Settings;
 use App\Models\ConnectorAccount;
 use App\Models\Project;
-use App\Models\ProjectMcpServer;
 use App\Models\User;
-use App\Server\IpMatcher;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
@@ -28,17 +24,19 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 use RuntimeException;
 
+/**
+ * Every project of the installation, for the administrators: create one (from a
+ * repository on any git host, or a new repository with Laravel, Boost and
+ * Larapilot in it), deploy its site, delete it. Its settings, members and roles
+ * are on the project's own Settings page.
+ */
 #[Layout('layouts::app')]
 #[Title('Projects · Administration')]
 class Projects extends Component
 {
     use AuthorizesRequests;
 
-    public ?int $editingId = null;
-
     public string $name = '';
-
-    public string $slug = '';
 
     public string $repo_url = '';
 
@@ -48,12 +46,13 @@ class Projects extends Component
 
     public string $db_engine = 'mariadb';
 
-    /** @var list<string> uuids of the people on the project */
-    public array $members = [];
+    /** @var array<string, string> user uuid => '' (not on it) | pm | dev | client */
+    public array $roles = [];
 
     /**
-     * uuid of the administrator's git account the repository is created or imported with, on
-     * any git host that is on: it registers the push webhook and deploys the site.
+     * uuid of the git account the repository is created or imported with, on any git
+     * host: a shared service account, or one of the administrator's own. It registers
+     * the push webhook and deploys the site.
      */
     public string $git_account = '';
 
@@ -67,65 +66,13 @@ class Projects extends Component
     public bool $new_private = true;
 
     /**
-     * Where the administrator's token may create repositories: organizations, groups, workspaces or projects.
+     * Where the chosen account may create repositories: organizations, groups, workspaces or projects.
      *
      * @var list<array{value: string, label: string}>
      */
     public array $owners = [];
 
-    // ---- Project settings: server features and who may open the hosts
-
-    public ?int $settingsId = null;
-
-    /** Which part of the settings dialog is open: server, access or mcp. */
-    public string $settingsTab = 'server';
-
-    public bool $scheduler = true;
-
-    public string $queues = 'default';
-
-    public bool $reverb = false;
-
-    public bool $horizon = false;
-
-    public bool $pulse = false;
-
-    /** IANA name: APP_TIMEZONE of the site and the previews, TZ of the workspaces. */
-    public string $timezone = 'UTC';
-
-    // Every host wants a Studio login with access to the project; these lists narrow it to addresses.
-    public string $site_ips = '';
-
-    public string $previews_ips = '';
-
-    /** @var list<array{branch: string, ips: string}> */
-    public array $branch_rules = [];
-
-    // ---- What the agent gets: its browser and sandboxed conversations
-
-    public bool $agent_browser = true;
-
-    public bool $agent_sandboxes = true;
-
-    public int $agent_sandbox_limit = 3;
-
-    // ---- MCP servers in the chats of the project
-
-    public ?int $mcp_id = null;
-
-    public string $mcp_name = '';
-
-    public string $mcp_url = '';
-
-    public string $mcp_header_name = 'Authorization';
-
-    /** Empty while editing means "keep the stored value". */
-    public string $mcp_header_value = '';
-
-    public bool $mcp_has_secret = false;
-
-    /** @var list<string> */
-    public array $mcp_roles = ProjectMcpServer::DEFAULT_ROLES;
+    public string $search = '';
 
     public function mount(): void
     {
@@ -151,9 +98,9 @@ class Projects extends Component
     {
         $this->resetForm();
 
-        // the account on the installation's own host first, else the oldest
-        $accounts = $this->gitAccounts();
-        $this->git_account = (string) ($accounts->firstWhere('connector', config('studio.git.provider')) ?? $accounts->first())?->uuid;
+        // a service account first, else the administrator's oldest
+        $this->git_account = (string) $this->gitAccounts()->first()?->uuid;
+        $this->roles = User::query()->where('role', '!=', UserRole::Admin->value)->pluck('uuid')->mapWithKeys(fn ($uuid) => [(string) $uuid => ''])->all();
         $this->loadOwners();
 
         Flux::modal('project-form')->show();
@@ -165,7 +112,7 @@ class Projects extends Component
         $this->loadOwners();
     }
 
-    /** An address typed in picks the account on its host, when the one chosen is elsewhere. */
+    /** An address typed in picks an account on its host, when the one chosen is elsewhere. */
     public function updatedRepoUrl(): void
     {
         if ($this->repo_url === '' || $this->selectedAccount()?->account->matchesRemote($this->repo_url)) {
@@ -195,13 +142,13 @@ class Projects extends Component
     }
 
     /**
-     * The administrator's own git accounts, the ones a project may be created or imported with.
+     * The git accounts a project may be created or imported with: the service accounts, then the administrator's own.
      *
      * @return Collection<int, ConnectorAccount>
      */
     private function gitAccounts(): Collection
     {
-        return auth()->user()->gitAccounts()->orderBy('id')->get();
+        return Settings::deployAccounts(auth()->user());
     }
 
     private function selectedAccount(): ?GitAccount
@@ -211,72 +158,49 @@ class Projects extends Component
         return $account ? new GitAccount($account) : null;
     }
 
-    public function edit(string $project): void
-    {
-        $project = Project::query()->where('uuid', $project)->firstOrFail();
-
-        $this->resetForm();
-
-        $this->editingId = $project->id;
-        $this->name = $project->name;
-        $this->slug = $project->slug;
-        $this->repo_url = $project->repo_url;
-        $this->default_branch = $project->default_branch;
-        $this->php_version = $project->php_version;
-        $this->db_engine = $project->db_engine;
-        $this->members = array_values(array_map(strval(...), $project->members()->pluck('users.uuid')->all()));
-        $this->git_account = (string) (($project->repositoryAccount?->user_id === auth()->id() ? $project->repositoryAccount : null)
-            ?? $this->gitAccounts()->first(fn (ConnectorAccount $a) => $a->matchesRemote($project->repo_url)))?->uuid;
-
-        Flux::modal('project-form')->show();
-    }
-
     public function save(): void
     {
-        $this->slug = Str::slug($this->slug ?: $this->name);
-
-        $creatingRepository = $this->editingId === null && $this->source === 'new';
+        $creatingRepository = $this->source === 'new';
+        $key = Project::newKey($this->name);
 
         if ($creatingRepository && $this->new_name === '') {
-            $this->new_name = $this->slug;
+            $this->new_name = Str::slug($this->name) ?: $key;
         }
 
         $account = $this->selectedAccount();
-        $git = $account?->provider() ?? GitProvider::current();
+        $git = $account?->provider();
 
         $validated = $this->validate([
             'git_account' => ['required', Rule::in($this->gitAccounts()->pluck('uuid')->all())],
             'name' => ['required', 'string', 'max:120'],
-            'slug' => ['required', 'string', 'max:'.Project::SLUG_MAX, 'regex:/^[a-z0-9][a-z0-9-]*$/', 'not_in:studio,www,mail', Rule::unique('projects', 'slug')->ignore($this->editingId), function (string $attribute, mixed $value, \Closure $fail): void {
-                if (is_string($value) && ($host = Project::previewHostShadowedBy($value)) !== null) {
-                    $fail(__('":slug" would take the host of an existing workspace preview (:host).', ['slug' => $value, 'host' => $host]));
-                }
-            }],
             'repo_url' => [Rule::requiredIf(! $creatingRepository), 'nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) use ($git, $account): void {
-                if (is_string($value) && $value !== '' && ($git->repositoryPath($value) === null || ! $account?->account->matchesRemote($value))) {
-                    $fail(__('Use the HTTPS address of a repository on :host, the host of the account chosen, like :example', ['host' => $account?->host() ?? $git->label(), 'example' => $git->repositoryExample()]));
+                if (is_string($value) && $value !== '' && ($account === null || $git?->repositoryPath($value) === null || ! $account->account->matchesRemote($value))) {
+                    $fail(__('Use the HTTPS address of a repository on :host, the host of the account chosen, like :example', ['host' => $account?->host() ?? __('its host'), 'example' => $git?->repositoryExample() ?? 'https://github.com/acme/shop.git']));
                 }
             }],
-            'new_owner' => [Rule::requiredIf($creatingRepository && ! $git->hasPersonalNamespace()), 'nullable', 'string', 'max:200', Rule::in(['', ...array_column($this->owners, 'value')])],
+            'new_owner' => [Rule::requiredIf($creatingRepository && $git !== null && ! $git->hasPersonalNamespace()), 'nullable', 'string', 'max:200', Rule::in(['', ...array_column($this->owners, 'value')])],
             'new_name' => [Rule::requiredIf($creatingRepository), 'nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_.-]+$/'],
             'default_branch' => ['required', 'string', 'max:200', 'regex:#^[A-Za-z0-9][A-Za-z0-9._/-]*$#', 'not_regex:#(\.\.|\.lock$)#'],
             'php_version' => ['required', Rule::in((array) config('studio.php_versions'))],
             'db_engine' => ['required', Rule::in(['mariadb', 'pgsql'])],
-            'members' => ['array'],
-            'members.*' => ['string', Rule::exists('users', 'uuid')],
+            'roles' => ['array'],
+            'roles.*' => ['nullable', Rule::in(['', ...array_map(fn (UserRole $r) => $r->value, UserRole::projectRoles())])],
         ], [
-            'git_account.required' => __('Add your account on the repository\'s git host first (Tools → git hosting).'),
-            'git_account.in' => __('Add your account on the repository\'s git host first (Tools → git hosting).'),
-            'new_owner.required' => __('Choose where the repository goes: :what.', ['what' => Str::lower($git->ownerLabel())]),
-            'slug.max' => __('The slug becomes a Linux user and a host label: :max characters at most.', ['max' => Project::SLUG_MAX]),
+            'git_account.required' => __('Add a git account on the repository\'s host first: a service account in Administration → Connectors, or yours in Settings → Accounts.'),
+            'git_account.in' => __('Add a git account on the repository\'s host first: a service account in Administration → Connectors, or yours in Settings → Accounts.'),
+            'new_owner.required' => __('Choose where the repository goes: :what.', ['what' => Str::lower((string) $git?->ownerLabel())]),
             'default_branch.regex' => __('A branch name: letters, digits, dots, dashes, underscores and slashes.'),
             'default_branch.not_regex' => __('A branch name: letters, digits, dots, dashes, underscores and slashes.'),
         ]);
 
-        $attributes = [...Arr::except($validated, ['members', 'new_owner', 'new_name', 'git_account']), 'git_account_id' => $account?->account->id];
+        $attributes = [
+            ...Arr::only($validated, ['name', 'repo_url', 'default_branch', 'php_version', 'db_engine']),
+            'slug' => $key,
+            'git_account_id' => $account?->account->id,
+        ];
         $settings = null;
 
-        if ($creatingRepository && $account) {
+        if ($creatingRepository && $account && $git) {
             try {
                 $repo = $git->createRepository($account->token(), $this->new_owner ?: null, $this->new_name, $this->new_private);
             } catch (RuntimeException $e) {
@@ -289,25 +213,23 @@ class Projects extends Component
             $settings = ['bootstrap' => true, 'repository' => $repo['html_url']];
         }
 
-        if ($this->editingId) {
-            $project = Project::query()->findOrFail($this->editingId);
-            $project->update($attributes);
-        } else {
-            $project = Project::query()->create([
-                ...$attributes,
-                'deploy_user_id' => auth()->id(),
-                'site_status' => SiteStatus::Provisioning,
-                'webhook_secret' => Str::random(40),
-                'settings' => $settings,
-            ]);
+        $project = Project::query()->create([
+            ...$attributes,
+            'deploy_user_id' => $account?->account->user_id ?? auth()->id(),
+            'site_status' => SiteStatus::Provisioning,
+            'webhook_secret' => Str::random(40),
+            'settings' => $settings,
+        ]);
 
-            ProvisionProjectSite::dispatch($project);
-        }
+        $ids = User::query()->whereIn('uuid', array_keys(array_filter($this->roles)))->pluck('id', 'uuid');
+        $project->syncMembers(collect(array_filter($this->roles))->mapWithKeys(fn (string $role, string $uuid) => isset($ids[$uuid]) ? [$ids[$uuid] => $role] : [])->all());
 
-        $project->members()->sync(User::query()->whereIn('uuid', $this->members)->pluck('id')->all());
+        ProvisionProjectSite::dispatch($project);
 
         Flux::modal('project-form')->close();
-        Flux::toast(variant: 'success', text: $this->editingId ? __('Project updated.') : ($creatingRepository ? __('Repository created. Laravel, Boost and Larapilot are being installed and pushed; the site follows.') : __('Project created. The site is being set up.')));
+        Flux::toast(variant: 'success', text: $creatingRepository
+            ? __('Project :key created. Laravel, Boost and Larapilot are being installed and pushed; the site follows.', ['key' => $project->slug])
+            : __('Project :key created. The site is being set up.', ['key' => $project->slug]));
 
         $this->resetForm();
     }
@@ -355,231 +277,27 @@ class Projects extends Component
         Flux::toast(text: __('Deleting :name: its site and workspaces are being removed from the server.', ['name' => $project->name]));
     }
 
-    public function settings(string $project): void
-    {
-        $project = Project::query()->where('uuid', $project)->firstOrFail();
-        $this->authorize('update', $project);
-        $this->resetValidation();
-
-        $features = $project->features();
-        $access = $project->access();
-
-        $this->settingsId = $project->id;
-        $this->scheduler = $features['scheduler'];
-        $this->queues = implode(', ', $features['queues']);
-        $this->reverb = $features['reverb'];
-        $this->horizon = $features['horizon'];
-        $this->pulse = $features['pulse'];
-        $this->timezone = $project->timezone();
-        $agent = $project->agentSettings();
-        $this->agent_browser = $agent['browser'];
-        $this->agent_sandboxes = $agent['sandboxes'];
-        $this->agent_sandbox_limit = $agent['sandbox_limit'];
-        $this->site_ips = implode("\n", $access['site']['ips']);
-        $this->previews_ips = implode("\n", $access['previews']['ips']);
-        $this->branch_rules = array_map(fn (array $rule) => ['branch' => $rule['branch'], 'ips' => implode(', ', $rule['ips'])], $access['branches']);
-
-        $this->settingsTab = 'server';
-        $this->cancelMcp();
-
-        Flux::modal('project-settings')->show();
-    }
-
-    public function addBranchRule(): void
-    {
-        $this->branch_rules[] = ['branch' => '', 'ips' => ''];
-    }
-
-    public function removeBranchRule(int $index): void
-    {
-        $this->branch_rules = array_values(array_filter($this->branch_rules, fn (int $i) => $i !== $index, ARRAY_FILTER_USE_KEY));
-    }
-
-    public function saveSettings(): void
-    {
-        $project = Project::query()->findOrFail($this->settingsId);
-        $this->authorize('update', $project);
-
-        $this->validate([
-            'queues' => ['required', 'string', 'regex:/^\s*[a-z0-9][a-z0-9_-]*(\s*,\s*[a-z0-9][a-z0-9_-]*)*\s*$/'],
-            'timezone' => ['required', Rule::in(timezone_identifiers_list())],
-            'agent_sandbox_limit' => ['required', 'integer', 'min:1', 'max:10'],
-            'site_ips' => ['nullable', 'string', 'max:4000'],
-            'previews_ips' => ['nullable', 'string', 'max:4000'],
-            'branch_rules' => ['array', 'max:50'],
-            'branch_rules.*.branch' => ['required', 'string', 'max:200', 'regex:#^[A-Za-z0-9][A-Za-z0-9._/-]*$#'],
-            'branch_rules.*.ips' => ['required', 'string', 'max:4000'],
-        ], [
-            'queues.regex' => __('Queue names: lowercase letters, digits, dashes and underscores, separated by commas.'),
-            'timezone.in' => __('Choose a timezone from the list.'),
-            'branch_rules.*.branch.required' => __('Name the branch or remove the rule.'),
-            'branch_rules.*.ips.required' => __('List the addresses for this branch, or remove the rule.'),
-        ]);
-
-        $lists = ['site_ips' => $this->site_ips, 'previews_ips' => $this->previews_ips];
-
-        foreach ($this->branch_rules as $index => $rule) {
-            $lists["branch_rules.$index.ips"] = $rule['ips'];
-        }
-
-        foreach ($lists as $field => $raw) {
-            foreach ($this->ipList($raw) as $ip) {
-                if (! IpMatcher::isValidRule($ip)) {
-                    $this->addError($field, __(':ip is not an IP address or a CIDR range.', ['ip' => $ip]));
-
-                    return;
-                }
-            }
-        }
-
-        $project->update(['settings' => array_merge($project->settings ?? [], [
-            'features' => ['scheduler' => $this->scheduler, 'queues' => $this->queueList(), 'reverb' => $this->reverb, 'horizon' => $this->horizon, 'pulse' => $this->pulse],
-            'timezone' => $this->timezone,
-            'agent' => ['browser' => $this->agent_browser, 'sandboxes' => $this->agent_sandboxes, 'sandbox_limit' => $this->agent_sandbox_limit],
-            'access' => [
-                'site' => ['ips' => $this->ipList($this->site_ips)],
-                'previews' => ['ips' => $this->ipList($this->previews_ips)],
-                'branches' => array_map(fn (array $rule) => ['branch' => trim($rule['branch']), 'ips' => $this->ipList($rule['ips'])], $this->branch_rules),
-            ],
-        ])]);
-
-        if ($project->site_status !== SiteStatus::New || $project->workspaces()->exists()) {
-            ConfigureProjectSite::dispatch($project);
-        }
-
-        Flux::modal('project-settings')->close();
-        Flux::toast(variant: 'success', text: __('Settings saved. They are being applied to the site and the workspaces.'));
-    }
-
-    /** Add a server to the project, or save the one being edited; applies to every chat's next message. */
-    public function saveMcp(): void
-    {
-        $project = Project::query()->findOrFail($this->settingsId);
-        $this->authorize('update', $project);
-        $this->mcp_name = strtolower(trim($this->mcp_name));
-        $this->mcp_url = trim($this->mcp_url);
-        $this->mcp_header_name = trim($this->mcp_header_name);
-
-        $this->validate([
-            'mcp_name' => ['required', 'string', 'max:40', 'regex:/^[a-z0-9][a-z0-9_-]*$/', Rule::unique('project_mcp_servers', 'name')->where('project_id', $project->id)->ignore($this->mcp_id)],
-            'mcp_url' => ['required', 'url:https,http', 'max:500'],
-            'mcp_header_name' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9-]+$/'],
-            'mcp_header_value' => ['nullable', 'string', 'max:2000'],
-            'mcp_roles' => ['required', 'array', 'min:1'],
-            'mcp_roles.*' => [Rule::enum(UserRole::class)],
-        ], [
-            'mcp_name.regex' => __('Lowercase letters, digits, dashes and underscores: it becomes part of the tool names.'),
-            'mcp_roles.required' => __('Tick at least one role.'),
-        ]);
-
-        $server = $this->mcp_id ? $project->mcpServers()->findOrFail($this->mcp_id) : new ProjectMcpServer(['project_id' => $project->id, 'enabled' => true]);
-        $headers = $server->headers ?? [];
-
-        if ($this->mcp_header_value !== '' && $this->mcp_header_name !== '') {
-            $headers = [$this->mcp_header_name => $this->mcp_header_value];
-        } elseif ($this->mcp_header_name === '') {
-            $headers = [];
-        } elseif ($headers !== [] && ! array_key_exists($this->mcp_header_name, $headers)) {
-            $headers = [$this->mcp_header_name => (string) reset($headers)];
-        }
-
-        $server->fill([
-            'name' => $this->mcp_name,
-            'url' => $this->mcp_url,
-            'headers' => $headers === [] ? null : $headers,
-            'roles' => array_values(array_unique($this->mcp_roles)),
-        ]);
-        $server->status = null;
-        $server->save();
-
-        Flux::toast(variant: 'success', text: __('MCP server :name saved. Test it to see it answer.', ['name' => $server->name]));
-        $this->cancelMcp();
-    }
-
-    public function editMcp(string $serverId): void
-    {
-        $server = $this->mcpServer($serverId);
-
-        $this->mcp_id = $server->id;
-        $this->mcp_name = $server->name;
-        $this->mcp_url = $server->url;
-        $this->mcp_header_name = (string) (array_key_first($server->headers ?? []) ?? '');
-        $this->mcp_header_value = '';
-        $this->mcp_has_secret = ($server->headers ?? []) !== [];
-        $this->mcp_roles = $server->roles;
-        $this->resetValidation();
-    }
-
-    public function cancelMcp(): void
-    {
-        $this->reset(['mcp_id', 'mcp_name', 'mcp_url', 'mcp_header_value', 'mcp_has_secret']);
-        $this->mcp_header_name = 'Authorization';
-        $this->mcp_roles = ProjectMcpServer::DEFAULT_ROLES;
-        $this->resetValidation(['mcp_name', 'mcp_url', 'mcp_header_name', 'mcp_header_value', 'mcp_roles']);
-    }
-
-    public function toggleMcp(string $serverId): void
-    {
-        $server = $this->mcpServer($serverId);
-        $server->update(['enabled' => ! $server->enabled]);
-    }
-
-    public function deleteMcp(string $serverId): void
-    {
-        $server = $this->mcpServer($serverId);
-        $server->delete();
-
-        if ($this->mcp_id === $server->id) {
-            $this->cancelMcp();
-        }
-    }
-
-    /** One initialize call to the server, with its header, as Claude Code would make it. */
-    public function testMcp(string $serverId, McpProbe $probe): void
-    {
-        $server = $this->mcpServer($serverId);
-        $server->update(['status' => $probe->check($server->url, $server->headers ?? []), 'checked_at' => now()]);
-    }
-
-    private function mcpServer(string $serverId): ProjectMcpServer
-    {
-        $project = Project::query()->findOrFail($this->settingsId);
-        $this->authorize('update', $project);
-
-        return $project->mcpServers()->where('uuid', $serverId)->firstOrFail();
-    }
-
-    /** @return list<string> */
-    private function ipList(string $raw): array
-    {
-        return array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', $raw) ?: []), fn (string $ip) => $ip !== ''));
-    }
-
-    /** @return list<string> */
-    private function queueList(): array
-    {
-        return array_values(array_unique(array_filter(array_map('trim', explode(',', $this->queues)), fn (string $q) => $q !== '')));
-    }
-
     private function resetForm(): void
     {
-        $this->reset(['editingId', 'name', 'slug', 'repo_url', 'default_branch', 'db_engine', 'members', 'source', 'new_owner', 'new_name', 'new_private', 'git_account', 'owners']);
+        $this->reset(['name', 'repo_url', 'default_branch', 'db_engine', 'roles', 'source', 'new_owner', 'new_name', 'new_private', 'git_account', 'owners']);
         $this->php_version = self::defaultPhp();
         $this->resetValidation();
     }
 
     public function render(): View
     {
+        $git = $this->selectedAccount()?->provider();
+
         return view('livewire.admin.projects', [
-            'projects' => Project::query()->with('deployUser')->withCount(['members', 'workspaces'])->orderBy('name')->get(),
-            'mcpServers' => $this->settingsId ? ProjectMcpServer::query()->where('project_id', $this->settingsId)->orderBy('name')->get() : collect(),
-            'users' => User::query()->orderBy('name')->get(['id', 'name', 'email', 'role']),
+            'projects' => Project::query()->with(['deployUser', 'repositoryAccount'])->withCount(['members', 'workspaces', 'resources'])
+                ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%')->orWhere('slug', 'like', '%'.trim($this->search).'%')->orWhere('repo_url', 'like', '%'.trim($this->search).'%')))
+                ->orderBy('name')->get(),
+            'people' => User::query()->where('role', '!=', UserRole::Admin->value)->orderBy('name')->get(),
             'domain' => config('studio.domain'),
             'phpVersions' => (array) config('studio.php_versions'),
-            'timezones' => $this->settingsId ? timezone_identifiers_list() : [],
-            'deployerHasGit' => auth()->user()->hasGit(),
             'gitAccounts' => $this->gitAccounts(),
-            'git' => $this->selectedAccount()?->provider() ?? GitProvider::current(),
+            'git' => $git,
+            'providerLabel' => $git?->label() ?? __('the git host'),
         ]);
     }
 }

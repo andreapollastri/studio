@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\SiteStatus;
+use App\Enums\UserRole;
 use App\Git\GitAccount;
 use App\Git\Providers\GitProvider;
 use App\Infrastructure\Git\Forge;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -42,6 +44,7 @@ use Throwable;
  * @property-read User|null $deployUser
  * @property-read ConnectorAccount|null $repositoryAccount
  * @property-read Collection<int, ProjectMcpServer> $mcpServers
+ * @property-read ProjectMember|null $membership the person's membership, when read through User::projects()
  */
 #[Fillable([
     'name', 'slug', 'repo_url', 'default_branch', 'php_version', 'db_engine', 'deploy_user_id', 'git_account_id',
@@ -73,10 +76,10 @@ class Project extends Model
         return 'slug';
     }
 
-    /** @return BelongsToMany<User, $this> */
+    /** @return BelongsToMany<User, $this, ProjectMember, 'membership'> */
     public function members(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'project_members')->withTimestamps();
+        return $this->belongsToMany(User::class, 'project_members')->using(ProjectMember::class)->as('membership')->withPivot('role')->withTimestamps();
     }
 
     /** @return BelongsToMany<SshKey, $this> the system keys shared with the project */
@@ -96,6 +99,49 @@ class Project extends Model
     public function mcpServers(): HasMany
     {
         return $this->hasMany(ProjectMcpServer::class);
+    }
+
+    /** @return HasMany<ProjectResource, $this> what an administrator attached from the connectors */
+    public function resources(): HasMany
+    {
+        return $this->hasMany(ProjectResource::class);
+    }
+
+    /**
+     * Put people on the project with their roles, by user id; those left out leave it.
+     *
+     * @param  array<int, UserRole|string|null>  $roles  user id => role (null: their default)
+     */
+    public function syncMembers(array $roles): void
+    {
+        $users = User::query()->whereKey(array_keys($roles))->get()->keyBy('id');
+
+        $this->members()->sync(collect($roles)->filter(fn ($role, $id) => $users->has($id))->mapWithKeys(function ($role, $id) use ($users) {
+            $role = $role instanceof UserRole ? $role : UserRole::tryFrom((string) $role);
+
+            return [$id => ['role' => ($role !== null && $role !== UserRole::Admin ? $role : $users[$id]->defaultRole())->value]];
+        })->all());
+    }
+
+    /**
+     * A key for a new project: its name as a host label, cut short, and six random
+     * characters (no 0/o, 1/l/i), so "api" at one client and "api" at another live
+     * side by side as api-9usaf9 and api-k2mx7p. It never changes: it names the
+     * site's host, the Linux user, the databases and the folders on the server.
+     */
+    public static function newKey(string $name): string
+    {
+        $base = rtrim(substr(Str::slug($name), 0, self::SLUG_MAX - 7), '-') ?: 'project';
+
+        if (in_array($base, ['studio', 'www', 'mail'], true)) {
+            $base = 'project';
+        }
+
+        do {
+            $key = $base.'-'.substr(str_shuffle(str_repeat('abcdefghjkmnpqrstuvwxyz23456789', 6)), 0, 6);
+        } while (static::query()->where('slug', $key)->exists() || static::previewHostShadowedBy($key) !== null || User::query()->where('handle', $key)->exists());
+
+        return $key;
     }
 
     /** The administrator whose git provider token clones and deploys the project site. */
@@ -132,8 +178,9 @@ class Project extends Model
     }
 
     /**
-     * The git host of the repository: the provider of the repository account, else the
-     * installation's own when the address is on it, else the first enabled host that knows it.
+     * The git host of the repository: the provider of the account that deploys it, else of
+     * any account on its host (a self-managed GitLab, an Azure DevOps organization are known
+     * by their accounts), else the public host its address is on.
      */
     public function gitProvider(): ?GitProvider
     {
@@ -141,14 +188,15 @@ class Project extends Model
             return (new GitAccount($this->repositoryAccount))->provider();
         }
 
-        $current = GitProvider::current();
+        $known = ConnectorAccount::query()->whereIn('connector', array_keys(Forges::ALL))->whereNotNull('host')->orderBy('id')->get()
+            ->first(fn (ConnectorAccount $account) => $account->matchesRemote($this->repo_url));
 
-        if ($current->repositoryPath($this->repo_url) !== null) {
-            return $current;
+        if ($known !== null) {
+            return (new GitAccount($known))->provider();
         }
 
-        // the public hosts (github.com, gitlab.com, bitbucket.org); a self-managed one is known by its accounts
-        foreach (Forges::enabled() as $forge) {
+        // the public hosts: github.com, gitlab.com, bitbucket.org
+        foreach (Forges::all() as $forge) {
             try {
                 $host = $forge->host([]);
             } catch (Throwable) {

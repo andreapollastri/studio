@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\UserRole;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\SshKeyFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -97,7 +98,7 @@ class SshKey extends Model
 
             if ($user->isAdmin()) {
                 $query->orWhereNull('user_id');
-            } elseif ($projectId !== null && $user->canUseSsh() && $user->projects()->whereKey($projectId)->exists()) {
+            } elseif ($projectId !== null && in_array($projectId, $user->projectIdsAs(UserRole::Dev), true)) {
                 $query->orWhere(fn (Builder $shared) => $shared
                     ->whereNull('user_id')
                     ->whereHas('projects', fn (Builder $p) => $p->whereKey($projectId)->where('project_ssh_key.developers', true)));
@@ -119,7 +120,7 @@ class SshKey extends Model
         if (! $user->isAdmin()) {
             $query->whereHas('projects', fn (Builder $p) => $p
                 ->where('project_ssh_key.developers', true)
-                ->whereIn('projects.id', $user->canUseSsh() ? $user->projects()->select('projects.id') : []));
+                ->whereIn('projects.id', $user->projectIdsAs(UserRole::Dev)));
         }
     }
 

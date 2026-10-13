@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Admin;
 
-use App\Git\Providers\GitProvider;
 use App\Livewire\Concerns\CreatesSshKeys;
 use App\Models\Project;
 use App\Models\SshKey;
@@ -251,7 +250,6 @@ class System extends Component
             'available' => $updates->available(),
             'waiting' => $updates->waiting(),
             'releaseUrl' => fn (string $tag) => $updates->releaseUrl($tag),
-            'git' => GitProvider::current(),
             'projectCount' => Project::query()->count(),
             'shown' => $this->shownKey ? $this->keys()->firstWhere('uuid', $this->shownKey) : null,
             'sharingKey' => $this->sharing ? $this->keys()->firstWhere('uuid', $this->sharing) : null,

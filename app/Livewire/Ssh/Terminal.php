@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Ssh;
 
+use App\Enums\UserRole;
 use App\Livewire\Concerns\CreatesSshKeys;
 use App\Livewire\Concerns\SearchesDirectory;
 use App\Models\Project;
@@ -140,7 +141,7 @@ class Terminal extends Component
      * Who sees the connection being edited through its project: the project's
      * administrators and developers, and every administrator of Studio.
      *
-     * @return BaseCollection<int, array{user: User, has_credential: bool}>
+     * @return BaseCollection<int, array{user: User, role: UserRole|null, has_credential: bool}>
      */
     #[Computed]
     public function audience(): BaseCollection
@@ -152,14 +153,16 @@ class Terminal extends Component
         $connection = $this->editing ? SshConnection::query()->where('uuid', $this->editing)->first() : null;
         $credentials = $connection ? $connection->credentials()->with('key')->get()->keyBy('user_id') : collect();
 
+        $project = Project::query()->where('uuid', $this->connection_project)->first();
+
         return User::query()
             ->whereKeyNot(auth()->id())
             ->where(fn (Builder $q) => $q
                 ->where('role', 'admin')
-                ->orWhere(fn (Builder $q) => $q->where('role', 'dev')->whereHas('projects', fn (Builder $p) => $p->where('projects.uuid', $this->connection_project))))
+                ->orWhere(fn (Builder $q) => $q->withRoleIn((int) $project?->id, ['dev'])))
             ->orderBy('name')
             ->get()
-            ->map(fn (User $user) => ['user' => $user, 'has_credential' => (bool) $credentials->get($user->id)?->isUsable()]);
+            ->map(fn (User $user) => ['user' => $user, 'role' => $project ? $user->roleIn($project) : $user->role, 'has_credential' => (bool) $credentials->get($user->id)?->isUsable()]);
     }
 
     public function newConnection(): void

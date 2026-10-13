@@ -34,7 +34,7 @@ final class WorkspaceTransfer
         $projectId = $access->projectOf($folderId);
         $project = $projectId !== null ? Project::query()->find($projectId) : null;
 
-        if ($project === null || ! $user->canChat() || ! $user->canAccess($project)) {
+        if ($project === null || ! $user->can('chat', $project)) {
             return null;
         }
 

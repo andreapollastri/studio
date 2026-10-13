@@ -1,4 +1,23 @@
 <div class="flex h-full w-full flex-1 flex-col gap-6 max-sm:gap-4">
+    @if ($compact)
+    {{-- One thing (a resource of a project, a project's repository): what it is, where it lives, read again --}}
+    <div class="flex items-start justify-between gap-4">
+        <div class="flex min-w-0 items-start gap-3">
+            <flux:icon :name="$definition->icon()" class="mt-0.5 size-6 shrink-0 text-zinc-400" />
+            <div class="min-w-0">
+                <flux:heading size="lg" class="truncate">
+                    @if (! empty($compact['href']))
+                        <a href="{{ $compact['href'] }}" target="_blank" rel="noopener noreferrer" class="hover:underline">{{ $compact['title'] }}</a>
+                    @else
+                        {{ $compact['title'] }}
+                    @endif
+                </flux:heading>
+                <flux:text class="text-xs">{{ $compact['subtitle'] }}</flux:text>
+            </div>
+        </div>
+        <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="refresh" :tooltip="__('Read again from :provider', ['provider' => $definition->label()])" />
+    </div>
+    @else
     {{-- Connector, account, refresh --}}
     <div class="flex items-start justify-between gap-4 max-md:flex-col max-md:gap-3">
         <div class="flex items-start gap-3">
@@ -13,31 +32,38 @@
                 <div class="min-w-48">
                     <flux:select size="sm" wire:change="useAccount($event.target.value)" :aria-label="__('Account')">
                         @foreach ($this->accounts as $option)
-                            <flux:select.option value="{{ $option->uuid }}" :selected="$option->uuid === $current?->uuid">{{ $option->name }}</flux:select.option>
+                            <flux:select.option value="{{ $option->uuid }}" :selected="$option->uuid === $current?->uuid">{{ $personal ? $option->name.' · '.($option->host ?: \App\Infrastructure\Git\Forges::make($option->connector)->label()) : $option->name }}</flux:select.option>
                         @endforeach
                     </flux:select>
                 </div>
                 <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="refresh" :tooltip="__('Read again from :provider', ['provider' => $definition->label()])" />
             @endif
-            @if ($isAdmin)
-                <flux:button size="sm" icon="user-circle" wire:click="manageAccounts">{{ $personal ? __('My accounts') : __('Accounts') }}</flux:button>
+            @if ($personal)
+                <flux:button size="sm" icon="user-circle" :href="route('connections.edit', ['tab' => 'git'])" wire:navigate>{{ __('My accounts') }}</flux:button>
+            @elseif ($isAdmin)
+                <flux:button size="sm" icon="user-circle" wire:click="manageAccounts">{{ __('Accounts') }}</flux:button>
             @endif
         </div>
     </div>
+    @endif
 
     @if ($this->accounts->isEmpty())
         <flux:callout icon="information-circle" variant="secondary">
-            <flux:callout.heading>{{ __('No :provider account yet', ['provider' => $definition->label()]) }}</flux:callout.heading>
+            <flux:callout.heading>{{ $personal ? __('No git account yet') : __('No :provider account yet', ['provider' => $definition->label()]) }}</flux:callout.heading>
             <flux:callout.text>
                 @if ($personal)
-                    {{ __('Add your accounts, as many as you work with (personal, work, a client\'s): each with its own token and the name and email its commits carry. Only you see and use them.') }}
+                    {{ __('Add your accounts in Settings → Accounts, as many as you work with (personal, work, a client\'s) and on any host: each with its own token and the name and email its commits carry. Only you see and use them.') }}
                 @elseif ($isAdmin)
                     {{ __('Add one or more accounts: Studio stores their credentials encrypted and talks to the API with them.') }}
                 @else
                     {{ __('An administrator adds the accounts Studio uses here.') }}
                 @endif
             </flux:callout.text>
-            @if ($isAdmin)
+            @if ($personal)
+                <x-slot name="actions">
+                    <flux:button size="sm" variant="primary" icon="plus" :href="route('connections.edit', ['tab' => 'git'])" wire:navigate>{{ __('Add an account') }}</flux:button>
+                </x-slot>
+            @elseif ($isAdmin)
                 <x-slot name="actions">
                     <flux:button size="sm" variant="primary" icon="plus" wire:click="manageAccounts">{{ __('Add an account') }}</flux:button>
                 </x-slot>
@@ -53,7 +79,7 @@
                 <flux:icon.chevron-right variant="micro" class="size-4 text-zinc-400" />
                 <span class="font-medium">{{ $section->label }}</span>
             </div>
-        @else
+        @elseif (count($tabs) > 0)
             @if (count($groups) > 1)
                 <div class="-mx-1 -mb-3 flex gap-1 overflow-x-auto px-1" role="group" aria-label="{{ __('Groups') }}">
                     @foreach ($groups as $name)
@@ -79,14 +105,15 @@
         @endif
 
         {{-- Search, filters, list actions --}}
-        @if ($section->kind === 'table' || $section->filters !== [] || $section->toolbar !== [])
+        @php($toolbar = $this->toolbarActions($section))
+        @if ($section->kind === 'table' || $section->filters !== [] || $toolbar !== [])
             <div class="flex flex-wrap items-end gap-2">
-                @if ($section->kind === 'table')
+                @if ($section->kind === 'table' && ! ($pinned && ! $parent))
                     <div class="w-full sm:w-64">
                         <flux:input size="sm" icon="magnifying-glass" wire:model.live.debounce.250ms="search" :placeholder="__('Search')" clearable />
                     </div>
                 @endif
-                @foreach ($section->filters as $filter)
+                @foreach ($pinned && ! $parent ? [] : $section->filters as $filter)
                     @php($choices = $this->options($filter))
                     <div class="min-w-40">
                         <flux:select size="sm" wire:model.live="filters.{{ $filter->name }}" :aria-label="$filter->label">
@@ -100,7 +127,7 @@
                     </div>
                 @endforeach
                 <div class="ms-auto flex flex-wrap gap-2">
-                    @foreach ($section->toolbar as $action)
+                    @foreach ($toolbar as $action)
                         {{-- An action with a form asks for confirmation when the form is sent. --}}
                         @if (! $action->hasForm() && $action->confirm)
                             <flux:button size="sm" :icon="$action->icon" :variant="$action->primary ? 'primary' : null" wire:click="start({{ Js::from($action->key) }})" wire:confirm="{{ $action->confirm }}">{{ $action->label }}</flux:button>
@@ -116,6 +143,9 @@
             <flux:callout variant="danger" icon="exclamation-triangle">
                 <flux:callout.heading>{{ __(':provider did not answer as expected', ['provider' => $definition->label()]) }}</flux:callout.heading>
                 <flux:callout.text>{{ $error }}</flux:callout.text>
+                @if ($pinned && ! auth()->user()->isAdmin())
+                    <flux:callout.text>{{ __('It is read with the team\'s account: tell an administrator.') }}</flux:callout.text>
+                @endif
             </flux:callout>
         @endif
 
@@ -156,7 +186,8 @@
                         <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                             @forelse ($rows as $row)
                                 @php($id = $section->rowId($row))
-                                @php($actions = array_values(array_filter($section->actions, fn ($action) => $action->appliesTo($row))))
+                                @php($actions = $this->rowActions($section, $row))
+                                @php($links = $attached->get($id, collect()))
                                 <tr wire:key="row-{{ md5($section->key.'|'.$id) }}">
                                     @foreach ($section->columns as $column)
                                         @php($text = $column->text($row))
@@ -180,16 +211,23 @@
                                         </td>
                                     @endforeach
                                     <td class="px-4 py-2 text-end whitespace-nowrap" data-cell="actions">
+                                        @foreach ($links as $link)
+                                            <flux:badge size="sm" icon="link" color="sky" as="button" wire:click="attach({{ Js::from($id) }}, {{ Js::from($link->project->uuid) }})" :title="__('Attached to :project: change or detach', ['project' => $link->project->name])" class="cursor-pointer">{{ $link->project->name }}</flux:badge>
+                                        @endforeach
                                         @foreach ($actions as $action)
                                             @if ($action->opens)
                                                 <flux:button size="xs" variant="ghost" :icon="$action->icon" wire:click="start({{ Js::from($action->key) }}, {{ Js::from($id) }})">{{ $action->label }}</flux:button>
                                             @endif
                                         @endforeach
                                         @php($menu = array_filter($actions, fn ($action) => ! $action->opens))
-                                        @if ($menu !== [])
+                                        @if ($menu !== [] || $canAttach)
                                             <flux:dropdown position="bottom" align="end">
                                                 <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('Actions')" />
                                                 <flux:menu>
+                                                    @if ($canAttach)
+                                                        <flux:menu.item icon="link" wire:click="attach({{ Js::from($id) }})">{{ __('Attach to a project…') }}</flux:menu.item>
+                                                        @if ($menu !== [])<flux:menu.separator />@endif
+                                                    @endif
                                                     @foreach ($menu as $action)
                                                         @if ($action->danger && ! $loop->first)
                                                             <flux:menu.separator />
@@ -263,6 +301,61 @@
             </div>
         </div>
     </flux:modal>
+
+    {{-- Attach a row to a project, for administrators --}}
+    @if ($canAttach || $attachRow)
+        <flux:modal name="infrastructure-attach" class="w-full md:w-[40rem]">
+            <form wire:submit="saveAttachment" class="space-y-5">
+                <div>
+                    <flux:heading size="lg">{{ __('Attach to a project') }}</flux:heading>
+                    <flux:text class="mt-1">{{ __('It shows in the Infrastructure tab of the project, read with this account, to the roles that see it; the roles that act on it run only the actions ticked. Nobody but the administrators sees the account, its credentials or the rest of :provider.', ['provider' => $definition->label()]) }}</flux:text>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <flux:select wire:model="attach_project" :label="__('Project')">
+                        <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
+                        @foreach ($projects as $project)
+                            <flux:select.option value="{{ $project->uuid }}">{{ $project->name }} · {{ $project->slug }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    <flux:input wire:model="attach_label" :label="__('Name in the project')" />
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <flux:checkbox.group wire:model="attach_view" :label="__('Who sees it')">
+                        @foreach (\App\Enums\UserRole::projectRoles() as $role)
+                            <flux:checkbox :value="$role->value" :label="$role->label()" />
+                        @endforeach
+                    </flux:checkbox.group>
+                    <flux:checkbox.group wire:model="attach_act" :label="__('Who acts on it')">
+                        @foreach (\App\Enums\UserRole::projectRoles() as $role)
+                            <flux:checkbox :value="$role->value" :label="$role->label()" />
+                        @endforeach
+                    </flux:checkbox.group>
+                </div>
+                @if ($attachActions !== [])
+                    <flux:checkbox.group wire:model="attach_actions" :label="__('What they may do')" :description="__('Lists it opens (the records of a zone, the exceptions of a project) come with it to whoever sees it; changing anything is one of these actions.')">
+                        <div class="grid max-h-64 gap-x-4 gap-y-1 overflow-y-auto rounded-lg border border-zinc-200 p-3 sm:grid-cols-2 dark:border-zinc-700">
+                            @foreach ($attachActions as $key => $item)
+                                <flux:checkbox :value="$key" :label="$item['label']" :description="$item['list'].($item['danger'] ? ' · '.__('destructive') : '')" wire:key="attach-action-{{ md5($key) }}" />
+                            @endforeach
+                        </div>
+                    </flux:checkbox.group>
+                @else
+                    <flux:text class="text-xs">{{ __('This list has no actions to hand over: whoever sees it reads it.') }}</flux:text>
+                @endif
+                <div class="flex flex-wrap justify-between gap-2">
+                    <div>
+                        @if ($attachRow && $attach_project && $attached->get($attachRow, collect())->contains(fn ($r) => $r->project->uuid === $attach_project))
+                            <flux:button variant="ghost" icon="link-slash" wire:click="detach({{ Js::from($attachRow) }}, {{ Js::from($attach_project) }})" wire:confirm="{{ __('Take it off the project? Nothing changes at :provider.', ['provider' => $definition->label()]) }}">{{ __('Detach') }}</flux:button>
+                        @endif
+                    </div>
+                    <div class="flex gap-2">
+                        <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                        <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
+                    </div>
+                </div>
+            </form>
+        </flux:modal>
+    @endif
 
     {{-- Accounts, for administrators --}}
     @if ($isAdmin)

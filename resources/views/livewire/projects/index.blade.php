@@ -6,7 +6,7 @@
     <div class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:gap-3">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('Every project opens your workspace: a chat with Claude, the preview of your branch, the backlog. Each one runs on the Claude account and the git identity shown on its card.') }}</flux:text>
+            <flux:text class="mt-1">{{ __('Every project opens your workspace: a chat with Claude, the preview of your branch, the backlog; its repository, its infrastructure and its access in the tabs next to it. Each one runs on the Claude account and the git identity shown on its card, with the role you have there.') }}</flux:text>
         </div>
         <div class="flex flex-wrap gap-2">
             <flux:button icon="folder-plus" wire:click="newGroup">{{ __('New group') }}</flux:button>
@@ -118,6 +118,10 @@
                                     </div>
                                 </div>
                                 <div class="flex flex-wrap gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                                    @if ($role = $roles->get($project->id))
+                                        <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ $role->label() }}</span>
+                                        <span>·</span>
+                                    @endif
                                     <span>PHP {{ $project->php_version }}</span>
                                     <span>·</span>
                                     <span>{{ $project->db_engine }}</span>
@@ -197,7 +201,7 @@
                 @endforeach
             </flux:select>
             @if ($claudeAccounts->isEmpty() || $gitAccounts->isEmpty())
-                <flux:text class="text-xs">{{ __('Add more accounts in') }} <flux:link :href="route('connections.edit')" wire:navigate>{{ __('Settings → Connections') }}</flux:link>.</flux:text>
+                <flux:text class="text-xs">{{ __('Add more accounts in') }} <flux:link :href="route('connections.edit')" wire:navigate>{{ __('Settings → Accounts') }}</flux:link>.</flux:text>
             @endif
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
@@ -231,7 +235,7 @@
                 </flux:select>
                 <flux:text class="-mt-3 text-xs">
                     @if ($accountsGitOptions->isEmpty())
-                        {{ __('You have no account on :host yet: add one in', ['host' => parse_url($accountsFor->repo_url, PHP_URL_HOST) ?: $accountsFor->repo_url]) }} <flux:link :href="route('connections.edit')" wire:navigate>{{ __('Settings → Connections') }}</flux:link>.
+                        {{ __('You have no account on :host yet: add one in', ['host' => parse_url($accountsFor->repo_url, PHP_URL_HOST) ?: $accountsFor->repo_url]) }} <flux:link :href="route('connections.edit', ['tab' => 'git'])" wire:navigate>{{ __('Settings → Accounts') }}</flux:link>.
                     @else
                         {{ __('Only your accounts on :host can push to this repository; commits carry the name and email of the account.', ['host' => parse_url($accountsFor->repo_url, PHP_URL_HOST) ?: $accountsFor->repo_url]) }}
                         @if ($running){{ __('Changing it restarts your workspace: a running conversation picks up where it was.') }}@endif

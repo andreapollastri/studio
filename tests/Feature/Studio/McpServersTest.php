@@ -1,7 +1,7 @@
 <?php
 
 use App\Bridge\BridgeClient;
-use App\Livewire\Admin\Projects;
+use App\Livewire\Projects\Settings as ProjectSettings;
 use App\Livewire\Studio\Chat;
 use App\Models\Conversation;
 use App\Models\Project;
@@ -18,9 +18,8 @@ test('an administrator adds an MCP server to a project, with its header stored e
     $project = Project::factory()->create();
 
     Livewire::actingAs($admin)
-        ->test(Projects::class)
-        ->call('settings', $project->uuid)
-        ->set('settingsTab', 'mcp')
+        ->test(ProjectSettings::class, ['project' => $project])
+        ->set('tab', 'mcp')
         ->assertSee('MCP servers in the chat')
         ->set('mcp_name', 'Docs Site')
         ->set('mcp_url', 'not a url')
@@ -48,8 +47,7 @@ test('editing keeps the stored secret unless a new value is typed; names are uni
     ProjectMcpServer::factory()->create(['project_id' => $server->project_id, 'name' => 'errors']);
 
     $component = Livewire::actingAs($admin)
-        ->test(Projects::class)
-        ->call('settings', $server->project->uuid)
+        ->test(ProjectSettings::class, ['project' => $server->project])
         ->call('editMcp', $server->uuid)
         ->assertSet('mcp_header_value', '')
         ->assertSet('mcp_has_secret', true)
@@ -85,8 +83,7 @@ test('testing a server makes the initialize call with its header and keeps the a
     ]);
 
     Livewire::actingAs($admin)
-        ->test(Projects::class)
-        ->call('settings', $json->project->uuid)
+        ->test(ProjectSettings::class, ['project' => $json->project])
         ->call('testMcp', $json->uuid)
         ->call('testMcp', $stream->uuid)
         ->call('testMcp', $refused->uuid);

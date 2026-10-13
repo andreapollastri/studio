@@ -137,7 +137,7 @@ class SidePane extends Component
 
     public function setTab(string $tab): void
     {
-        $tabs = ['preview', ...(auth()->user()->canChat() ? ['changes'] : []), ...($this->canUseTerminal() ? ['terminal', 'files'] : [])];
+        $tabs = ['preview', ...(auth()->user()->can('chat', $this->workspace->project) ? ['changes'] : []), ...($this->canUseTerminal() ? ['terminal', 'files'] : [])];
         $this->tab = in_array($tab, $tabs, true) ? $tab : 'preview';
 
         if ($this->tab === 'files') {
@@ -809,14 +809,14 @@ class SidePane extends Component
     {
         $user = auth()->user();
 
-        return $user->canChat() && ($this->workspace->user_id === $user->id || $user->isAdmin());
+        return $user->can('chat', $this->workspace->project) && ($this->workspace->user_id === $user->id || $user->isAdmin());
     }
 
     public function render(): View
     {
         return view('livewire.studio.side-pane', [
             'canUseTerminal' => $this->canUseTerminal(),
-            'hasWorkspace' => auth()->user()->canChat(),
+            'hasWorkspace' => auth()->user()->can('chat', $this->workspace->project),
             'shortcuts' => (array) config('studio.terminal', []),
             // Without a running workspace the staging site is the next best thing to look at.
             'previewUrl' => $this->workspace->isRunning() ? null : ($this->workspace->project->isOnline() ? $this->workspace->project->siteUrl() : null),

@@ -54,7 +54,7 @@ class Shell extends Component
             $conversation->markSeen();
         }
 
-        if ($this->workspace->status === WorkspaceStatus::New && auth()->user()->canChat() && $this->missingConnections() === []) {
+        if ($this->workspace->status === WorkspaceStatus::New && auth()->user()->can('chat', $this->project) && $this->missingConnections() === []) {
             $this->provision();
         }
     }
@@ -70,7 +70,7 @@ class Shell extends Component
     {
         $user = auth()->user();
 
-        if (! $user->canChat() || config('studio.driver') !== 'native') {
+        if (! $user->can('chat', $this->project) || config('studio.driver') !== 'native') {
             return [];
         }
 

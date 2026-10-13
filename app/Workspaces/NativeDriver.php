@@ -170,7 +170,7 @@ final class NativeDriver implements WorkspaceDriver
 
     /**
      * The CLI the agent opens pull requests with on this host (gh, glab, az): the installer puts
-     * the installation's own in place; another host's is installed the first time a workspace needs it.
+     * the one of the host it was given in place; another host's is installed the first time a workspace needs it.
      */
     private function ensureGitCli(string $provider): void
     {
@@ -187,7 +187,7 @@ final class NativeDriver implements WorkspaceDriver
     {
         $host = (string) (parse_url($repoUrl, PHP_URL_HOST) ?: $repoUrl);
 
-        return __('Add your account on :host (Tools → git hosting) before opening this workspace: git works as you, with your identity.', ['host' => $host]);
+        return __('Add your account on :host (Settings → Accounts → Git) before opening this workspace: git works as you, with your identity.', ['host' => $host]);
     }
 
     /**

@@ -125,6 +125,19 @@ final class AzureDevOps extends Forge
 
     /* ---------------------------------------------------------------- helpers */
 
+    public function repositorySection(): string
+    {
+        return 'repositories';
+    }
+
+    /** organization/project/name: the API is the organization's already. */
+    public function repository(GitClient $api, string $path): array
+    {
+        [$project, $name] = array_slice([...explode('/', $path, 3), '', ''], 1, 2);
+
+        return $api->get(self::v('/'.self::segment($project).'/_apis/git/repositories/'.self::segment($name)));
+    }
+
     /** A path with the API version every Azure DevOps call wants. */
     private static function v(string $path, string $version = self::VERSION): string
     {

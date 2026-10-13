@@ -5,9 +5,12 @@ use App\Infrastructure\Git\Forge;
 use App\Infrastructure\Git\Forges;
 use App\Jobs\SyncWorkspaceCredentials;
 use App\Livewire\Admin\Connectors as AdminConnectors;
+use App\Livewire\Admin\Projects;
+use App\Livewire\Settings\GitAccounts;
 use App\Livewire\Tools\Git;
 use App\Models\ConnectorAccount;
 use App\Models\ConnectorSetting;
+use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
@@ -57,34 +60,37 @@ test('every git host describes itself consistently', function () {
     }
 });
 
-test('the installation\'s git host is under Tools for everyone, the others once an administrator turns them on', function () {
-    $admin = User::factory()->admin()->create();
+test('every git host is there for everyone, under one Git page whose picker moves across accounts and hosts', function () {
     $client = User::factory()->client()->create();
 
-    $this->actingAs($client)->get(route('projects.index'))->assertSee(route('git', 'github'))->assertDontSee(route('git', 'gitlab'));
-    $this->actingAs($client)->get(route('git', 'github'))->assertOk()->assertSee('No GitHub account yet');
-    $this->actingAs($client)->get(route('git', 'gitlab'))->assertNotFound();
+    $this->actingAs($client)->get(route('projects.index'))->assertSee(route('git'));
+    $this->actingAs($client)->get(route('git'))->assertOk()->assertSee('No git account yet');
+    $this->actingAs($client)->get(route('git', 'gitlab'))->assertOk();
     $this->actingAs($client)->get('/git/hetzner')->assertNotFound();
 
-    Livewire::actingAs($admin)->test(AdminConnectors::class)
-        ->assertSee('Git hosting')
-        ->call('toggle', 'gitlab')
-        ->call('toggle', 'github');
+    $github = gitAccount($client, 'github', [], ['name' => 'Personal', 'host' => 'github.com']);
+    $gitlab = gitAccount($client, 'gitlab', ['url' => 'https://gitlab.acme.test'], ['name' => 'Client', 'host' => 'gitlab.acme.test']);
+    Http::fake(['*' => Http::response([])]);
 
-    expect(Forges::isEnabled('gitlab'))->toBeTrue()->and(Forges::isEnabled('github'))->toBeFalse();
+    Livewire::actingAs($client)->test(Git::class)
+        ->assertSet('connector', 'github')
+        ->assertSet('account', $github->uuid)
+        ->assertSee('Personal · github.com')
+        ->assertSee('Client · gitlab.acme.test')
+        ->call('useAccount', $gitlab->uuid)
+        ->assertSet('connector', 'gitlab')
+        ->assertSet('account', $gitlab->uuid)
+        ->assertSet('tab', 'overview');
 
-    $this->actingAs($client)->get(route('projects.index'))->assertSee(route('git', 'gitlab'))->assertDontSee(route('git', 'github'));
-    $this->actingAs($client)->get(route('git', 'github'))->assertNotFound();
-    $this->actingAs($client)->get(route('git', 'gitlab'))->assertOk();
-
-    // Infrastructure stays for the administrators.
+    // Administration → Connectors keeps the infrastructure and the team's service accounts, not git switches.
+    Livewire::actingAs(User::factory()->admin()->create())->test(AdminConnectors::class)->assertSee('Git hosting')->assertSee('Service accounts');
     Livewire::actingAs($client)->test(AdminConnectors::class)->assertForbidden();
 });
 
-test('everyone adds their own accounts, with the identity their commits carry', function () {
+test('everyone adds their own accounts in Settings, with the identity their commits carry', function () {
     $dev = User::factory()->create(['name' => 'Ada Dev', 'email' => 'ada@studio.test']);
     $other = User::factory()->create();
-    gitAccount($other, 'github', [], ['name' => 'Work']);
+    gitAccount($other, 'github', [], ['name' => 'Their GitHub']);
 
     Http::fake([
         'api.github.com/user/emails' => Http::response([['email' => 'ada@company.test', 'primary' => true, 'verified' => true]]),
@@ -94,15 +100,15 @@ test('everyone adds their own accounts, with the identity their commits carry', 
         'api.github.com/*' => Http::response(['items' => [], 'total_count' => 0, 'resources' => []]),
     ]);
 
-    $page = Livewire::actingAs($dev)->test(Git::class, ['connector' => 'github'])
-        ->assertDontSee('Work')
-        ->call('manageAccounts')
-        ->set('account_name', 'Work')
+    $page = Livewire::actingAs($dev)->test(GitAccounts::class)
+        ->assertDontSee('Their GitHub')
+        ->call('add', 'github')
+        ->set('name', 'Work')
         ->set('credentials.token', 'ghp_bad')
-        ->call('saveAccount')
+        ->call('save')
         ->assertHasErrors('credentials')
         ->set('credentials.token', 'ghp_good')
-        ->call('saveAccount')
+        ->call('save')
         ->assertHasNoErrors();
 
     $account = ConnectorAccount::query()->gitFor($dev)->sole();
@@ -118,16 +124,16 @@ test('everyone adds their own accounts, with the identity their commits carry', 
         ->and(DB::table('connector_accounts')->where('id', $account->id)->value('credentials'))->not->toContain('ghp_good');
 
     // The identity as typed wins; the token stays when left empty.
-    $page->call('editAccount', $account->uuid)->set('git_email', 'ada@personal.test')->call('saveAccount')->assertHasNoErrors();
+    $page->call('edit', $account->uuid)->set('git_email', 'ada@personal.test')->call('save')->assertHasNoErrors();
     expect($account->fresh()->git_email)->toBe('ada@personal.test')->and($account->fresh()->credential('token'))->toBe('ghp_good');
 
     // Nobody else sees, checks or removes it.
-    Livewire::actingAs($other)->test(Git::class, ['connector' => 'github'])
-        ->assertDontSee('ada@personal.test')
-        ->call('removeAccount', $account->uuid);
+    Livewire::actingAs($other)->test(GitAccounts::class)->assertDontSee('ada@personal.test')->call('remove', $account->uuid)->assertNotFound();
+    Livewire::actingAs($other)->test(GitAccounts::class)->call('check', $account->uuid)->assertNotFound();
     expect($account->fresh())->not->toBeNull();
 
-    Livewire::actingAs($other)->test(Git::class, ['connector' => 'github'])->call('testAccount', $account->uuid)->assertNotFound();
+    // The Accounts page has it under Git.
+    $this->actingAs($dev)->get(route('connections.edit', ['tab' => 'git']))->assertOk()->assertSee('Work')->assertSee('ada@personal.test');
 });
 
 test('the workspaces take a new token or identity at once, and the first account names the person', function () {
@@ -139,23 +145,56 @@ test('the workspaces take a new token or identity at once, and the first account
         'api.github.com/user' => Http::response(['id' => 7, 'login' => 'ada-l', 'name' => 'Ada']),
     ]);
 
-    $page = Livewire::actingAs($dev)->test(Git::class, ['connector' => 'github'])
-        ->call('manageAccounts')->set('account_name', 'Personal')->set('credentials.token', 'ghp_one')->call('saveAccount')->assertHasNoErrors();
+    $page = Livewire::actingAs($dev)->test(GitAccounts::class)
+        ->call('add', 'github')->set('name', 'Personal')->set('credentials.token', 'ghp_one')->call('save')->assertHasNoErrors();
 
     $account = ConnectorAccount::query()->gitFor($dev)->sole();
     expect($dev->fresh()->handle)->toBe('ada-l')->and($account->git_email)->toBe('7+ada-l@users.noreply.github.com');
     Queue::assertPushed(SyncWorkspaceCredentials::class, 1);
 
     // Renaming only: nothing to send.
-    $page->call('editAccount', $account->uuid)->set('account_name', 'Mine')->call('saveAccount')->assertHasNoErrors();
+    $page->call('edit', $account->uuid)->set('name', 'Mine')->call('save')->assertHasNoErrors();
     Queue::assertPushed(SyncWorkspaceCredentials::class, 1);
 
-    $page->call('editAccount', $account->uuid)->set('git_email', 'ada@home.test')->call('saveAccount')->assertHasNoErrors();
+    $page->call('edit', $account->uuid)->set('git_email', 'ada@home.test')->call('save')->assertHasNoErrors();
     Queue::assertPushed(SyncWorkspaceCredentials::class, 2);
 
-    $page->call('removeAccount', $account->uuid);
+    $page->call('remove', $account->uuid);
     Queue::assertPushed(SyncWorkspaceCredentials::class, 3);
     expect(ConnectorAccount::query()->gitFor($dev)->exists())->toBeFalse();
+});
+
+test('administrators keep service accounts that deploy project sites, which nobody commits with', function () {
+    Queue::fake();
+    $admin = User::factory()->admin()->create();
+    $dev = User::factory()->create();
+
+    Http::fake([
+        'api.github.com/user/emails' => Http::response([], 403),
+        'api.github.com/user' => Http::response(['id' => 9, 'login' => 'acme-deploy-bot', 'name' => null]),
+    ]);
+
+    Livewire::actingAs($dev)->test(GitAccounts::class, ['shared' => true])->assertForbidden();
+
+    Livewire::actingAs($admin)->test(GitAccounts::class, ['shared' => true])
+        ->call('add', 'github')->set('name', 'Deploy bot')->set('credentials.token', 'ghp_bot')->call('save')->assertHasNoErrors();
+
+    $bot = ConnectorAccount::query()->whereNull('user_id')->sole();
+
+    expect($bot->login)->toBe('acme-deploy-bot')
+        ->and(ConnectorAccount::query()->gitFor($admin)->exists())->toBeFalse()
+        ->and(ConnectorAccount::query()->gitFor($dev)->exists())->toBeFalse();
+    Queue::assertNotPushed(SyncWorkspaceCredentials::class);
+
+    // It is offered first for a new project, and a project deployed with it keeps it until another is chosen.
+    Livewire::actingAs($admin)->test(Projects::class)->call('create')->assertSet('git_account', $bot->uuid)
+        ->set('name', 'Shop')->set('repo_url', 'https://github.com/acme/shop.git')->call('save')->assertHasNoErrors();
+
+    $project = Project::query()->where('name', 'Shop')->sole();
+    expect($project->git_account_id)->toBe($bot->id)->and($project->deployAccount()?->account->is($bot))->toBeTrue();
+
+    Livewire::actingAs($admin)->test(GitAccounts::class, ['shared' => true])->call('remove', $bot->uuid);
+    expect($bot->fresh())->not->toBeNull();
 });
 
 test('a remote finds the account of its host', function () {
@@ -314,7 +353,7 @@ test('every tab and every form of every git host renders, whatever the provider 
             }
         }
 
-        $page->call('manageAccounts')->call('editAccount')->assertOk()->assertSee('Commit email')->assertSee('How to create the token');
+        Livewire::actingAs($user)->test(GitAccounts::class)->call('add', $key)->assertOk()->assertSee('Commit email')->assertSee('How to create the token');
     }
 });
 

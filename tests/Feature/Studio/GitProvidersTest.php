@@ -20,7 +20,7 @@ function useProvider(string $provider, ?string $url = null): GitProvider
 {
     config(['studio.git.provider' => $provider, 'studio.git.url' => $url]);
 
-    return GitProvider::current();
+    return GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'));
 }
 
 /** POST a raw JSON body to the project's webhook with the given headers. */
@@ -75,9 +75,9 @@ test('GitLab: an account on a self-managed instance gives git and the agent that
         ]);
 
     useProvider('gitlab', 'https://git.acme.test');
-    expect(GitProvider::current()->agentEnvironment('glpat-x'))->toBe(['GITLAB_TOKEN' => 'glpat-x', 'GLAB_TOKEN' => 'glpat-x', 'GITLAB_HOST' => 'https://git.acme.test'])
+    expect(GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'))->agentEnvironment('glpat-x'))->toBe(['GITLAB_TOKEN' => 'glpat-x', 'GLAB_TOKEN' => 'glpat-x', 'GITLAB_HOST' => 'https://git.acme.test'])
         ->and(useProvider('gitlab')->agentEnvironment('glpat-x'))->not->toHaveKey('GITLAB_HOST')
-        ->and(GitProvider::current()->gitUsername())->toBe('oauth2');
+        ->and(GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'))->gitUsername())->toBe('oauth2');
 });
 
 test('GitLab: a new repository goes to the chosen group, the webhook carries the secret and the branch', function () {
@@ -100,14 +100,14 @@ test('GitLab: a new repository goes to the chosen group, the webhook carries the
         ->call('save')
         ->assertHasNoErrors();
 
-    $project = Project::query()->where('slug', 'shop-next')->firstOrFail();
+    $project = Project::query()->where('name', 'Shop Next')->firstOrFail();
     expect($project->repo_url)->toBe('https://gitlab.com/acme/web/shop-next.git')
         ->and($project->repositoryPath())->toBe('acme/web/shop-next');
 
     Http::assertSent(fn (Request $request) => $request->url() === 'https://gitlab.com/api/v4/projects' && $request['namespace_id'] === 42 && $request['visibility'] === 'private');
 
     Http::fake(['https://gitlab.com/api/v4/projects/acme%2Fweb%2Fshop-next/hooks' => Http::response(['id' => 77], 201)]);
-    expect(GitProvider::current()->createPushWebhook('glpat-admin', 'acme/web/shop-next', 'https://studio.test/api/git/webhook/shop-next', 's3cret', 'develop'))->toBe('77');
+    expect(GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'))->createPushWebhook('glpat-admin', 'acme/web/shop-next', 'https://studio.test/api/git/webhook/shop-next', 's3cret', 'develop'))->toBe('77');
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/hooks') && $request['token'] === 's3cret' && $request['push_events_branch_filter'] === 'develop');
 });
 
@@ -146,13 +146,13 @@ test('Bitbucket: workspaces and their projects are the owners; the repository la
 
     $form->set('new_owner', 'acme/WEB')->call('save')->assertHasNoErrors();
 
-    expect(Project::query()->where('slug', 'shop-next')->value('repo_url'))->toBe('https://bitbucket.org/acme/shop-next.git');
+    expect(Project::query()->where('name', 'Shop Next')->value('repo_url'))->toBe('https://bitbucket.org/acme/shop-next.git');
     Http::assertSent(fn (Request $request) => $request->method() === 'POST'
         && $request->url() === 'https://api.bitbucket.org/2.0/repositories/acme/shop-next'
         && $request['project'] === ['key' => 'WEB'] && $request['is_private'] === true
         && $request->hasHeader('Authorization', 'Bearer ATATT-admin-0000000000'));
 
-    $git = GitProvider::current();
+    $git = GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'));
     expect($git->gitUsername())->toBe('x-bitbucket-api-token-auth')
         ->and($git->agentEnvironment('ATATT-x'))->toBe(['BITBUCKET_ACCESS_TOKEN' => 'ATATT-x']);
 });
@@ -162,7 +162,7 @@ test('Bitbucket: the webhook is signed with the secret and a push to the branch 
     useProvider('bitbucket');
 
     Http::fake(['https://api.bitbucket.org/2.0/repositories/acme/shop/hooks' => Http::response(['uuid' => '{hook-1}'], 201)]);
-    expect(GitProvider::current()->createPushWebhook('ATATT', 'acme/shop', 'https://studio.test/api/git/webhook/shop', 's3cret', 'develop'))->toBe('{hook-1}');
+    expect(GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'))->createPushWebhook('ATATT', 'acme/shop', 'https://studio.test/api/git/webhook/shop', 's3cret', 'develop'))->toBe('{hook-1}');
     Http::assertSent(fn (Request $request) => $request['secret'] === 's3cret' && $request['events'] === ['repo:push']);
 
     $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://bitbucket.org/acme/shop.git', 'default_branch' => 'develop', 'webhook_secret' => 'hook-secret', 'site_status' => SiteStatus::Ready]);
@@ -202,7 +202,7 @@ test('Azure DevOps: an account of the organization creates repositories in its p
         ->call('save')
         ->assertHasNoErrors();
 
-    $project = Project::query()->where('slug', 'shop-next')->firstOrFail();
+    $project = Project::query()->where('name', 'Shop Next')->firstOrFail();
     expect($project->repo_url)->toBe('https://dev.azure.com/acme/Web/_git/shop-next')
         ->and($project->repositoryPath())->toBe('acme/Web/shop-next');
 
@@ -220,7 +220,7 @@ test('Azure DevOps: the push service hook sends the secret as a header and git.p
         'https://dev.azure.com/acme/_apis/hooks/subscriptions?*' => Http::response(['id' => 'sub-1']),
     ]);
 
-    expect(GitProvider::current()->createPushWebhook('pat', 'acme/Web/shop', 'https://studio.test/api/git/webhook/shop', 's3cret', 'develop'))->toBe('sub-1');
+    expect(GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'))->createPushWebhook('pat', 'acme/Web/shop', 'https://studio.test/api/git/webhook/shop', 's3cret', 'develop'))->toBe('sub-1');
     Http::assertSent(fn (Request $request) => str_contains($request->url(), '/_apis/hooks/subscriptions')
         && $request['eventType'] === 'git.push'
         && $request['publisherInputs']['repository'] === 'r-1'
@@ -235,7 +235,7 @@ test('Azure DevOps: the push service hook sends the secret as a header and git.p
 
     Queue::assertPushed(DeployProjectSite::class, 1);
 
-    expect(GitProvider::current()->agentEnvironment('pat'))->toBe(['AZURE_DEVOPS_EXT_PAT' => 'pat']);
+    expect(GitProvider::make((string) config('studio.git.provider'), config('studio.git.url'))->agentEnvironment('pat'))->toBe(['AZURE_DEVOPS_EXT_PAT' => 'pat']);
 });
 
 test('Azure DevOps without an organization explains how to set it', function () {
@@ -264,7 +264,7 @@ test('the project form takes a repository on the host of one of the administrato
         ->call('save')
         ->assertHasNoErrors();
 
-    expect(Project::query()->where('slug', 'shop')->value('git_account_id'))->toBe($github->id);
+    expect(Project::query()->where('name', 'Shop')->value('git_account_id'))->toBe($github->id);
 });
 
 test('site provisioning hands the helper the git user name and the host of the repository', function () {

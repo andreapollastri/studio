@@ -6,15 +6,13 @@ use App\Infrastructure\Git\Forges\AzureDevOps;
 use App\Infrastructure\Git\Forges\Bitbucket;
 use App\Infrastructure\Git\Forges\GitHub;
 use App\Infrastructure\Git\Forges\GitLab;
-use App\Models\ConnectorSetting;
 use RuntimeException;
 
 /**
- * The git hosts, under Tools in the menu: described like infrastructure
- * connectors and run by the same page, but every account is a person's own
- * (their token, their commit identity), and everyone may add theirs to the
- * hosts an administrator turned on. The installation's own provider is on
- * until an administrator turns it off.
+ * The git hosts: described like infrastructure connectors and run by the same
+ * page (Tools → Git), but every account is a person's own (their token, their
+ * commit identity) or, for deploying project sites, a service account of the
+ * team. All four are there; a project's repository may live on any of them.
  */
 final class Forges
 {
@@ -37,29 +35,19 @@ final class Forges
         return isset(self::ALL[$key]) ? app(self::ALL[$key]) : throw new RuntimeException("Unknown git host [{$key}].");
     }
 
+    /** Every git host is there for everyone; a host without accounts simply has nothing to show. */
     public static function isEnabled(string $key): bool
     {
-        if (! isset(self::ALL[$key])) {
-            return false;
-        }
-
-        $setting = ConnectorSetting::query()->where('connector', $key)->first();
-
-        return $setting !== null ? $setting->enabled : $key === config('studio.git.provider');
+        return isset(self::ALL[$key]);
     }
 
     /**
-     * The git hosts that are on, in the order of the menu.
+     * The git hosts, in the order of the menu.
      *
      * @return list<Forge>
      */
     public static function enabled(): array
     {
-        $settings = ConnectorSetting::query()->whereIn('connector', array_keys(self::ALL))->pluck('enabled', 'connector');
-
-        return array_values(array_filter(
-            self::all(),
-            fn (Forge $forge) => (bool) ($settings[$forge->key()] ?? $forge->key() === config('studio.git.provider')),
-        ));
+        return array_values(self::all());
     }
 }

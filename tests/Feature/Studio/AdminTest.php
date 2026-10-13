@@ -7,6 +7,7 @@ use App\Jobs\DestroyProjectSite;
 use App\Jobs\ProvisionProjectSite;
 use App\Livewire\Admin\Projects;
 use App\Livewire\Admin\Users;
+use App\Livewire\Projects\Settings as ProjectSettings;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Client\Request;
@@ -16,28 +17,37 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
-test('an administrator creates a project, becomes its deployer and the site is provisioned', function () {
+test('an administrator creates a project with a key of its own, puts people on it with their roles, and the site is provisioned', function () {
     Queue::fake();
     $admin = User::factory()->admin()->withGit()->create();
     $dev = User::factory()->create();
+    $client = User::factory()->client()->create();
+    $bystander = User::factory()->create();
 
     Livewire::actingAs($admin)
         ->test(Projects::class)
         ->call('create')
+        ->assertSet('roles', [$dev->uuid => '', $client->uuid => '', $bystander->uuid => ''])
         ->set('name', 'Shop Acme')
         ->set('repo_url', 'https://github.com/acme/shop.git')
-        ->set('members', [$dev->uuid])
+        // the developer is the PM here; the client stays a client
+        ->set('roles.'.$dev->uuid, 'pm')
+        ->set('roles.'.$client->uuid, 'client')
         ->call('save')
         ->assertHasNoErrors();
 
-    $project = Project::query()->where('slug', 'shop-acme')->firstOrFail();
+    $project = Project::query()->where('name', 'Shop Acme')->firstOrFail();
 
-    expect($project->members()->pluck('users.id')->all())->toBe([$dev->id])
+    expect($project->slug)->toMatch('/^shop-acme-[a-z2-9]{6}$/')
+        ->and($project->members()->orderBy('users.id')->pluck('users.id')->all())->toBe([$dev->id, $client->id])
+        ->and($dev->roleIn($project))->toBe(UserRole::Pm)
+        ->and($client->roleIn($project))->toBe(UserRole::Client)
+        ->and($bystander->roleIn($project))->toBeNull()
         ->and($project->deploy_user_id)->toBe($admin->id)
         // the account it was imported with deploys it
         ->and($project->git_account_id)->toBe($admin->gitAccounts()->value('id'))
         ->and($project->site_status)->toBe(SiteStatus::Provisioning)
-        ->and($project->siteHost())->toBe('shop-acme.'.config('studio.domain'));
+        ->and($project->siteHost())->toBe($project->slug.'.'.config('studio.domain'));
 
     Queue::assertPushed(ProvisionProjectSite::class, fn (ProvisionProjectSite $job) => $job->project->is($project));
 });
@@ -54,19 +64,27 @@ test('only repositories on the host of one of the administrator\'s git accounts 
         ->assertHasErrors(['repo_url']);
 });
 
-test('a slug that would not fit a Linux user, or that a preview host already spells, is refused', function () {
+test('two projects may share a name: each gets its own key, short enough for a Linux user and a host label', function () {
     $admin = User::factory()->admin()->withGit()->create();
     User::factory()->create(['handle' => 'maria']);
-    Project::factory()->create(['slug' => 'shop']);
 
-    $form = fn () => Livewire::actingAs($admin)->test(Projects::class)->call('create')->set('name', 'X')->set('repo_url', 'https://github.com/acme/x.git');
+    $form = fn (string $name) => Livewire::actingAs($admin)->test(Projects::class)->call('create')->set('name', $name)->set('repo_url', 'https://github.com/acme/api.git')->call('save')->assertHasNoErrors();
 
-    // prj-<slug> must stay within the 32 characters of a Linux user name
-    $form()->set('slug', str_repeat('a', 29))->call('save')->assertHasErrors(['slug' => 'max']);
-    $form()->set('slug', str_repeat('a', 28))->call('save')->assertHasNoErrors();
-    // "maria-shop" is the host of Maria's preview of "shop"
-    $form()->set('slug', 'maria-shop')->call('save')->assertHasErrors(['slug']);
-    $form()->set('slug', 'maria-crm')->call('save')->assertHasNoErrors();
+    $form('API');
+    $form('API');
+    $form(str_repeat('Very long name ', 6));
+    $form('Studio');
+
+    $keys = Project::query()->orderBy('id')->pluck('slug')->all();
+
+    expect($keys[0])->toMatch('/^api-[a-z2-9]{6}$/')
+        ->and($keys[1])->toMatch('/^api-[a-z2-9]{6}$/')
+        ->and($keys[0])->not->toBe($keys[1])
+        // prj-<key> stays within the 32 characters of a Linux user name
+        ->and(strlen($keys[2]))->toBeLessThanOrEqual(Project::SLUG_MAX)
+        // a reserved name never becomes the start of a key
+        ->and($keys[3])->toStartWith('project-')
+        ->and(Project::previewHostShadowedBy($keys[0]))->toBeNull();
 });
 
 test('a branch name that git could read as an option is refused', function () {
@@ -103,19 +121,51 @@ test('deleting a project marks it and leaves the work to the queue, once', funct
     Queue::assertPushed(DestroyProjectSite::class, 1);
 });
 
-test('editing a project keeps its site and token', function () {
+test('editing a project in its settings keeps its key, its site and its token', function () {
     $admin = User::factory()->admin()->withGit()->create();
     $project = Project::factory()->online()->create(['larapilot_api_token' => 'keep-me']);
+    $key = $project->slug;
 
     Livewire::actingAs($admin)
-        ->test(Projects::class)
-        ->call('edit', $project->uuid)
+        ->test(ProjectSettings::class, ['project' => $project])
         ->set('name', 'Renamed')
-        ->call('save')
+        ->call('saveGeneral')
         ->assertHasNoErrors();
 
     expect($project->fresh()->name)->toBe('Renamed')
+        ->and($project->fresh()->slug)->toBe($key)
         ->and($project->fresh()->larapilot_api_token)->toBe('keep-me');
+});
+
+test('the settings of a project are the administrators\', and its members get the role chosen there', function () {
+    $admin = User::factory()->admin()->create();
+    $project = Project::factory()->create();
+    $luca = User::factory()->create();
+    $giulia = User::factory()->client()->create();
+    $project->members()->attach($luca->id, ['role' => 'dev']);
+
+    Livewire::actingAs($luca)->test(ProjectSettings::class, ['project' => $project])->assertForbidden();
+    $this->actingAs($luca)->get(route('projects.settings', $project))->assertForbidden();
+
+    Livewire::actingAs($admin)
+        ->test(ProjectSettings::class, ['project' => $project])
+        ->assertSet('roles.'.$luca->uuid, 'dev')
+        ->assertSet('roles.'.$giulia->uuid, '')
+        ->set('roles.'.$luca->uuid, 'pm')
+        ->set('roles.'.$giulia->uuid, 'pm')
+        ->call('saveMembers')
+        ->assertHasNoErrors();
+
+    // a client by default may still be the PM of one project
+    expect($luca->roleIn($project))->toBe(UserRole::Pm)
+        ->and($giulia->roleIn($project))->toBe(UserRole::Pm)
+        ->and($giulia->can('chat', $project))->toBeTrue()
+        ->and($giulia->canChat())->toBeTrue();
+
+    Livewire::actingAs($admin)->test(ProjectSettings::class, ['project' => $project])->set('roles.'.$giulia->uuid, '')->call('saveMembers');
+
+    expect($giulia->roleIn($project))->toBeNull()
+        ->and($giulia->canChat())->toBeFalse();
 });
 
 test('an administrator can trigger a deploy of the project site', function () {
@@ -250,7 +300,7 @@ test('an administrator creates a repository on GitHub and the project is marked 
         ->call('save')
         ->assertHasNoErrors();
 
-    $project = Project::query()->where('slug', 'shop-next')->firstOrFail();
+    $project = Project::query()->where('name', 'Shop Next')->firstOrFail();
 
     expect($project->repo_url)->toBe('https://github.com/acme-agency/shop-next.git')
         ->and($project->needsBootstrap())->toBeTrue()

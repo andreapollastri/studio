@@ -25,6 +25,17 @@ abstract class Forge extends Connector
      */
     abstract public function host(array $credentials): string;
 
+    /** The list of repositories (or projects), whose rows open pull requests, issues, branches, pipelines, releases. */
+    abstract public function repositorySection(): string;
+
+    /**
+     * One repository as a row of that list, by its path on the host (owner/name, a
+     * GitLab namespace, organization/project/name on Azure DevOps).
+     *
+     * @return array<string, mixed>
+     */
+    abstract public function repository(GitClient $api, string $path): array;
+
     /** The user name git sends over HTTPS together with the token. */
     abstract public function gitUsername(string $login): string;
 

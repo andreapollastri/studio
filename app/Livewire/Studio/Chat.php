@@ -115,7 +115,7 @@ class Chat extends Component
     /** @return list<string> */
     public function allowedModes(): array
     {
-        $modes = (array) config('studio.modes_by_role.'.auth()->user()->role->value, []);
+        $modes = (array) config('studio.modes_by_role.'.(auth()->user()->roleIn($this->conversation->workspace->project)->value ?? 'client'), []);
 
         return array_values(array_unique([...$modes, $this->conversation->permission_mode]));
     }
@@ -452,7 +452,7 @@ class Chat extends Component
     public function render(): View
     {
         return view('livewire.studio.chat', [
-            'canChat' => auth()->user()->canChat() && $this->conversation->user_id === auth()->id(),
+            'canChat' => auth()->user()->can('chat', $this->conversation->workspace->project) && $this->conversation->user_id === auth()->id(),
             'models' => (array) config('studio.models', []),
             'efforts' => (array) config('studio.efforts', []),
             'modes' => array_intersect_key((array) config('studio.modes', []), array_flip($this->allowedModes())),

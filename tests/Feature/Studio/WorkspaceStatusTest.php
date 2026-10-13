@@ -16,7 +16,7 @@ test('start turns the badge to "starting" at once and polls until the workspace 
     Queue::fake();
     $user = User::factory()->create();
     $workspace = Workspace::factory()->create(['user_id' => $user->id, 'status' => Status::Stopped, 'path' => '/srv/ws']);
-    $workspace->project->members()->attach($user);
+    $workspace->project->members()->syncWithoutDetaching([$user->id]);
 
     $badge = Livewire::actingAs($user)->test(WorkspaceStatus::class, ['workspace' => $workspace])
         ->assertSee('stopped')
@@ -65,7 +65,7 @@ test('only one visit claims a workspace to create, so it is provisioned once', f
 test('links and channels carry uuids, not ids', function () {
     $user = User::factory()->create();
     $project = Project::factory()->create();
-    $project->members()->attach($user);
+    $project->members()->syncWithoutDetaching([$user->id]);
     $workspace = Workspace::factory()->running()->create(['user_id' => $user->id, 'project_id' => $project->id]);
     $conversation = $workspace->conversations()->create(['user_id' => $user->id]);
 

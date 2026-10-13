@@ -203,7 +203,7 @@ final class ProjectSites
         $message = $e->getMessage();
 
         if (str_contains($message, 'Invalid username or token') || str_contains($message, 'Password authentication is not supported')) {
-            return __('The git host refused the deploying account\'s token. Replace it in Tools → git hosting, then deploy again.');
+            return __('The git host refused the deploying account\'s token. Replace it (Settings → Accounts, or a service account in Administration → Connectors), or choose another account in the project\'s settings, then deploy again.');
         }
 
         return $message;

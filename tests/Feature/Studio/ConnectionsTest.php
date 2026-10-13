@@ -62,9 +62,14 @@ test('the connections page lists every git account with the identity its commits
     $team = ClaudeAccount::factory()->for($user)->subscription('.claude-team')->create(['name' => 'Company Team']);
     ProjectGroup::query()->create(['user_id' => $user->id, 'name' => 'Clients', 'claude_account_id' => $team->id]);
 
+    $this->actingAs($user)->get(route('connections.edit', ['tab' => 'git']))->assertOk()
+        ->assertSee(['Personal', 'maria@personal.test', 'Client GitLab', 'gitlab.client.test', 'mrossi@client.test']);
+
     $this->actingAs($user)->get(route('connections.edit'))->assertOk()
-        ->assertSee(['Personal', 'maria@personal.test', 'Client GitLab', 'gitlab.client.test', 'mrossi@client.test'])
         ->assertSee(['Company Team', 'default of Clients', 'Claude subscription'])
         ->assertSee('Add a Claude account')
         ->assertDontSee('setup-token');
+
+    // the old address leads to the same page
+    $this->actingAs($user)->get('/settings/connections')->assertRedirect('/settings/accounts');
 });

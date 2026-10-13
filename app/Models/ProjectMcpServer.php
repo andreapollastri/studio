@@ -62,7 +62,7 @@ class ProjectMcpServer extends Model
 
     public function allows(User $user): bool
     {
-        return $this->enabled && in_array($user->role->value, $this->roles, true);
+        return $this->enabled && in_array($user->roleIn($this->project)?->value, $this->roles, true);
     }
 
     /**

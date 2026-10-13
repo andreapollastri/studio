@@ -6,6 +6,41 @@ server is in `installer/upgrades/<version>.sh`.
 
 ## 1.2.0 (unreleased)
 
+### The team works in projects, the administrators decide who sees what
+- **A role per project**: a person is an administrator, who sees and runs everything, or a member whose role (PM,
+  developer, client) is the project's, set in its *Settings → Members & roles*: a developer here may be the PM there
+  and a client elsewhere. The chat and the workspace, a new conversation's preset and modes, the project's MCP
+  servers, the passwords, folders and SSH connections shared by role, and the infrastructure attached to the project
+  all read the role on that project. *Administration → People* says *Administrator* or *Member · <role> by default*,
+  the role a new membership starts with; every membership keeps the role its person had until now.
+- **Infrastructure attached to projects**: on any connector's page, *Attach to a project…* in a row's menu puts that
+  Droplet, server, zone, Cipi app or Boogle project in the project's *Infrastructure* tab, with the roles that see it,
+  the roles that act on it and the actions they may run, its child lists' too (a zone's DNS records). Members see that
+  row alone, read with the administrators' account, which they never see, and run only what was handed to their role;
+  every action is logged with the project resource. A badge on the row says where it is attached.
+- **The project is a hub**: tabs in its header for the *Workspace* (as before), the *Repository* (pull requests,
+  issues, branches, pipelines and releases of its repository, with the person's own account on its host), the
+  *Infrastructure* and the *Access* (passwords, SSH connections and folders tied to it) of the person's role, and the
+  *Settings*, for administrators, which leave the dialog of *Administration → Projects* for a page of their own.
+- **A key for every project**: new projects get one from their name and six random characters (`api-9usaf9`); the
+  name is free and two clients may both have an "API". The key names the site, the previews, the Linux user, the
+  databases and the folders, and never changes; existing projects keep theirs.
+- **Home**: an inbox across every project: conversations that ask something or failed, finished since last opened,
+  working; failed workspaces and sites; and, read after the page, what waits on each git account. New people get the
+  three steps that make Studio work for them.
+
+### Accounts and git, simpler
+- **Settings → Accounts** (was *Connections*): Claude, Git and SSH keys in one place. Git accounts are added, checked
+  and removed there; *Tools → Git* is one dashboard across all of them, whatever their host.
+- **Every git host is there**: no installation provider and no git switches any more; `studio:git-provider` is gone.
+  `STUDIO_GIT_PROVIDER` only tells the installer the host of the first administrator's token.
+- **Service accounts**: in *Administration → Connectors → Git hosting*, the team's own tokens create repositories,
+  register webhooks and deploy sites, and keep doing it when an administrator leaves. A project says which account
+  deploys it (*Settings → General → Deployed with*); the list of projects shows a personal token in amber.
+- **Navigation**: Home and Projects; Tools (Git, SSH terminal, Password manager, Drive); Infrastructure and
+  Administration fold away.
+
+
 ### The agent sees, delegates and works apart
 - **A browser for the agent**: every chat gets Playwright MCP, a headless Chromium on the server,
   as the MCP server `browser`, signed in to the preview it works on with the person's own pass for

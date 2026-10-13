@@ -10,18 +10,22 @@ use App\Enums\UserRole;
 use App\Enums\WorkspaceStatus;
 use App\Models\ClaudeAccount;
 use App\Models\ConnectorAccount;
+use App\Models\ConnectorSetting;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Project;
 use App\Models\ProjectGroup;
 use App\Models\ProjectMcpServer;
 use App\Models\ProjectPreference;
+use App\Models\ProjectResource;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Database\Seeder;
 
 /**
- * A believable agency: three projects, four people, one lively conversation.
+ * A believable agency: five projects (two of them called "API", for two
+ * clients), four people with a role on each project, a service account that
+ * deploys the sites, a Droplet attached to a project, one lively conversation.
  * For local development and screenshots; never meant for a real deployment.
  *
  *   php artisan db:seed --class=DemoSeeder
@@ -94,9 +98,35 @@ class DemoSeeder extends Seeder
             'deploy_user_id' => $andrea->id,
         ]);
 
-        $shop->members()->syncWithoutDetaching([$maria->id, $luca->id, $giulia->id]);
-        $portale->members()->syncWithoutDetaching([$maria->id, $luca->id]);
-        $loyalty->members()->syncWithoutDetaching([$luca->id]);
+        // two clients, two projects named "API": each has a key of its own
+        $api = Project::query()->firstOrCreate(['name' => 'API', 'repo_url' => 'https://github.com/agency/acme-api.git'], [
+            'slug' => Project::newKey('API'), 'default_branch' => 'main', 'php_version' => '8.4', 'db_engine' => 'pgsql', 'deploy_user_id' => $andrea->id,
+        ]);
+        $otherApi = Project::query()->firstOrCreate(['name' => 'API', 'repo_url' => 'https://dev.azure.com/agency/Globex/_git/api'], [
+            'slug' => Project::newKey('API'), 'default_branch' => 'develop', 'php_version' => '8.4', 'db_engine' => 'mariadb', 'deploy_user_id' => $andrea->id,
+        ]);
+
+        // the role is each project's: Luca develops the shop and is the PM of the loyalty app; Giulia is the client of the shop
+        $shop->syncMembers([$maria->id => 'pm', $luca->id => 'dev', $giulia->id => 'client']);
+        $portale->syncMembers([$maria->id => 'pm', $luca->id => 'dev']);
+        $loyalty->syncMembers([$luca->id => 'pm']);
+        $api->syncMembers([$luca->id => 'dev', $maria->id => 'dev']);
+        $otherApi->syncMembers([$luca->id => 'dev']);
+
+        // the team's own token deploys the sites, whoever the administrator is
+        $bot = ConnectorAccount::query()->updateOrCreate(['user_id' => null, 'connector' => 'github', 'name' => 'Agency deploy bot'], [
+            'login' => 'agency-deploy', 'host' => 'github.com', 'credentials' => ['token' => 'demo_token_bot'], 'status' => 'ok · agency-deploy', 'checked_at' => now(),
+        ]);
+        Project::query()->whereKey([$shop->id, $portale->id, $loyalty->id, $api->id])->update(['git_account_id' => $bot->id]);
+
+        // the shop's production Droplet, in its Infrastructure tab: developers reboot it, the PM and the client look
+        ConnectorSetting::query()->updateOrCreate(['connector' => 'digitalocean'], ['enabled' => true]);
+        $cloud = ConnectorAccount::query()->updateOrCreate(['user_id' => null, 'connector' => 'digitalocean', 'name' => 'Agency'], [
+            'credentials' => ['token' => 'dop_v1_demo'], 'status' => 'ok · agency@agency.test', 'checked_at' => now(),
+        ]);
+        ProjectResource::query()->updateOrCreate(['project_id' => $shop->id, 'connector_account_id' => $cloud->id, 'section' => 'droplets', 'resource_id' => '424242'], [
+            'label' => 'Shop Acme · production', 'view_roles' => ['pm', 'dev', 'client'], 'act_roles' => ['dev'], 'actions' => ['reboot', 'snapshot'], 'added_by' => $andrea->id,
+        ]);
 
         // Andrea's list: the clients' projects in their group, on the agency's Team plan
         foreach ([$shop, $portale] as $project) {
@@ -200,7 +230,7 @@ class DemoSeeder extends Seeder
             'checked_at' => now()->subMinutes(12),
         ]);
 
-        $this->command->info('Demo ready: andrea@agency.test (admin), maria@agency.test (PM), luca@agency.test (dev), giulia@client.test (client). Password: password');
+        $this->command->info('Demo ready: andrea@agency.test (admin), maria@agency.test (PM of the shop), luca@agency.test (developer here, PM there), giulia@client.test (client of the shop). Password: password');
     }
 
     private function gitAccount(User $user, string $connector, string $login, string $host, ?string $name = null, ?string $url = null): ConnectorAccount

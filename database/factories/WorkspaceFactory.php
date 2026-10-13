@@ -26,6 +26,18 @@ class WorkspaceFactory extends Factory
         ];
     }
 
+    /** A workspace is a member's: its person joins the project with their default role, unless already on it. */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (Workspace $workspace): void {
+            $user = $workspace->user;
+
+            if (! $user->isAdmin() && ! $workspace->project->members()->whereKey($user->id)->exists()) {
+                $workspace->project->members()->attach($user->id, ['role' => $user->defaultRole()->value]);
+            }
+        });
+    }
+
     public function running(): static
     {
         return $this->state(fn () => [

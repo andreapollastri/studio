@@ -118,6 +118,16 @@ final class Bitbucket extends Forge
         return ['uuid' => (string) ($me['uuid'] ?? ''), 'name' => (string) ($me['display_name'] ?? '')];
     }
 
+    public function repositorySection(): string
+    {
+        return 'repositories';
+    }
+
+    public function repository(GitClient $api, string $path): array
+    {
+        return $api->get(self::repo($path));
+    }
+
     private static function repo(string $fullName): string
     {
         return '/repositories/'.implode('/', array_map('rawurlencode', explode('/', $fullName)));

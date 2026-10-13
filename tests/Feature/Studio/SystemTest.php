@@ -1,7 +1,6 @@
 <?php
 
 use App\Livewire\Admin\System;
-use App\Models\Project;
 use App\Models\User;
 use App\Server\Updates;
 use Livewire\Livewire;
@@ -190,13 +189,12 @@ test('a local installation explains that updates happen on the server', function
     expect(file_get_contents($this->log))->toBe('');
 });
 
-test('the git provider can only change while there are no projects', function () {
+test('the system page lists every git host: none is the installation\'s own', function () {
     $admin = User::factory()->admin()->create();
 
-    Livewire::actingAs($admin)->test(System::class)->assertSee('studio:git-provider');
-
-    Project::factory()->create();
-    Livewire::actingAs($admin)->test(System::class)->assertDontSee('studio:git-provider')->assertSee('so the provider stays');
+    Livewire::actingAs($admin)->test(System::class)
+        ->assertSee(['GitHub', 'GitLab', 'Bitbucket', 'Azure DevOps'])
+        ->assertDontSee('studio:git-provider');
 });
 
 test('the page follows an update through a JSON status that answers even during the maintenance of the switch', function () {

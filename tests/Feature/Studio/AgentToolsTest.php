@@ -2,7 +2,7 @@
 
 use App\Bridge\BridgeClient;
 use App\Enums\ConversationStatus;
-use App\Livewire\Admin\Projects;
+use App\Livewire\Projects\Settings as ProjectSettings;
 use App\Livewire\Studio\Chat;
 use App\Livewire\Studio\ConversationList;
 use App\Livewire\Studio\Shell;
@@ -348,9 +348,8 @@ test('the project settings choose the agent\'s browser and sandboxes', function 
 
     expect($project->agentSettings())->toBe(['browser' => true, 'sandboxes' => true, 'sandbox_limit' => 3]);
 
-    Livewire::actingAs($admin)->test(Projects::class)
-        ->call('settings', $project->uuid)
-        ->set('settingsTab', 'agent')
+    Livewire::actingAs($admin)->test(ProjectSettings::class, ['project' => $project])
+        ->set('tab', 'agent')
         ->assertSee('Browser for the agent')
         ->set('agent_browser', false)
         ->set('agent_sandbox_limit', 5)
@@ -359,8 +358,7 @@ test('the project settings choose the agent\'s browser and sandboxes', function 
 
     expect($project->fresh()->agentSettings())->toBe(['browser' => false, 'sandboxes' => true, 'sandbox_limit' => 5]);
 
-    Livewire::actingAs($admin)->test(Projects::class)
-        ->call('settings', $project->uuid)
+    Livewire::actingAs($admin)->test(ProjectSettings::class, ['project' => $project])
         ->set('agent_sandbox_limit', 50)
         ->call('saveSettings')
         ->assertHasErrors('agent_sandbox_limit');

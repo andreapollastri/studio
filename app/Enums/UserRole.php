@@ -19,6 +19,16 @@ enum UserRole: string
         };
     }
 
+    /**
+     * The roles a person may have on a project; an administrator is one everywhere.
+     *
+     * @return list<self>
+     */
+    public static function projectRoles(): array
+    {
+        return [self::Pm, self::Dev, self::Client];
+    }
+
     /** Can this role talk to the agent at all? */
     public function canChat(): bool
     {

@@ -35,17 +35,27 @@ What lives where on the server:
 | `<project>.<domain>` | the deploy branch of a project, redeployed on every push by the git provider's webhook |
 | `<user>-<project>.<domain>` | one person's workspace: their clone, their database, their Claude Code |
 
-**Any git host, everyone's own accounts.** Projects live on GitHub, GitLab (gitlab.com or self-managed),
-Bitbucket Cloud or Azure DevOps, the same remote forges Larapilot integrates with; the installer picks the default
-one (`php artisan studio:git-provider` changes it), *Administration → Connectors* turns the others on. A project is
-an existing repository, or one Studio creates on the spot with the latest Laravel, Laravel Boost and Larapilot, with
-one of the creating administrator's accounts, which also registers the webhook and deploys the site. People sign in
-with email and password (plus two-factor), then bring their own accounts, as many as they work with:
+**The administrators run it, the team works in projects.** Everything starts from the administrators: they invite
+people, create the projects, put each person on them with a role *of that project* (a developer here may be the PM
+there and a client elsewhere), keep the team's accounts, and decide, project by project and role by role, who sees and
+does what: the passwords, folders and SSH connections tied to a project, and the servers, zones and apps of the
+infrastructure connectors attached to it. Every project gets a key of its own (`api-9usaf9`), so two clients may
+both have an "API".
 
-- **Git** (*Tools → GitHub, GitLab…*): a personal GitHub, the company's Azure DevOps, a client's GitLab, each with the
+**Any git host, everyone's own accounts.** Projects live on GitHub, GitLab (gitlab.com or self-managed),
+Bitbucket Cloud or Azure DevOps, the same remote forges Larapilot integrates with; all four are always there. A project
+is an existing repository, or one Studio creates on the spot with the latest Laravel, Laravel Boost and Larapilot. A
+*service account* of the team (*Administration → Connectors → Git hosting*: a bot's token) or an administrator's own
+account creates or reads it, registers the webhook and deploys the site; a service account keeps deploying when an
+administrator leaves. People sign in with email and password (plus two-factor), then bring their own accounts, as many
+as they work with, all in *Settings → Accounts*:
+
+- **Git**: a personal GitHub, the company's Azure DevOps, a client's GitLab, each with the
   name and email its commits carry. A workspace clones, commits and pushes as the account on the host of its
   repository, with that identity (`git config` in the clone), and the agent's CLI (gh, glab, az) gets that token.
-- **Claude** (*Settings → Connections*): subscriptions and Anthropic API keys side by side. *Sign in with Claude* runs
+  *Tools → Git* is one dashboard across all of them; a project's *Repository* tab opens its own repository with it.
+- **SSH keys**: generated (Ed25519, RSA) or imported, for the SSH terminal.
+- **Claude**: subscriptions and Anthropic API keys side by side. *Sign in with Claude* runs
   Claude Code's official `claude auth login` in the person's own home on the server, in a folder of its own for each
   subscription (`~/.claude`, `~/.claude-<slug>`, sharing the sessions, agents and skills), so a Pro, Max or Team plan is
   used the way Anthropic allows on hosted platforms and Studio never holds it; a key is stored encrypted and goes with
@@ -79,6 +89,13 @@ chat), subagent cards with `code-reviewer` and `browser-qa`, and conversations i
 (worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* picks the model, the effort and the permission mode
 (ask, ask with edits, autopilot, plan only); the *Terminal* tab runs allowlisted commands in the workspace; the *Files* tab is a file manager with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
+**A project is a hub.** Its page has tabs: *Workspace* (the chat, the preview, the changes, the terminal, the files),
+*Repository* (pull requests, issues, branches, pipelines and releases of its repository, with the person's own account),
+*Infrastructure* (what is attached to it, for the person's role), *Access* (its passwords, SSH connections and folders,
+for the person's role) and, for administrators, *Settings* (general, members and roles, server, who opens the hosts,
+agent, MCP servers). *Home* is an inbox across every project: conversations that ask something, failed or finished
+since last opened, failed workspaces and sites, and what waits on each git account.
+
 **Infrastructure.** Studio also drives the clouds and services the team runs its servers on, through their APIs:
 AWS (EC2, every kind of Lightsail resource, RDS, S3, Route 53, CloudFront), DigitalOcean, Hetzner Cloud, Cloudflare,
 [Cipi](https://cipi.sh) servers, [Boogle](https://boogle.web.ap.it) and [Hackly](https://hackly.web.ap.it). It is for
@@ -91,28 +108,33 @@ administrators only: no other role sees the menu, the pages or the accounts.
    provider before saving and stores them encrypted; any number of accounts per connector.
 3. Pick the account at the top and a tab: lists with search and filters (the region for AWS), a button to create, a menu
    of actions on every row. Secrets the provider hands back once (root passwords, private keys) show once, with *Copy*.
+4. *Attach to a project…* in a row's menu puts that Droplet, zone or app in the project's *Infrastructure* tab: the roles
+   that see it, the roles that act on it, and which of its actions (and of the lists it opens, like a zone's records)
+   they may run. Members see that row alone, read with the administrators' account, which they never see.
 
 The pages ask for the password again, as the SSH terminal does, and every action is logged with who did it
 (`grep '"infrastructure"' storage/logs/laravel.log`). Which token to create for each provider, where, with which
 permissions, plus step-by-step recipes: [the docs](https://studio.web.ap.it/#infra).
 
-**Git hosting.** *Tools → GitHub* (GitLab, Bitbucket, Azure DevOps) is a dashboard of what waits for you on the git
-hosts: pull requests asking for your review, your own, issues and work items assigned to you, notifications, and every
-repository with its branches, pipelines and releases. Read the conversation and the diff, comment, approve, merge,
-close, create branches, pull requests, issues and releases, start or retry pipelines. Everyone works with their own
-accounts, as many as they need (personal, work, a client's), each with the name and email its commits carry; the
-installation's provider is on from the start, *Administration → Connectors* turns the others on. Tokens and scopes per
+**Git hosting.** *Tools → Git* is one dashboard of what waits for you on every git host you have an account on
+(GitHub, GitLab, Bitbucket, Azure DevOps; the picker moves between them): pull requests asking for your review, your
+own, issues and work items assigned to you, notifications, and every repository with its branches, pipelines and
+releases. Read the conversation and the diff, comment, approve, merge, close, create branches, pull requests, issues
+and releases, start or retry pipelines. Everyone works with their own accounts, kept in *Settings → Accounts*, as many
+as they need (personal, work, a client's), each with the name and email its commits carry. Tokens and scopes per
 provider: [the docs](https://studio.web.ap.it/#git).
 
-## Status (1.1)
+## Status (1.2, unreleased)
 
 What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 | Area | State |
 | --- | --- |
-| Accounts: invite-only, roles (admin, PM, dev, client), password with 2FA and passkeys, git provider and Claude connections | done, tested |
-| Git providers: GitHub, GitLab, Bitbucket Cloud, Azure DevOps (one per installation): token check, owners, new repositories, push webhooks and their verification, agent environment | done, tested against each API's documented requests and answers (HTTP fakes); not yet run against the live services |
-| Projects with members; project site created on save, deployed by webhook or by hand | done, tested with a stand-in helper |
+| Accounts: invite-only, administrators and members, a role per project (PM, developer, client), password with 2FA and passkeys; git, SSH and Claude accounts in Settings → Accounts | done, tested |
+| Git hosts: GitHub, GitLab, Bitbucket Cloud, Azure DevOps, all at once: token check, owners, new repositories, push webhooks and their verification, agent environment; service accounts for deploying | done, tested against each API's documented requests and answers (HTTP fakes); not yet run against the live services |
+| Projects with a random key, members with their roles; project site created on save, deployed by webhook or by hand | done, tested with a stand-in helper |
+| Project hub: Workspace, Repository (the person's own account), Infrastructure and Access by role, Settings for administrators; Home inbox across projects and git accounts | done, tested (git hosts and connectors with HTTP fakes) |
+| Infrastructure attached to projects: any row of a connector's list, seen and acted on by the roles chosen, with the actions handed over, logged | done, tested against HTTP fakes |
 | Workspaces on the server through `studio-admin` (`native` driver); `local` driver for development | native tested with a stand-in helper; local tested |
 | Chat: messages, slash commands for skills, permission cards, cards for Claude's questions (AskUserQuestion), streaming text, Reverb with polling fallback | done, tested with a fake bridge |
 | Per conversation: model, effort, mode (ask, ask with edits, autopilot, plan only) | done, tested |
@@ -132,8 +154,8 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Groups of projects per person, with their Claude and git accounts; projects on any enabled git host, each workspace with the git account and commit identity of its repository's host | done, tested |
 | Agent browser (Playwright MCP signed in to the preview with the person's pass), screenshots in the chat, subagents as cards, Studio's `code-reviewer` and `browser-qa` | done, tested (bridge against the fake CLI; Playwright MCP 0.0.83 run for real against a site behind a pass cookie: navigate, screenshot, console); not yet run on a live server |
 | Conversations in a sandbox: worktree on its own branch, database copy, build and preview host; merge, push, remove; the side pane follows it | done, tested (bridge against real git repositories, Studio with stand-ins for the bridge and the helper); `sandbox-create`/`sandbox-delete` shellchecked, not yet run on a live server |
-| Infrastructure connectors (*Administration → Connectors*, menu *Infrastructure*): AWS (EC2, all of Lightsail, RDS, S3, Route 53, CloudFront, cost), DigitalOcean, Hetzner Cloud, Cloudflare, Cipi servers, Boogle, Hackly; multi-account, credentials encrypted and checked on save, enabled per connector, administrators only | done, tested against each API's documented requests and answers (HTTP fakes, AWS SigV4 against the AWS test suite); not yet run against the live services |
-| Git hosting dashboards (*Tools*): GitHub, GitLab, Bitbucket Cloud, Azure DevOps; personal accounts, several per person, each with its commit identity | done, tested against each API's documented requests and answers (HTTP fakes); not yet run against the live services |
+| Infrastructure connectors (*Administration → Connectors*, menu *Infrastructure*): AWS (EC2, all of Lightsail, RDS, S3, Route 53, CloudFront, cost), DigitalOcean, Hetzner Cloud, Cloudflare, Cipi servers, Boogle, Hackly; multi-account, credentials encrypted and checked on save, enabled per connector, administrators only (members see what is attached to their projects) | done, tested against each API's documented requests and answers (HTTP fakes, AWS SigV4 against the AWS test suite); not yet run against the live services |
+| Git dashboard (*Tools → Git*): GitHub, GitLab, Bitbucket Cloud, Azure DevOps in one page; personal accounts, several per person on any host, each with its commit identity | done, tested against each API's documented requests and answers (HTTP fakes); not yet run against the live services |
 | Not started | atomic releases for project sites, notifications, mobile layout |
 
 ## Run it locally (no server)

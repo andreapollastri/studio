@@ -41,6 +41,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read ProjectMember|null $membership their membership, when read through Project::members()
  */
 #[Fillable(['name', 'email', 'password', 'role', 'handle', 'claude_account_id', 'email_verified_at'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
@@ -92,10 +93,10 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             : $initials;
     }
 
-    /** @return BelongsToMany<Project, $this> */
+    /** @return BelongsToMany<Project, $this, ProjectMember, 'membership'> */
     public function projects(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class, 'project_members')->withTimestamps();
+        return $this->belongsToMany(Project::class, 'project_members')->using(ProjectMember::class)->as('membership')->withPivot('role')->withTimestamps();
     }
 
     /** @return HasMany<Workspace, $this> */
@@ -173,14 +174,74 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->role === UserRole::Admin;
     }
 
-    public function canChat(): bool
+    /**
+     * The role this person starts with on a project they are added to: theirs on the
+     * user, which only says "administrator" for good, everywhere.
+     */
+    public function defaultRole(): UserRole
     {
-        return $this->role->canChat();
+        return $this->role === UserRole::Admin ? UserRole::Dev : $this->role;
     }
 
+    /**
+     * What this person is on a project: Administrator everywhere for an administrator,
+     * otherwise the role of their membership, null when they are not a member.
+     */
+    public function roleIn(Project $project): ?UserRole
+    {
+        if ($this->isAdmin()) {
+            return UserRole::Admin;
+        }
+
+        $membership = $this->projects()->whereKey($project->id)->first();
+
+        return $membership === null ? null : ($membership->membership->role ?? $this->defaultRole());
+    }
+
+    /**
+     * The ids of the projects where this person has one of these roles, for a query.
+     *
+     * @return list<int>
+     */
+    public function projectIdsAs(UserRole ...$roles): array
+    {
+        return array_values(array_map('intval', $this->projects()->get()
+            ->filter(fn (Project $p) => in_array($p->membership->role ?? $this->defaultRole(), $roles, true))
+            ->modelKeys()));
+    }
+
+    /**
+     * Talks to the agent somewhere: an administrator, a PM or developer by default, or the
+     * PM or developer of at least one project (what each project allows is its role's).
+     */
+    public function canChat(): bool
+    {
+        return $this->isAdmin() || $this->defaultRole()->canChat() || $this->projectIdsAs(UserRole::Pm, UserRole::Dev) !== [];
+    }
+
+    /**
+     * The SSH terminal and their own connections: administrators, developers by default, and the
+     * developers of at least one project. A project's connections open to its developers only.
+     */
     public function canUseSsh(): bool
     {
-        return $this->role->canUseSsh();
+        return $this->isAdmin() || $this->defaultRole() === UserRole::Dev || $this->projectIdsAs(UserRole::Dev) !== [];
+    }
+
+    /**
+     * The members of a project with one of these roles (a membership with no role
+     * stored counts with the person's default one).
+     *
+     * @param  Builder<User>  $query
+     * @param  list<string>  $roles
+     */
+    public function scopeWithRoleIn(Builder $query, int $projectId, array $roles): void
+    {
+        $roles = $roles === [] ? ['-'] : $roles;
+
+        $query->whereHas('projects', fn (Builder $p) => $p->whereKey($projectId)->where(fn (Builder $p) => $p
+            ->whereIn('project_members.role', $roles)
+            ->orWhere(fn (Builder $p) => $p->whereNull('project_members.role')->whereIn('users.role', $roles))));
     }
 
     public function canAccess(Project $project): bool

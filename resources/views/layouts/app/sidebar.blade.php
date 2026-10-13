@@ -11,29 +11,21 @@
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
-                <flux:sidebar.group :heading="__('Studio')" class="grid">
+                {{-- Where the work is --}}
+                <flux:sidebar.group class="grid">
+                    <flux:sidebar.item icon="home" :href="route('home')" :current="request()->routeIs('home')" wire:navigate>
+                        {{ __('Home') }}
+                    </flux:sidebar.item>
                     <flux:sidebar.item icon="folder" :href="route('projects.index')" :current="request()->routeIs('projects.*') || request()->routeIs('studio.*')" wire:navigate>
                         {{ __('Projects') }}
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
-                @php($infrastructure = \App\Infrastructure\Connectors::visibleTo(auth()->user()))
-                @if ($infrastructure !== [])
-                    <flux:sidebar.group :heading="__('Infrastructure')" class="grid">
-                        @foreach ($infrastructure as $connector)
-                            <flux:sidebar.item :icon="$connector->icon()" :href="route('infrastructure', $connector->key())" :current="request()->routeIs('infrastructure') && request()->route('connector') === $connector->key()" wire:navigate>
-                                {{ $connector->label() }}
-                            </flux:sidebar.item>
-                        @endforeach
-                    </flux:sidebar.group>
-                @endif
-
+                {{-- Tools, each with the person's own accounts and what their projects share --}}
                 <flux:sidebar.group :heading="__('Tools')" class="grid">
-                    @foreach (\App\Infrastructure\Git\Forges::enabled() as $forge)
-                        <flux:sidebar.item :icon="$forge->icon()" :href="route('git', $forge->key())" :current="request()->routeIs('git') && request()->route('connector') === $forge->key()" wire:navigate>
-                            {{ $forge->label() }}
-                        </flux:sidebar.item>
-                    @endforeach
+                    <flux:sidebar.item icon="code-bracket-square" :href="route('git')" :current="request()->routeIs('git')" wire:navigate>
+                        {{ __('Git') }}
+                    </flux:sidebar.item>
                     @can('ssh')
                         <flux:sidebar.item icon="command-line" :href="route('ssh')" :current="request()->routeIs('ssh')" wire:navigate>
                             {{ __('SSH terminal') }}
@@ -47,13 +39,25 @@
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
+                {{-- The administrators' own: the infrastructure, folded, and the administration --}}
+                @php($infrastructure = \App\Infrastructure\Connectors::visibleTo(auth()->user()))
+                @if ($infrastructure !== [])
+                    <flux:sidebar.group :heading="__('Infrastructure')" icon="server-stack" expandable :expanded="request()->routeIs('infrastructure')" class="grid">
+                        @foreach ($infrastructure as $connector)
+                            <flux:sidebar.item :icon="$connector->icon()" :href="route('infrastructure', $connector->key())" :current="request()->routeIs('infrastructure') && request()->route('connector') === $connector->key()" wire:navigate>
+                                {{ $connector->label() }}
+                            </flux:sidebar.item>
+                        @endforeach
+                    </flux:sidebar.group>
+                @endif
+
                 @if (auth()->user()->isAdmin())
-                    <flux:sidebar.group :heading="__('Administration')" class="grid">
+                    <flux:sidebar.group :heading="__('Administration')" icon="adjustments-horizontal" expandable :expanded="request()->routeIs('admin.*')" class="grid">
                         <flux:sidebar.item icon="rectangle-stack" :href="route('admin.projects')" :current="request()->routeIs('admin.projects')" wire:navigate>
                             {{ __('Projects') }}
                         </flux:sidebar.item>
                         <flux:sidebar.item icon="users" :href="route('admin.users')" :current="request()->routeIs('admin.users')" wire:navigate>
-                            {{ __('Users') }}
+                            {{ __('People') }}
                         </flux:sidebar.item>
                         <flux:sidebar.item icon="puzzle-piece" :href="route('admin.connectors')" :current="request()->routeIs('admin.connectors')" wire:navigate>
                             {{ __('Connectors') }}
@@ -102,6 +106,9 @@
                     <flux:menu.separator />
 
                     <flux:menu.radio.group>
+                        <flux:menu.item :href="route('connections.edit')" icon="user-circle" wire:navigate>
+                            {{ __('My accounts') }}
+                        </flux:menu.item>
                         <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
                             {{ __('Settings') }}
                         </flux:menu.item>

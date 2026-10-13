@@ -246,6 +246,8 @@ class Index extends Component
             'byGroup' => $byGroup,
             'runs' => $runs,
             'workspaces' => $user->workspaces()->get()->keyBy('project_id'),
+            // the person's role on each project: an administrator is one everywhere
+            'roles' => $user->isAdmin() ? collect() : $user->projects()->get()->mapWithKeys(fn (Project $p) => [$p->id => $p->membership->role ?? $user->defaultRole()]),
             'claudeAccounts' => $user->claudeAccounts()->orderBy('id')->get(),
             'gitAccounts' => $user->gitAccounts()->orderBy('name')->get(),
             'accountsFor' => $accountsProject,

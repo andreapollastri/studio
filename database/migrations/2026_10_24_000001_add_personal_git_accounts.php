@@ -56,7 +56,7 @@ return new class extends Migration
         $forge = Forges::make($key);
 
         try {
-            $url = GitProvider::current()->baseUrl();
+            $url = GitProvider::make($key, config('studio.git.url'))->baseUrl();
         } catch (Throwable) {
             return;
         }

@@ -2,17 +2,21 @@
     <div class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:gap-3">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('A project is a repository with Larapilot, on any git host that is on. Its deploy branch runs at :host; every member gets a workspace and a preview of their own, and works with their own accounts.', ['host' => '<project>.'.$domain]) }}</flux:text>
+            <flux:text class="mt-1">{{ __('A project is a repository with Larapilot, on any git host. Its deploy branch runs at :host; every member gets a workspace and a preview of their own, and works with their own accounts. Who is on it, with which role, and what they see of the infrastructure is set in its Settings.', ['host' => '<key>.'.$domain]) }}</flux:text>
         </div>
         <flux:button icon="plus" variant="primary" wire:click="create">{{ __('New project') }}</flux:button>
     </div>
 
-    @unless ($deployerHasGit)
+    @if ($gitAccounts->isEmpty())
         <flux:callout variant="warning" icon="exclamation-triangle">
             <flux:callout.heading>{{ __('Add a git account first') }}</flux:callout.heading>
-            <flux:callout.text>{{ __('Project sites are cloned and deployed with the git account of the administrator who creates them, on the host of the repository.') }} <flux:link :href="route('connections.edit')" wire:navigate>{{ __('Settings → Connections') }}</flux:link></flux:callout.text>
+            <flux:callout.text>{{ __('A project site is cloned and deployed with a git account on the host of its repository: a service account of the team (Administration → Connectors), or one of yours.') }} <flux:link :href="route('connections.edit', ['tab' => 'git'])" wire:navigate>{{ __('Settings → Accounts') }}</flux:link></flux:callout.text>
         </flux:callout>
-    @endunless
+    @endif
+
+    @if ($projects->count() > 8 || $search !== '')
+        <flux:input wire:model.live.debounce.250ms="search" icon="magnifying-glass" :placeholder="__('Search by name, key or repository')" clearable class="max-w-sm" />
+    @endif
 
     <div class="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
         <table class="table-cards w-full text-sm">
@@ -20,21 +24,30 @@
                 <tr>
                     <th class="px-4 py-2 text-start">{{ __('Project') }}</th>
                     <th class="px-4 py-2 text-start">{{ __('Repository') }}</th>
-                    <th class="px-4 py-2 text-start">{{ __('Stack') }}</th>
                     <th class="px-4 py-2 text-start">{{ __('Site') }}</th>
-                    <th class="px-4 py-2 text-end">{{ __('Members') }}</th>
+                    <th class="px-4 py-2 text-end">{{ __('Team') }}</th>
                     <th class="px-4 py-2"></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @forelse ($projects as $project)
+                    @php($deployer = $project->repositoryAccount)
                     <tr wire:key="project-{{ $project->uuid }}">
                         <td class="px-4 py-2" data-cell="main">
-                            <div class="font-medium">{{ $project->name }}</div>
+                            <a href="{{ route('studio.show', $project) }}" wire:navigate class="font-medium hover:underline">{{ $project->name }}</a>
                             <div class="font-mono text-xs text-zinc-500">{{ $project->slug }}</div>
                         </td>
-                        <td class="max-w-xs truncate px-4 py-2 font-mono text-xs" data-cell="wide">{{ $project->repositoryPath() ?? $project->repo_url }} <span class="text-zinc-500">@ {{ $project->default_branch }}</span></td>
-                        <td class="px-4 py-2 text-xs" data-cell="meta">PHP {{ $project->php_version }} · {{ $project->db_engine === 'pgsql' ? 'PostgreSQL' : 'MariaDB' }}</td>
+                        <td class="max-w-xs px-4 py-2 text-xs" data-cell="wide">
+                            <div class="truncate font-mono">{{ $project->repositoryPath() ?? $project->repo_url }} <span class="text-zinc-500">@ {{ $project->default_branch }}</span></div>
+                            <div class="mt-1 flex flex-wrap items-center gap-1 text-zinc-500">
+                                <span>PHP {{ $project->php_version }} · {{ $project->db_engine === 'pgsql' ? 'PostgreSQL' : 'MariaDB' }}</span>
+                                @if ($deployer)
+                                    <flux:badge size="sm" :color="$deployer->user_id === null ? 'green' : 'amber'" :title="__('Deployed with this account')">{{ $deployer->user_id === null ? __('service · :name', ['name' => $deployer->name]) : __(':person\'s token', ['person' => $deployer->user?->name ?? '?']) }}</flux:badge>
+                                @else
+                                    <flux:badge size="sm" color="red">{{ __('no deploy account') }}</flux:badge>
+                                @endif
+                            </div>
+                        </td>
                         <td class="px-4 py-2 text-xs" data-cell="wide">
                             <div class="flex flex-wrap items-center gap-2">
                                 <flux:badge size="sm" :color="match ($project->site_status) { \App\Enums\SiteStatus::Ready => 'green', \App\Enums\SiteStatus::Failed => 'red', \App\Enums\SiteStatus::New => 'zinc', default => 'yellow' }">{{ $project->site_status->label() }}</flux:badge>
@@ -51,53 +64,51 @@
                                 <div class="mt-1 max-w-md whitespace-pre-wrap break-words text-red-600">{{ $project->last_error }}</div>
                             @endif
                         </td>
-                        <td class="px-4 py-2 text-end tabular-nums" data-cell="meta" data-label="{{ __('Members') }}">{{ $project->members_count }}</td>
+                        <td class="px-4 py-2 text-end text-xs whitespace-nowrap text-zinc-500" data-cell="meta" data-label="{{ __('Team') }}">
+                            {{ trans_choice(':count member|:count members', $project->members_count) }}
+                            @if ($project->resources_count)<div>{{ trans_choice(':count resource|:count resources', $project->resources_count) }}</div>@endif
+                        </td>
                         <td class="px-4 py-2 text-end whitespace-nowrap" data-cell="actions-row">
                             <flux:button size="xs" variant="ghost" icon="rocket-launch" wire:click="deploy('{{ $project->uuid }}')" :disabled="$project->site_status->isTransitional()">{{ $project->site_status === \App\Enums\SiteStatus::New ? __('Create site') : __('Deploy') }}</flux:button>
-                            <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="edit('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Edit') }}</flux:button>
-                            <flux:button size="xs" variant="ghost" icon="cog-6-tooth" wire:click="settings('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Settings') }}</flux:button>
-                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="delete('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting" wire:confirm="{{ __('Delete the project, its site and every workspace on this server? The :provider repository is not touched.', ['provider' => $git->label()]) }}" />
+                            <flux:button size="xs" variant="ghost" icon="cog-6-tooth" :href="route('projects.settings', $project)" wire:navigate :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Settings') }}</flux:button>
+                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="delete('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting" wire:confirm="{{ __('Delete :name (:key), its site and every workspace on this server? The repository is not touched.', ['name' => $project->name, 'key' => $project->slug]) }}" />
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="px-4 py-8 text-center text-zinc-500">{{ __('No projects. Create one.') }}</td></tr>
+                    <tr><td colspan="5" class="px-4 py-8 text-center text-zinc-500">{{ $search !== '' ? __('No project matches.') : __('No projects. Create one.') }}</td></tr>
                 @endforelse
             </tbody>
         </table>
     </div>
 
-    <flux:modal name="project-form" class="md:w-[40rem]">
+    <flux:modal name="project-form" class="md:w-[44rem]">
         <form wire:submit="save" class="space-y-5">
             <div>
-                <flux:heading size="lg">{{ $editingId ? __('Edit project') : __('New project') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('The deploy branch runs at :host; each member gets :preview.', ['host' => ($slug ?: '<slug>').'.'.$domain, 'preview' => '<user>-'.($slug ?: '<slug>').'.'.$domain]) }}</flux:text>
+                <flux:heading size="lg">{{ __('New project') }}</flux:heading>
+                <flux:text class="mt-1">{{ __('Studio gives it a key of its own, from the name and six random characters (shop-k2mx7p): the site runs at <key>.:domain and each member gets <person>-<key>.:domain. Two projects may share a name.', ['domain' => $domain]) }}</flux:text>
             </div>
 
             <flux:input wire:model="name" :label="__('Name')" required />
-            {{-- full width: its description would push it out of line with a field beside it --}}
-            <flux:input wire:model.blur="slug" :label="__('Slug')" :description="__('Hostname label; empty = from the name')" />
-            <flux:select wire:model.live="git_account" :label="__('Git account')" :description="__('Yours, on the host of the repository: it creates or reads the repository, registers the push webhook and deploys the site.')">
+            <flux:select wire:model.live="git_account" :label="__('Git account')" :description="__('It creates or reads the repository, registers the push webhook and deploys the site. A service account keeps deploying when an administrator leaves.')">
                 @if ($gitAccounts->isEmpty())
-                    <flux:select.option value="">{{ __('No git account yet: add one in Tools') }}</flux:select.option>
+                    <flux:select.option value="">{{ __('No git account yet') }}</flux:select.option>
                 @endif
                 @foreach ($gitAccounts as $account)
-                    <flux:select.option value="{{ $account->uuid }}">{{ $account->name }} · {{ $account->host }}</flux:select.option>
+                    <flux:select.option value="{{ $account->uuid }}">{{ $account->user_id === null ? __('Service') : __('Yours') }} · {{ $account->name }} · {{ $account->host }}</flux:select.option>
                 @endforeach
             </flux:select>
-            @unless ($editingId)
-                <flux:radio.group wire:model.live="source" :label="__('Repository')" variant="segmented">
-                    <flux:radio value="existing" :label="__('Existing on :provider', ['provider' => $git->label()])" />
-                    <flux:radio value="new" :label="__('Create it now')" />
-                </flux:radio.group>
-            @endunless
+            <flux:radio.group wire:model.live="source" :label="__('Repository')" variant="segmented">
+                <flux:radio value="existing" :label="__('Existing on :provider', ['provider' => $providerLabel])" />
+                <flux:radio value="new" :label="__('Create it now')" />
+            </flux:radio.group>
 
-            @if ($editingId || $source === 'existing')
-                <flux:input wire:model.blur="repo_url" :label="__(':provider repository (HTTPS)', ['provider' => $git->label()])" :placeholder="$git->repositoryExample()" :required="$source === 'existing'" />
+            @if ($source === 'existing')
+                <flux:input wire:model.blur="repo_url" :label="__(':provider repository (HTTPS)', ['provider' => $providerLabel])" :placeholder="$git?->repositoryExample()" required />
             @else
                 <div class="grid gap-4 sm:grid-cols-[14rem_1fr_auto]">
-                    <flux:select wire:model="new_owner" :label="$git->ownerLabel()">
-                        @if ($git->hasPersonalNamespace())
-                            <flux:select.option value="">{{ $gitAccounts->firstWhere('uuid', $git_account)?->login ?: __('your account') }}</flux:select.option>
+                    <flux:select wire:model="new_owner" :label="$git?->ownerLabel() ?? __('Owner')">
+                        @if ($git?->hasPersonalNamespace())
+                            <flux:select.option value="">{{ $gitAccounts->firstWhere('uuid', $git_account)?->login ?: __('the account itself') }}</flux:select.option>
                         @else
                             <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
                         @endif
@@ -105,12 +116,12 @@
                             <flux:select.option value="{{ $owner['value'] }}">{{ $owner['label'] }}</flux:select.option>
                         @endforeach
                     </flux:select>
-                    <flux:input wire:model="new_name" :label="__('Repository name')" :placeholder="$slug ?: 'my-app'" />
+                    <flux:input wire:model="new_name" :label="__('Repository name')" :placeholder="Str::slug($name) ?: 'my-app'" />
                     <flux:field class="self-end pb-2">
                         <flux:checkbox wire:model="new_private" :label="__('Private')" />
                     </flux:field>
                 </div>
-                <flux:text class="text-xs">{{ __('The repository is created empty on :provider, then the server installs the latest Laravel, Laravel Boost and Larapilot, turns on Larapilot\'s :provider integration, commits and pushes the deploy branch. The token of the account chosen needs the right to create repositories there.', ['provider' => $git->label()]) }}</flux:text>
+                <flux:text class="text-xs">{{ __('The repository is created empty on :provider, then the server installs the latest Laravel, Laravel Boost and Larapilot, turns on Larapilot\'s :provider integration, commits and pushes the deploy branch. The token of the account chosen needs the right to create repositories there.', ['provider' => $providerLabel]) }}</flux:text>
             @endif
             <div class="grid gap-4 sm:grid-cols-3">
                 <flux:input wire:model="default_branch" :label="__('Deploy branch')" />
@@ -125,166 +136,38 @@
 
             <flux:separator />
 
-            <flux:checkbox.group wire:model="members" :label="__('Members')">
-                <div class="grid gap-2 sm:grid-cols-2">
-                    @foreach ($users as $user)
-                        <flux:checkbox :value="$user->uuid" :label="$user->name" :description="$user->email.' · '.$user->role->label()" />
-                    @endforeach
-                </div>
-            </flux:checkbox.group>
-
-            @unless ($editingId)
-                <flux:text class="text-xs">{{ __('On save the server clones the repository, creates the database, serves the site and registers a :provider push webhook on the deploy branch.', ['provider' => $git->label()]) }}</flux:text>
-            @endunless
-
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
-    <flux:modal name="project-settings" class="md:w-[46rem]">
-        <form wire:submit="saveSettings" class="space-y-6">
             <div>
-                <flux:heading size="lg">{{ __('Project settings') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Applied on the server to the project site and to every workspace preview of the project.') }}</flux:text>
-            </div>
-
-            <flux:radio.group wire:model.live="settingsTab" variant="segmented">
-                <flux:radio value="server" :label="__('Server')" />
-                <flux:radio value="access" :label="__('Access')" />
-                <flux:radio value="mcp" :label="__('MCP')" />
-                <flux:radio value="agent" :label="__('Agent')" />
-            </flux:radio.group>
-
-            @if ($settingsTab === 'server')
-            <div class="space-y-3">
-                <flux:heading size="sm">{{ __('Server features') }}</flux:heading>
-                <flux:checkbox wire:model="scheduler" :label="__('Scheduler')" :description="__('php artisan schedule:run every minute, from cron. On by default.')" />
-                <flux:input wire:model="queues" :label="__('Queues')" :description="__('One queue:work worker per name, comma separated. The default queue is always on.')" placeholder="default, mail, exports" :disabled="$horizon" />
-                <flux:checkbox wire:model.live="horizon" :label="__('Horizon')" :description="__('php artisan horizon in place of the queue workers; the queues come from config/horizon.php. Needs laravel/horizon.')" />
-                <flux:checkbox wire:model="reverb" :label="__('Reverb websockets')" :description="__('php artisan reverb:start on a loopback port, proxied under /app of the host. Needs laravel/reverb.')" />
-                <flux:checkbox wire:model="pulse" :label="__('Pulse server metrics')" :description="__('php artisan pulse:check, so the Pulse dashboard shows CPU, memory and disk. Needs laravel/pulse.')" />
-            </div>
-
-            <div class="space-y-3">
-                <flux:heading size="sm">{{ __('Timezone') }}</flux:heading>
-                <flux:select wire:model="timezone" :label="__('Project timezone')" :description="__('APP_TIMEZONE in the .env of the site and of every preview, TZ in the workspaces where Claude and the terminal run. Laravel reads it when config/app.php has env(\'APP_TIMEZONE\'), as projects created by Studio do.')">
-                    @foreach ($timezones as $zone)
-                        <flux:select.option value="{{ $zone }}">{{ str_replace('_', ' ', $zone) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-            </div>
-            @endif
-
-            @if ($settingsTab === 'access')
-            <div class="space-y-4">
-                <div>
-                    <flux:heading size="sm">{{ __('Who can open the hosts') }}</flux:heading>
-                    <flux:text class="mt-1 text-xs">{{ __('Every address of the project (the site, its /larapilot dashboard, every workspace preview) asks for a person logged in to Studio who is assigned to the project, in any role, or an administrator. An address list narrows it further: one IP or CIDR per line, and from anywhere else nobody gets in. HTTPS is automatic on every host, previews included.') }}</flux:text>
-                </div>
-                <div class="grid gap-4 sm:grid-cols-2">
-                    <flux:textarea wire:model="site_ips" :label="__('Site (deploy branch): only from')" :description="__('Empty: from anywhere, after the login.')" rows="3" placeholder="203.0.113.0/24" class="font-mono text-xs" />
-                    <flux:textarea wire:model="previews_ips" :label="__('Workspace previews: only from')" :description="__('Empty: from anywhere, after the login.')" rows="3" placeholder="203.0.113.9" class="font-mono text-xs" />
-                </div>
-                <div>
-                    <div class="mb-2 flex items-center justify-between">
-                        <flux:heading size="sm">{{ __('Branch overrides') }}</flux:heading>
-                        <flux:button size="xs" variant="ghost" icon="plus" wire:click="addBranchRule">{{ __('Add branch') }}</flux:button>
-                    </div>
-                    @foreach ($branch_rules as $i => $rule)
-                        <div class="mb-2 grid gap-2 rounded-lg border border-zinc-200 p-2 sm:grid-cols-[1fr_1fr_auto] dark:border-zinc-700" wire:key="branch-rule-{{ $i }}">
-                            <flux:input wire:model="branch_rules.{{ $i }}.branch" placeholder="feature/secret" class="font-mono text-xs" :aria-label="__('Branch')" />
-                            <flux:input wire:model="branch_rules.{{ $i }}.ips" placeholder="203.0.113.9, 10.0.0.0/8" class="font-mono text-xs" :aria-label="__('Only from')" />
-                            <flux:button size="sm" variant="ghost" icon="trash" wire:click="removeBranchRule({{ $i }})">{{ __('Remove') }}</flux:button>
-                        </div>
-                    @endforeach
-                    <flux:text class="text-xs">{{ __('A branch rule replaces the address list of the site when that is the deploy branch, and of every workspace that is on that branch. The login is always asked.') }}</flux:text>
-                </div>
-            </div>
-            @endif
-
-            @if ($settingsTab === 'mcp')
-                <div class="space-y-4">
-                    <div>
-                        <flux:heading size="sm">{{ __('MCP servers in the chat') }}</flux:heading>
-                        <flux:text class="mt-1 text-xs">{{ __('Remote MCP servers (HTTP) that every chat of this project gets, for the roles you tick: documentation, error tracking, a CRM, your own tools. Their tools appear as mcp__name__tool and ask for permission like any other tool. Servers that run as a command belong in the repository\'s .mcp.json, which Claude Code loads in every workspace.') }}</flux:text>
-                    </div>
-
-                    @if ($mcpServers->isNotEmpty())
-                        <ul class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
-                            @foreach ($mcpServers as $server)
-                                <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs" wire:key="mcp-{{ $server->uuid }}">
-                                    <span @class(['font-mono font-semibold', 'text-zinc-400 line-through' => ! $server->enabled])>{{ $server->name }}</span>
-                                    <span class="min-w-0 flex-1 truncate font-mono text-zinc-500" title="{{ $server->url }}">{{ $server->url }}</span>
-                                    <span class="flex gap-1">
-                                        @foreach ($server->roles as $role)
-                                            <flux:badge size="sm">{{ \App\Enums\UserRole::from($role)->label() }}</flux:badge>
+                <flux:heading size="sm">{{ __('Members & roles') }}</flux:heading>
+                <flux:text class="mt-1 text-xs">{{ __('The role is this project\'s. Administrators are on every project. You can change all of it later in the project\'s Settings.') }}</flux:text>
+                @if ($people->isEmpty())
+                    <flux:text class="mt-2 text-xs">{{ __('Nobody else yet: invite people in Administration → Users.') }}</flux:text>
+                @else
+                    <div class="mt-3 max-h-64 divide-y divide-zinc-100 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-700">
+                        @foreach ($people as $person)
+                            <div class="flex items-center gap-3 px-3 py-1.5" wire:key="new-member-{{ $person->uuid }}">
+                                <div class="min-w-0 flex-1">
+                                    <div class="truncate text-sm">{{ $person->name }}</div>
+                                    <div class="truncate text-xs text-zinc-500">{{ $person->email }}</div>
+                                </div>
+                                <div class="w-44">
+                                    <flux:select size="sm" wire:model="roles.{{ $person->uuid }}" :aria-label="__('Role')">
+                                        <flux:select.option value="">{{ __('Not on the project') }}</flux:select.option>
+                                        @foreach (\App\Enums\UserRole::projectRoles() as $role)
+                                            <flux:select.option value="{{ $role->value }}">{{ $role->label() }}</flux:select.option>
                                         @endforeach
-                                    </span>
-                                    <span class="w-full text-zinc-500">
-                                        @if ($server->headerNames())<span>{{ __('header :names', ['names' => $server->headerNames()]) }} · </span>@endif
-                                        @if ($server->status)
-                                            <span @class(['text-green-700 dark:text-green-400' => $server->isHealthy(), 'text-amber-700 dark:text-amber-400' => ! $server->isHealthy()])>{{ $server->status }}</span>
-                                            <span>· {{ $server->checked_at?->diffForHumans() }}</span>
-                                        @else
-                                            <span>{{ __('not tested yet') }}</span>
-                                        @endif
-                                    </span>
-                                    <span class="flex w-full gap-1">
-                                        <flux:button size="xs" variant="ghost" icon="signal" wire:click="testMcp('{{ $server->uuid }}')">{{ __('Test') }}</flux:button>
-                                        <flux:button size="xs" variant="ghost" :icon="$server->enabled ? 'pause' : 'play'" wire:click="toggleMcp('{{ $server->uuid }}')">{{ $server->enabled ? __('Turn off') : __('Turn on') }}</flux:button>
-                                        <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editMcp('{{ $server->uuid }}')">{{ __('Edit') }}</flux:button>
-                                        <flux:button size="xs" variant="ghost" icon="trash" wire:click="deleteMcp('{{ $server->uuid }}')" wire:confirm="{{ __('Remove :name from the chats of this project?', ['name' => $server->name]) }}">{{ __('Remove') }}</flux:button>
-                                    </span>
-                                </li>
-                            @endforeach
-                        </ul>
-                    @endif
-
-                    <div class="space-y-3 rounded-lg border border-dashed border-zinc-300 p-3 dark:border-zinc-600">
-                        <flux:heading size="sm">{{ $mcp_id ? __('Edit :name', ['name' => $mcp_name]) : __('Add a server') }}</flux:heading>
-                        <div class="grid gap-3 sm:grid-cols-[10rem_1fr]">
-                            <flux:input wire:model="mcp_name" :label="__('Name')" placeholder="docs" class="font-mono" />
-                            <flux:input wire:model="mcp_url" :label="__('URL')" placeholder="https://mcp.example.com/mcp" class="font-mono" />
-                        </div>
-                        <div class="grid gap-3 sm:grid-cols-[10rem_1fr]">
-                            <flux:input wire:model="mcp_header_name" :label="__('Header')" placeholder="Authorization" class="font-mono" />
-                            <flux:input wire:model="mcp_header_value" type="password" :label="__('Value')" :placeholder="$mcp_id && $mcp_has_secret ? __('unchanged; type to replace') : 'Bearer …'" viewable />
-                        </div>
-                        <flux:checkbox.group wire:model="mcp_roles" :label="__('Who gets it in the chat')">
-                            <div class="flex flex-wrap gap-4">
-                                @foreach (\App\Enums\UserRole::cases() as $role)
-                                    <flux:checkbox :value="$role->value" :label="$role->label()" />
-                                @endforeach
+                                    </flux:select>
+                                </div>
                             </div>
-                        </flux:checkbox.group>
-                        <div class="flex gap-2">
-                            <flux:button size="sm" variant="filled" :icon="$mcp_id ? 'check' : 'plus'" wire:click="saveMcp">{{ $mcp_id ? __('Save server') : __('Add server') }}</flux:button>
-                            @if ($mcp_id)
-                                <flux:button size="sm" variant="ghost" wire:click="cancelMcp">{{ __('Cancel') }}</flux:button>
-                            @endif
-                        </div>
-                        <flux:text class="text-xs">{{ __('Changes reach each chat with its next message. The value of the header is stored encrypted and shown only as its name.') }}</flux:text>
+                        @endforeach
                     </div>
-                </div>
-            @endif
+                @endif
+            </div>
 
-            @if ($settingsTab === 'agent')
-                <div class="space-y-4">
-                    <div>
-                        <flux:heading size="sm">{{ __('What the agent gets in this project') }}</flux:heading>
-                        <flux:text class="mt-1 text-xs">{{ __('Every chat is Claude Code with its subagents; Studio adds its own code-reviewer and, with the browser, browser-qa.') }}</flux:text>
-                    </div>
-                    <flux:checkbox wire:model="agent_browser" :label="__('Browser for the agent')" :description="__('A headless Chromium (Playwright MCP) signed in to the preview as the person: Claude opens pages, takes screenshots, reads the console and failed requests. The screenshots show in the chat. It sees what the person may see, through the same access rules.')" />
-                    <flux:checkbox wire:model.live="agent_sandboxes" :label="__('Conversations in a sandbox')" :description="__('A git worktree of the person\'s workspace on its own branch, with a copy of its database and a preview of its own (<person>-<project>--c<id>). Several work at once without touching each other; the person merges or pushes the one they keep. Queues run inline there, and the scheduler and Reverb are off.')" />
-                    <flux:input type="number" min="1" max="10" wire:model="agent_sandbox_limit" :label="__('Sandboxes per person')" :description="__('Each one is a database, a build and a few hundred MB on disk.')" :disabled="! $agent_sandboxes" class="max-w-40" />
-                </div>
-            @endif
+            <flux:text class="text-xs">{{ __('On save the server clones the repository, creates the database, serves the site and registers a push webhook on the deploy branch.') }}</flux:text>
 
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
+                <flux:button type="submit" variant="primary">{{ __('Create the project') }}</flux:button>
             </div>
         </form>
     </flux:modal>

@@ -9,8 +9,13 @@ use App\Livewire\Admin\Connectors as AdminConnectors;
 use App\Livewire\Admin\Projects as AdminProjects;
 use App\Livewire\Admin\System as AdminSystem;
 use App\Livewire\Admin\Users as AdminUsers;
+use App\Livewire\Home\Inbox;
 use App\Livewire\Infrastructure\Console as InfrastructureConsole;
+use App\Livewire\Projects\Access as ProjectAccess;
 use App\Livewire\Projects\Index as ProjectsIndex;
+use App\Livewire\Projects\Infrastructure as ProjectInfrastructure;
+use App\Livewire\Projects\Repository as ProjectRepository;
+use App\Livewire\Projects\Settings as ProjectSettings;
 use App\Livewire\Ssh\Terminal as SshTerminal;
 use App\Livewire\Studio\Shell;
 use App\Livewire\Tools\Drive;
@@ -18,10 +23,10 @@ use App\Livewire\Tools\Git;
 use App\Livewire\Tools\Vault;
 use Illuminate\Support\Facades\Route;
 
-Route::redirect('/', '/projects')->name('home');
-
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::redirect('dashboard', '/projects')->name('dashboard');
+    // What waits for the person now, across every project and git account.
+    Route::get('/', Inbox::class)->name('home');
+    Route::redirect('dashboard', '/')->name('dashboard');
 
     Route::get('projects', ProjectsIndex::class)->name('projects.index');
     // A protected project host sends visitors here; members go back with a one-time token.
@@ -29,6 +34,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('p/{project:slug}', Shell::class)->name('studio.show');
     Route::get('p/{project:slug}/c/{conversation}', Shell::class)->name('studio.conversation');
     Route::get('p/{project:slug}/c/{conversation}/images/{file}', ConversationImageController::class)->name('studio.conversation.image');
+    // The rest of a project: its repository with the person's own account, the infrastructure and
+    // the access attached to it for their role, its settings for the administrators.
+    Route::get('p/{project:slug}/repository', ProjectRepository::class)->name('projects.repository');
+    Route::get('p/{project:slug}/infrastructure', ProjectInfrastructure::class)->name('projects.infrastructure');
+    Route::get('p/{project:slug}/access', ProjectAccess::class)->name('projects.access');
+    Route::get('p/{project:slug}/settings', ProjectSettings::class)->name('projects.settings');
 
     // Sessions from this server to any host: asks for the password again, as Settings → Security does.
     Route::get('ssh', SshTerminal::class)->middleware(['can:ssh', 'password.confirm'])->name('ssh');
@@ -36,7 +47,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('drive', Drive::class)->name('drive');
     Route::get('drive/files/{file}', DriveFileController::class)->name('drive.file');
     // Git hosts, each person with their own accounts.
-    Route::get('git/{connector}', Git::class)->whereIn('connector', array_keys(Forges::ALL))->name('git');
+    Route::get('git/{connector?}', Git::class)->whereIn('connector', array_keys(Forges::ALL))->name('git');
 
     // Clouds and services driven through their APIs: the password again, as for the SSH terminal.
     Route::get('infrastructure/{connector}', InfrastructureConsole::class)

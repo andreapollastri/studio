@@ -135,6 +135,16 @@ final class GitLab extends Forge
         );
     }
 
+    public function repositorySection(): string
+    {
+        return 'projects';
+    }
+
+    public function repository(GitClient $api, string $path): array
+    {
+        return $api->get(self::project($path));
+    }
+
     private static function project(mixed $id): string
     {
         return '/projects/'.rawurlencode((string) $id);

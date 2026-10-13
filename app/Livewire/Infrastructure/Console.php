@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Infrastructure;
 
+use App\Enums\UserRole;
 use App\Infrastructure\Action;
 use App\Infrastructure\Connector;
 use App\Infrastructure\ConnectorException;
@@ -10,6 +11,8 @@ use App\Infrastructure\Field;
 use App\Infrastructure\Outcome;
 use App\Infrastructure\Section;
 use App\Models\ConnectorAccount;
+use App\Models\Project;
+use App\Models\ProjectResource;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
@@ -187,7 +190,7 @@ class Console extends Component
      *
      * @return array<string, mixed>
      */
-    private function context(): array
+    protected function context(): array
     {
         return [...$this->filters, ...$this->scope];
     }
@@ -195,7 +198,7 @@ class Console extends Component
     /**
      * @return array<string, mixed>
      */
-    private function defaultFilters(Section $section): array
+    protected function defaultFilters(Section $section): array
     {
         $filters = [];
 
@@ -243,7 +246,7 @@ class Console extends Component
      *
      * @return list<array<string, mixed>>
      */
-    private function visibleRows(Section $section): array
+    protected function visibleRows(Section $section): array
     {
         $rows = array_values(array_filter($this->listing['rows'], 'is_array'));
         $search = mb_strtolower(trim($this->search));
@@ -266,7 +269,7 @@ class Console extends Component
     /**
      * @return array<string, mixed>|null
      */
-    private function row(string $id): ?array
+    protected function row(string $id): ?array
     {
         $section = $this->section();
 
@@ -285,15 +288,19 @@ class Console extends Component
      *
      * @return array{0: Action, 1: array<string, mixed>}|null
      */
-    private function locate(string $key, ?string $id): ?array
+    protected function locate(string $key, ?string $id): ?array
     {
         $section = $this->section();
 
         if ($id === null) {
-            return [$section->toolbarAction($key) ?? abort(404), []];
+            $action = $section->toolbarAction($key) ?? abort(404);
+            abort_unless($this->permits($section, $action, true), 403);
+
+            return [$action, []];
         }
 
         $action = $section->action($key) ?? abort(404);
+        abort_unless($this->permits($section, $action, false), 403);
         $row = $this->row($id);
 
         if ($row === null || ! $action->appliesTo($row)) {
@@ -307,11 +314,71 @@ class Console extends Component
     }
 
     /** An answer Studio did not expect: logged, and said in plain words. */
-    private function unexpected(\Throwable $e): string
+    protected function unexpected(\Throwable $e): string
     {
         report($e);
 
         return __('Studio could not make sense of the answer: :reason', ['reason' => $e->getMessage()]);
+    }
+
+    /** Whether this person may run this action of this list at all (a row action, or one on the whole list). */
+    protected function permits(Section $section, Action $action, bool $onList): bool
+    {
+        return true;
+    }
+
+    /**
+     * The actions this person may run on a row: every one that applies, here.
+     *
+     * @param  array<string, mixed>  $row
+     * @return list<Action>
+     */
+    public function rowActions(Section $section, array $row): array
+    {
+        return array_values(array_filter($section->actions, fn (Action $action) => $action->appliesTo($row) && $this->permits($section, $action, false)));
+    }
+
+    /**
+     * The actions on the whole list this person may run: every one, here.
+     *
+     * @return list<Action>
+     */
+    public function toolbarActions(Section $section): array
+    {
+        return array_values(array_filter($section->toolbar, fn (Action $action) => $this->permits($section, $action, true)));
+    }
+
+    /**
+     * The tabs of the page: every list that is not opened from another one.
+     *
+     * @return list<Section>
+     */
+    protected function tabSections(): array
+    {
+        return array_values(array_filter($this->definition()->sections(), fn (Section $r) => ! $r->isChild()));
+    }
+
+    /**
+     * A page about one thing (a resource of a project, a project's repository) says what it is
+     * instead of the connector's title, account picker and accounts.
+     *
+     * @return array{title: string, subtitle: string, href?: string|null}|null
+     */
+    protected function compactHeader(): ?array
+    {
+        return null;
+    }
+
+    /** One resource of a project, shown alone (the project's Infrastructure tab), or the whole connector. */
+    protected function pinned(): ?ProjectResource
+    {
+        return null;
+    }
+
+    /** Administrators attach the rows of an infrastructure connector's lists to projects. */
+    protected function canAttach(): bool
+    {
+        return ! $this->personal() && $this->pinned() === null && auth()->user()->isAdmin();
     }
 
     public function select(string $tab): void
@@ -468,6 +535,7 @@ class Console extends Component
             'section' => $section->key,
             'action' => $action->key,
             'row' => $row === [] ? null : $section->rowId($row),
+            'project_resource' => $this->pinned()?->uuid,
         ]);
 
         try {
@@ -568,6 +636,119 @@ class Console extends Component
         } catch (\Throwable $e) {
             return ['options' => [], 'error' => $this->unexpected($e)];
         }
+    }
+
+    /* ---------------------------------------------------------------- attach to a project */
+
+    /** id of the row being attached, in the dialog */
+    public ?string $attachRow = null;
+
+    public string $attach_project = '';
+
+    public string $attach_label = '';
+
+    /** @var list<string> */
+    public array $attach_view = ['pm', 'dev'];
+
+    /** @var list<string> */
+    public array $attach_act = ['dev'];
+
+    /** @var list<string> */
+    public array $attach_actions = [];
+
+    /** Open the dialog that attaches a row to a project, or changes how it is attached. */
+    public function attach(string $id, ?string $project = null): void
+    {
+        abort_unless($this->canAttach(), 403);
+
+        $section = $this->section();
+        $row = $this->row($id);
+
+        if ($row === null || $section->isChild()) {
+            Flux::toast(variant: 'warning', text: __('That is no longer in the list. Refreshed.'));
+            $this->refresh();
+
+            return;
+        }
+
+        $existing = $project !== null ? $this->attachment($id, $project) : null;
+
+        $this->attachRow = $id;
+        $this->attach_project = (string) $existing?->project?->uuid;
+        $this->attach_label = $existing->label ?? mb_substr($section->columns !== [] ? $section->columns[0]->text($row) : $id, 0, 160);
+        $this->attach_view = $existing->view_roles ?? ['pm', 'dev'];
+        $this->attach_act = $existing->act_roles ?? ['dev'];
+        $this->attach_actions = $existing->actions ?? [];
+        $this->resetValidation();
+
+        Flux::modal('infrastructure-attach')->show();
+    }
+
+    public function saveAttachment(): void
+    {
+        abort_unless($this->canAttach() && $this->attachRow !== null, 403);
+
+        $section = $this->section();
+        $account = $this->currentAccount() ?? abort(404);
+        $roles = array_map(fn (UserRole $role) => $role->value, UserRole::projectRoles());
+
+        $this->validate([
+            'attach_project' => ['required', Rule::exists('projects', 'uuid')],
+            'attach_label' => ['required', 'string', 'max:160'],
+            'attach_view' => ['array'],
+            'attach_view.*' => [Rule::in($roles)],
+            'attach_act' => ['array'],
+            'attach_act.*' => [Rule::in($roles)],
+            'attach_actions' => ['array'],
+            'attach_actions.*' => [Rule::in(array_keys(ProjectResource::actionsFor($this->definition(), $section)))],
+        ], ['attach_project.required' => __('Choose the project.')]);
+
+        $project = Project::query()->where('uuid', $this->attach_project)->firstOrFail();
+
+        ProjectResource::query()->updateOrCreate([
+            'project_id' => $project->id,
+            'connector_account_id' => $account->id,
+            'section' => $section->key,
+            'resource_id' => $this->attachRow,
+        ], [
+            'label' => trim($this->attach_label),
+            // what the list was read with (a region, a filter): the project's tab reads it the same way
+            'scope' => $this->context() === [] ? null : array_map('strval', array_filter($this->context(), 'is_scalar')),
+            'view_roles' => $this->attach_view,
+            'act_roles' => $this->attach_act,
+            'actions' => $this->attach_actions,
+            'added_by' => auth()->id(),
+        ]);
+
+        Log::info('infrastructure', ['user' => auth()->id(), 'connector' => $this->connector, 'account' => $account->uuid, 'section' => $section->key, 'action' => 'attach', 'row' => $this->attachRow, 'project' => $project->uuid]);
+
+        Flux::modal('infrastructure-attach')->close();
+        Flux::toast(variant: 'success', text: __(':label is in the Infrastructure tab of :project for the roles chosen.', ['label' => trim($this->attach_label), 'project' => $project->name]));
+        $this->attachRow = null;
+    }
+
+    public function detach(string $id, string $project): void
+    {
+        abort_unless($this->canAttach(), 403);
+
+        $resource = $this->attachment($id, $project);
+        $resource?->delete();
+
+        Flux::modal('infrastructure-attach')->close();
+        $this->attachRow = null;
+
+        if ($resource !== null) {
+            Flux::toast(text: __(':label is no longer in :project. Nothing changed at :provider.', ['label' => $resource->label, 'project' => $resource->project->name, 'provider' => $this->definition()->label()]));
+        }
+    }
+
+    private function attachment(string $id, string $project): ?ProjectResource
+    {
+        $account = $this->currentAccount();
+
+        return $account === null ? null : ProjectResource::query()->with('project')
+            ->where('connector_account_id', $account->id)->where('section', $this->section()->key)->where('resource_id', $id)
+            ->whereHas('project', fn ($q) => $q->where('uuid', $project))->first();
     }
 
     /* ---------------------------------------------------------------- accounts */
@@ -708,6 +889,16 @@ class Console extends Component
 
     public function render(): View
     {
+        return view('livewire.infrastructure.console', $this->viewData())->title($this->pageTitle());
+    }
+
+    /**
+     * What the console's view draws, for this page and for those that wrap it.
+     *
+     * @return array<string, mixed>
+     */
+    protected function viewData(): array
+    {
         $definition = $this->definition();
         $section = $this->section();
         $formAction = null;
@@ -716,11 +907,12 @@ class Console extends Component
             $formAction = $this->formRow === null ? $section->toolbarAction($this->formAction) : $section->action($this->formAction);
         }
 
-        $tabs = array_values(array_filter($definition->sections(), fn (Section $r) => ! $r->isChild()));
+        $tabs = $this->tabSections();
         $groups = array_values(array_unique(array_filter(array_map(fn (Section $r) => $r->group, $tabs))));
         $group = $section->group ?? ($section->parent !== null ? $definition->section($section->parent)?->group : null);
+        $isTab = in_array($section->key, array_map(fn (Section $r) => $r->key, $tabs), true);
 
-        return view('livewire.infrastructure.console', [
+        return [
             'definition' => $definition,
             'groups' => $groups,
             'group' => $group,
@@ -733,12 +925,20 @@ class Console extends Component
                 default => $this->visibleRows($section),
             },
             'error' => $this->currentAccount() !== null ? $this->listing['error'] : null,
-            'parent' => $section->parent !== null ? $definition->section($section->parent) : null,
+            'parent' => ! $isTab && $section->parent !== null ? $definition->section($section->parent) : null,
+            'compact' => $this->compactHeader(),
             'formFields' => $formAction->fields ?? [],
             'formLabel' => $formAction->label ?? '',
             'formConfirm' => $formAction?->confirm,
             'isAdmin' => $this->managesAccounts(),
             'personal' => $this->personal(),
-        ])->title($this->pageTitle());
+            'pinned' => $this->pinned(),
+            'canAttach' => $this->canAttach() && ! $section->isChild() && $section->kind === 'table',
+            'attached' => $this->canAttach() && $this->currentAccount() !== null
+                ? ProjectResource::query()->with('project')->where('connector_account_id', $this->currentAccount()->id)->where('section', $section->key)->get()->groupBy('resource_id')
+                : collect(),
+            'attachActions' => $this->attachRow !== null ? ProjectResource::actionsFor($definition, $section) : [],
+            'projects' => $this->attachRow !== null ? Project::query()->orderBy('name')->get(['id', 'uuid', 'name', 'slug']) : collect(),
+        ];
     }
 }

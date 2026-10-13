@@ -112,6 +112,16 @@ final class GitHub extends Forge
         ];
     }
 
+    public function repositorySection(): string
+    {
+        return 'repositories';
+    }
+
+    public function repository(GitClient $api, string $path): array
+    {
+        return $api->get('/repos/'.self::path($path));
+    }
+
     /* ---------------------------------------------------------------- helpers */
 
     private static function me(GitClient $api): string

@@ -33,7 +33,7 @@
         'bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-800' => $account === 'api_key',
         'bg-violet-50 text-violet-800 ring-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-800' => $account === 'subscription',
         'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-800' => $account === null,
-    ]) title="{{ ($account === 'api_key' ? __('Billed by the token on your Anthropic Console account') : ($account === 'subscription' ? __('Your Claude plan, within its limits') : ($claude ? __(':account is not signed in: check it in Settings → Connections', ['account' => $claude->name]) : __('Connect Claude in Settings → Connections')))).($choice ? ' · '.$choice->reason() : '') }}">
+    ]) title="{{ ($account === 'api_key' ? __('Billed by the token on your Anthropic Console account') : ($account === 'subscription' ? __('Your Claude plan, within its limits') : ($claude ? __(':account is not signed in: check it in Settings → Accounts', ['account' => $claude->name]) : __('Connect Claude in Settings → Accounts')))).($choice ? ' · '.$choice->reason() : '') }}">
         <flux:icon :name="$account === 'api_key' ? 'key' : ($account === 'subscription' ? 'sparkles' : 'exclamation-triangle')" variant="micro" class="size-3" />
         {{ $claude ? $claude->name : __('No Claude account') }}
     </a>

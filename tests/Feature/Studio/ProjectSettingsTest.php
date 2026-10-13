@@ -3,6 +3,7 @@
 use App\Enums\SiteStatus;
 use App\Jobs\ConfigureProjectSite;
 use App\Livewire\Admin\Projects;
+use App\Livewire\Projects\Settings as ProjectSettings;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
@@ -31,8 +32,7 @@ test('an administrator saves features and access rules, and the server is asked 
     $project = Project::factory()->online()->create(['slug' => 'shop']);
 
     Livewire::actingAs($admin)
-        ->test(Projects::class)
-        ->call('settings', $project->uuid)
+        ->test(ProjectSettings::class, ['project' => $project])
         ->assertSet('scheduler', true)
         ->assertSet('queues', 'default')
         ->set('scheduler', false)
@@ -68,8 +68,7 @@ test('the settings open on the stored timezone, and a name outside the list is r
     expect($workspace->serviceInput()['timezone'])->toBe('America/New_York');
 
     Livewire::actingAs($admin)
-        ->test(Projects::class)
-        ->call('settings', $project->uuid)
+        ->test(ProjectSettings::class, ['project' => $project])
         ->assertSet('timezone', 'America/New_York')
         ->set('timezone', 'Mars/Olympus_Mons')
         ->call('saveSettings')
@@ -89,8 +88,7 @@ test('a bad whitelist entry or queue name is refused before anything is saved', 
     $project = Project::factory()->online()->create();
 
     Livewire::actingAs($admin)
-        ->test(Projects::class)
-        ->call('settings', $project->uuid)
+        ->test(ProjectSettings::class, ['project' => $project])
         ->set('site_ips', 'office')
         ->call('saveSettings')
         ->assertHasErrors('site_ips')
@@ -108,6 +106,7 @@ test('a developer cannot open the project settings', function () {
     $project = Project::factory()->create();
 
     Livewire::actingAs($dev)->test(Projects::class)->assertForbidden();
+    Livewire::actingAs($dev)->test(ProjectSettings::class, ['project' => $project])->assertForbidden();
 });
 
 test('applying the settings runs project-configure for the site and workspace-configure for each workspace', function () {

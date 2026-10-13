@@ -20,6 +20,7 @@
                 {{-- Its own component: the header is drawn by the layout, outside this page's component. --}}
                 <livewire:studio.workspace-status :workspace="$workspace" :key="'status-'.$workspace->uuid" />
             @endcan
+            <x-studio.project-tabs :project="$project" current="workspace" />
         </div>
     </x-slot:header>
 
@@ -74,7 +75,7 @@
                         {{ __('The chat runs Claude Code on your own subscription or API key.') }}
                     @endif
                 </flux:text>
-                <flux:button :href="route('connections.edit')" variant="primary" icon="link" wire:navigate>{{ __('Open Settings → Connections') }}</flux:button>
+                <flux:button :href="route('connections.edit', in_array('git', $missing, true) ? ['tab' => 'git'] : [])" variant="primary" icon="link" wire:navigate>{{ __('Open Settings → Accounts') }}</flux:button>
             </div>
         @elseif ($conversation)
             <livewire:studio.chat :conversation="$conversation" :key="'chat-'.$conversation->uuid" />
