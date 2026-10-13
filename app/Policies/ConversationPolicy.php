@@ -16,4 +16,10 @@ class ConversationPolicy
     {
         return $conversation->user_id === $user->id;
     }
+
+    /** Only its owner: an administrator reads other people's conversations, never removes them. */
+    public function delete(User $user, Conversation $conversation): bool
+    {
+        return $conversation->user_id === $user->id;
+    }
 }

@@ -66,6 +66,12 @@ test('a turn is accepted and its events reach the callback; permissions and inte
   const interrupted = await fetch(`${base}/conversations/42/interrupt`, { method: 'POST', headers });
   assert.equal(interrupted.status, 200);
 
+  // deleted in Studio: the session is closed and forgotten, and forgetting it again is no error
+  const forgotten = await fetch(`${base}/conversations/42`, { method: 'DELETE', headers });
+  assert.deepEqual(await forgotten.json(), { forgotten: true });
+  assert.equal((await fetch(`${base}/conversations/42`, { headers })).status, 404);
+  assert.deepEqual(await (await fetch(`${base}/conversations/42`, { method: 'DELETE', headers })).json(), { forgotten: false });
+
   const bad = await fetch(`${base}/conversations/43/turns`, { method: 'POST', headers, body: '{not json' });
   assert.equal(bad.status, 400);
   const incomplete = await fetch(`${base}/conversations/43/turns`, { method: 'POST', headers, body: JSON.stringify({ text: 'x' }) });

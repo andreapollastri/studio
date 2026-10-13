@@ -76,6 +76,16 @@ final class BridgeClient
     }
 
     /**
+     * The conversation was deleted: the bridge stops its Claude Code and forgets it.
+     *
+     * @return array<string, mixed>
+     */
+    public function forget(Conversation $conversation): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->delete("/conversations/{$conversation->id}"));
+    }
+
+    /**
      * @return array{branch: ?string, status: list<string>, stat: string, diff: string}
      */
     public function git(): array

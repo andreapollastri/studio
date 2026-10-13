@@ -47,6 +47,9 @@ server is in `installer/upgrades/<version>.sh`.
 - **Conversation dots** follow the conversations: the list on the left was drawn once and never
   moved. Amber and pulsing while Claude works, blue with a ring when it asks a question or a
   permission, red when it failed, green when it finished since you last opened it, grey otherwise.
+- **Delete a conversation**: the bin next to it in the list, after a confirmation that names it. Its
+  messages go with it; a Claude Code still running for it is stopped (the bridge's new
+  `DELETE /conversations/{id}`). Only its owner can: not even an administrator.
 - **Terminal tab**: colours (ANSI) instead of escape codes; git, Composer, artisan and the test tools
   are asked for colour; characters split across chunks arrive whole.
 

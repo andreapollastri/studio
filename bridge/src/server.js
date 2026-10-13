@@ -128,6 +128,10 @@ export function createServer(config, options = {}) {
         return session ? json(res, 200, session.snapshot()) : json(res, 404, { error: 'unknown conversation' });
       }
 
+      if ((match = /^\/conversations\/([^/]+)$/.exec(path)) && req.method === 'DELETE') {
+        return json(res, 200, { forgotten: await sessions.forget(decodeURIComponent(match[1])) });
+      }
+
       if ((match = /^\/conversations\/([^/]+)\/turns$/.exec(path)) && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes);
         const session = sessions.getOrCreate(decodeURIComponent(match[1]));

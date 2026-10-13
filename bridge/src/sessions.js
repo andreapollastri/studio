@@ -24,6 +24,16 @@ export class SessionManager {
     return session;
   }
 
+  /** The conversation was deleted in Studio: stop its Claude Code and forget it. */
+  async forget(key) {
+    key = String(key);
+    const session = this.#sessions.get(key);
+    if (!session) return false;
+    this.#sessions.delete(key);
+    await session.close();
+    return true;
+  }
+
   list() {
     return [...this.#sessions.values()].map((session) => session.snapshot());
   }

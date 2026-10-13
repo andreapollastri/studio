@@ -839,5 +839,12 @@
     "certificates checked :when": "certificati verificati :when",
     "waiting for you": "aspetta te",
     "finished, not opened yet": "finita, da aprire",
-    "nothing new": "niente di nuovo"
+    "nothing new": "niente di nuovo",
+    "Delete the conversation": "Elimina la discussione",
+    "Delete this conversation?": "Eliminare questa discussione?",
+    "«:title» and all its messages are deleted for good: it cannot be undone.": "«:title» e tutti i suoi messaggi vengono eliminati definitivamente: non si può annullare.",
+    "Claude is still working on it: it will be stopped.": "Claude ci sta ancora lavorando: verrà fermato.",
+    "The changes it made to the files of the workspace stay where they are.": "Le modifiche che ha fatto ai file del workspace restano dove sono.",
+    "Delete for good": "Elimina definitivamente",
+    "Conversation deleted.": "Discussione eliminata."
 }
