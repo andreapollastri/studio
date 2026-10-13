@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Enums\WorkspaceStatus;
+use App\Events\WorkspaceUpdated;
 use App\Jobs\DestroyWorkspace;
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\WorkspaceFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +16,9 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
+ * @property string $uuid
  * @property int $id
+ * @property string $uuid
  * @property int $project_id
  * @property int $user_id
  * @property string $driver
@@ -40,6 +44,8 @@ class Workspace extends Model
     /** @use HasFactory<WorkspaceFactory> */
     use HasFactory;
 
+    use HasPublicUuid;
+
     /**
      * A workspace that exists on the server is removed from it when its row
      * goes: the job carries the two names, so it runs after the row, the
@@ -48,6 +54,13 @@ class Workspace extends Model
      */
     protected static function booted(): void
     {
+        // The project page follows the status live; a broadcaster that is down only costs the next poll.
+        static::updated(function (Workspace $workspace): void {
+            if ($workspace->wasChanged('status')) {
+                rescue(fn () => WorkspaceUpdated::dispatch($workspace->uuid, $workspace->status->value), report: false);
+            }
+        });
+
         static::deleting(function (Workspace $workspace): void {
             if ($workspace->isNative() && $workspace->path && $workspace->user->handle) {
                 DestroyWorkspace::dispatch($workspace->user->handle, $workspace->project->slug);
@@ -143,6 +156,26 @@ class Workspace extends Model
     public static function findByCallbackToken(string $plain): ?self
     {
         return static::query()->where('callback_token_hash', hash('sha256', $plain))->first();
+    }
+
+    /**
+     * Take the workspace from "to create" (or failed) to "creating" in one
+     * statement: true for the one caller that gets it, who then queues the
+     * provisioning. A second visit, or a second tab, finds it taken.
+     */
+    public function claimForProvisioning(): bool
+    {
+        $claimed = static::query()->whereKey($this->id)
+            ->whereIn('status', [WorkspaceStatus::New->value, WorkspaceStatus::Failed->value])
+            ->update(['status' => WorkspaceStatus::Creating->value, 'last_error' => null, 'updated_at' => now()]) === 1;
+
+        $this->refresh();
+
+        if ($claimed) {
+            rescue(fn () => WorkspaceUpdated::dispatch($this->uuid, $this->status->value), report: false);
+        }
+
+        return $claimed;
     }
 
     public function markFailed(string $error): void

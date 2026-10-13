@@ -9,26 +9,8 @@
         <div class="flex min-w-0 items-center gap-3">
             <span class="truncate text-sm font-medium">{{ $project->name }}</span>
             @can('chat', $project)
-            <div
-                class="flex items-center gap-2"
-                @if ($workspace->status->isTransitional()) wire:poll.5s="refreshWorkspace" @endif
-            >
-                <flux:badge size="sm" :color="$workspace->isRunning() ? 'green' : ($workspace->status->isTransitional() ? 'yellow' : ($workspace->status === \App\Enums\WorkspaceStatus::Failed ? 'red' : 'zinc'))">
-                    {{ __('workspace') }} · {{ $workspace->status->label() }}
-                </flux:badge>
-                @can('chat', $project)
-                    @if ($workspace->isRunning())
-                        <flux:button size="xs" variant="ghost" icon="stop" wire:click="stop" wire:confirm="{{ __('Stop the workspace? Conversations stay, the agent stops.') }}">{{ __('Stop') }}</flux:button>
-                    @elseif (! $workspace->status->isTransitional())
-                        <flux:button size="xs" variant="ghost" icon="play" wire:click="start">{{ __('Start') }}</flux:button>
-                    @endif
-                @endcan
-                @if ($workspace->last_error)
-                    <flux:tooltip :content="$workspace->last_error">
-                        <flux:icon.exclamation-triangle class="size-4 text-red-500" />
-                    </flux:tooltip>
-                @endif
-            </div>
+                {{-- Its own component: the header is drawn by the layout, outside this page's component. --}}
+                <livewire:studio.workspace-status :workspace="$workspace" :key="'status-'.$workspace->uuid" />
             @endcan
         </div>
     </x-slot:header>
@@ -94,7 +76,7 @@
                 <flux:button :href="route('connections.edit')" variant="primary" icon="link" wire:navigate>{{ __('Open Settings → Connections') }}</flux:button>
             </div>
         @elseif ($conversation)
-            <livewire:studio.chat :conversation="$conversation" :key="'chat-'.$conversation->id" />
+            <livewire:studio.chat :conversation="$conversation" :key="'chat-'.$conversation->uuid" />
         @else
             <div class="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
                 @can('chat', $project)
@@ -113,6 +95,6 @@
 
     {{-- Preview / changes / terminal / files --}}
     <aside class="hidden w-[30rem] shrink-0 border-s border-zinc-200 dark:border-zinc-700 xl:flex" x-bind:class="{ 'flex! w-auto! min-w-0 flex-1 border-s-0': wide }">
-        <livewire:studio.side-pane :workspace="$workspace" :key="'pane-'.$workspace->id" />
+        <livewire:studio.side-pane :workspace="$workspace" :key="'pane-'.$workspace->uuid" />
     </aside>
 </div>

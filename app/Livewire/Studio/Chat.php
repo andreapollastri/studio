@@ -102,7 +102,7 @@ class Chat extends Component
     /**
      * @param  array<string, mixed>  $payload
      */
-    #[On('echo-private:conversations.{conversation.id},ConversationUpdated')]
+    #[On('echo-private:conversations.{conversation.uuid},.ConversationUpdated')]
     public function onUpdated(array $payload = []): void
     {
         $kind = (string) ($payload['kind'] ?? '');
@@ -127,6 +127,13 @@ class Chat extends Component
         $this->reload();
     }
 
+    /** Started or stopped from the header: the composer opens or closes with it. */
+    #[On('workspace-updated')]
+    public function onWorkspaceUpdated(): void
+    {
+        $this->conversation->workspace->refresh();
+    }
+
     public function send(StartTurn $start): void
     {
         $this->authorize('update', $this->conversation);
@@ -146,22 +153,22 @@ class Chat extends Component
         $this->reload();
     }
 
-    public function allow(int $permissionId, DecidePermission $decide): void
+    public function allow(string $permissionId, DecidePermission $decide): void
     {
         $this->decide($permissionId, true, $decide);
     }
 
-    public function deny(int $permissionId, DecidePermission $decide): void
+    public function deny(string $permissionId, DecidePermission $decide): void
     {
         $this->decide($permissionId, false, $decide);
     }
 
     /** Claude's questions answered: every question needs a choice or the person's own words. */
-    public function answer(int $permissionId, DecidePermission $decide): void
+    public function answer(string $permissionId, DecidePermission $decide): void
     {
         $this->authorize('update', $this->conversation);
 
-        $request = $this->conversation->permissionRequests()->findOrFail($permissionId);
+        $request = $this->conversation->permissionRequests()->where('uuid', $permissionId)->firstOrFail();
         $answers = [];
         $this->resetErrorBag();
 
@@ -199,11 +206,11 @@ class Chat extends Component
     }
 
     /** No answer: Claude goes on with its own judgement instead of waiting. */
-    public function skip(int $permissionId, DecidePermission $decide): void
+    public function skip(string $permissionId, DecidePermission $decide): void
     {
         $this->authorize('update', $this->conversation);
 
-        $request = $this->conversation->permissionRequests()->findOrFail($permissionId);
+        $request = $this->conversation->permissionRequests()->where('uuid', $permissionId)->firstOrFail();
 
         try {
             $decide->handle($request, auth()->user(), false, 'The person skipped these questions: go on with your own judgement and say what you chose.');
@@ -267,11 +274,11 @@ class Chat extends Component
         return $this->conversation->pendingPermission();
     }
 
-    private function decide(int $permissionId, bool $allow, DecidePermission $decide): void
+    private function decide(string $permissionId, bool $allow, DecidePermission $decide): void
     {
         $this->authorize('update', $this->conversation);
 
-        $request = $this->conversation->permissionRequests()->findOrFail($permissionId);
+        $request = $this->conversation->permissionRequests()->where('uuid', $permissionId)->firstOrFail();
 
         try {
             $decide->handle($request, auth()->user(), $allow);

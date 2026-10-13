@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ConversationStatus;
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\ConversationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +13,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
+ * @property string $uuid
  * @property int $id
+ * @property string $uuid
  * @property int $workspace_id
  * @property int $user_id
  * @property string|null $title
@@ -31,6 +34,8 @@ class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */
     use HasFactory;
+
+    use HasPublicUuid;
 
     /**
      * @return array<string, string>

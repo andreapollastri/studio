@@ -36,6 +36,6 @@ final class DecidePermission
 
         AnswerPermission::dispatch($request, $allow, $message, $answers);
 
-        ConversationUpdated::dispatch($conversation->id, 'messages', ['kinds' => ['permission'], 'status' => $conversation->status->value]);
+        ConversationUpdated::dispatch($conversation->uuid, 'messages', ['kinds' => ['permission'], 'status' => $conversation->status->value]);
     }
 }

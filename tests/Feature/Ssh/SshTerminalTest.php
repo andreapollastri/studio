@@ -91,12 +91,12 @@ test('connections are saved with a key or a password, favourites first, and stay
         ->set('connection_name', 'web')
         ->set('connection_host', 'root@web1.example.com')
         ->set('connection_username', 'deploy')
-        ->set('connection_key', $foreignKey->id)
+        ->set('connection_key', $foreignKey->uuid)
         ->call('saveConnection')
         ->assertHasErrors(['connection_host', 'connection_key'])
         ->set('connection_host', 'web1.example.com')
         ->set('connection_port', 2222)
-        ->set('connection_key', $key->id)
+        ->set('connection_key', $key->uuid)
         ->call('saveConnection')
         ->assertHasNoErrors()
         ->call('newConnection')
@@ -119,15 +119,15 @@ test('connections are saved with a key or a password, favourites first, and stay
 
     // Editing without a new password keeps the saved one.
     Livewire::actingAs($user)->test(Terminal::class)
-        ->call('editConnection', $db->id)
+        ->call('editConnection', $db->uuid)
         ->set('connection_username', 'root')
         ->call('saveConnection')
         ->assertHasNoErrors();
     expect($db->fresh())->username->toBe('root')->password->toBe('s3cret');
 
     $stranger = SshConnection::factory()->create();
-    Livewire::actingAs($user)->test(Terminal::class)->call('editConnection', $stranger->id)->assertNotFound();
-    Livewire::actingAs($user)->test(Terminal::class)->call('open', $stranger->id)->assertNotFound();
+    Livewire::actingAs($user)->test(Terminal::class)->call('editConnection', $stranger->uuid)->assertNotFound();
+    Livewire::actingAs($user)->test(Terminal::class)->call('open', $stranger->uuid)->assertNotFound();
 });
 
 test('a new address forgets the accepted host key; trusting one does not overwrite it', function () {
@@ -136,17 +136,17 @@ test('a new address forgets the accepted host key; trusting one does not overwri
     $fingerprint = 'SHA256:'.str_repeat('A', 43);
 
     $component = Livewire::actingAs($user)->test(Terminal::class)
-        ->call('trustHostKey', $connection->id, 'not a fingerprint')
-        ->call('trustHostKey', $connection->id, $fingerprint);
+        ->call('trustHostKey', $connection->uuid, 'not a fingerprint')
+        ->call('trustHostKey', $connection->uuid, $fingerprint);
     expect($connection->fresh()->host_key)->toBe($fingerprint);
 
-    $component->call('trustHostKey', $connection->id, 'SHA256:'.str_repeat('B', 43));
+    $component->call('trustHostKey', $connection->uuid, 'SHA256:'.str_repeat('B', 43));
     expect($connection->fresh()->host_key)->toBe($fingerprint);
 
-    $component->call('editConnection', $connection->id)->set('connection_username', 'other')->call('saveConnection');
+    $component->call('editConnection', $connection->uuid)->set('connection_username', 'other')->call('saveConnection');
     expect($connection->fresh()->host_key)->toBe($fingerprint);
 
-    $component->call('editConnection', $connection->id)->set('connection_host', 'web2.example.com')->call('saveConnection');
+    $component->call('editConnection', $connection->uuid)->set('connection_host', 'web2.example.com')->call('saveConnection');
     expect($connection->fresh()->host_key)->toBeNull();
 });
 
@@ -156,7 +156,7 @@ test('opening a connection gives a one-time ticket the gateway redeems for the k
     $key = SshKey::factory()->create(['user_id' => $user->id]);
     $connection = SshConnection::factory()->withKey($key)->create(['user_id' => $user->id, 'host_key' => 'SHA256:known']);
 
-    $info = Livewire::actingAs($user)->test(Terminal::class)->call('open', $connection->id)->effects['returns'][0];
+    $info = Livewire::actingAs($user)->test(Terminal::class)->call('open', $connection->uuid)->effects['returns'][0];
 
     expect($info['url'])->toBe('wss://studio.example.com/ssh/ws')
         ->and($info['address'])->toBe('deploy@web1.example.com')
@@ -205,8 +205,8 @@ test('a connection whose key was removed cannot be opened', function () {
     $connection = SshConnection::factory()->withKey($key)->create(['user_id' => $user->id]);
 
     Livewire::actingAs($user)->test(Terminal::class)
-        ->call('deleteKey', $key->id)
-        ->call('open', $connection->id)
+        ->call('deleteKey', $key->uuid)
+        ->call('open', $connection->uuid)
         ->assertReturned(null);
 
     expect($connection->fresh()->ssh_key_id)->toBeNull();
@@ -245,15 +245,15 @@ test('a connection tied to a project shows up for its developers and every admin
         ->assertSee('Ada')
         ->assertSee('Shop')
         ->assertSee('your key?');
-    $page->call('editConnection', $shared->id)->assertNotFound();
-    Livewire::actingAs($dev)->test(Terminal::class)->call('deleteConnection', $shared->id)->assertNotFound();
-    Livewire::actingAs($dev)->test(Terminal::class)->call('forgetHostKey', $shared->id)->assertNotFound();
+    $page->call('editConnection', $shared->uuid)->assertNotFound();
+    Livewire::actingAs($dev)->test(Terminal::class)->call('deleteConnection', $shared->uuid)->assertNotFound();
+    Livewire::actingAs($dev)->test(Terminal::class)->call('forgetHostKey', $shared->uuid)->assertNotFound();
 
     // Opening it without a credential asks for one; the owner's key never comes along.
     Livewire::actingAs($dev)->test(Terminal::class)
-        ->call('open', $shared->id)
+        ->call('open', $shared->uuid)
         ->assertReturned(null)
-        ->assertSet('credentialFor', $shared->id);
+        ->assertSet('credentialFor', $shared->uuid);
 
     $ticket = Gateway::issue($shared, $dev);
     $this->postJson(route('api.ssh.redeem'), ['ticket' => $ticket], ['Authorization' => 'Bearer '.Gateway::token()])->assertNotFound();
@@ -261,16 +261,16 @@ test('a connection tied to a project shows up for its developers and every admin
     // With a key of their own it works, with that key.
     $mine = SshKey::factory()->create(['user_id' => $dev->id]);
     Livewire::actingAs($dev)->test(Terminal::class)
-        ->call('editCredential', $shared->id)
+        ->call('editCredential', $shared->uuid)
         ->set('credential_auth', 'key')
-        ->set('credential_key', $key->id)
+        ->set('credential_key', $key->uuid)
         ->call('saveCredential')
         ->assertHasErrors('credential_key')
-        ->set('credential_key', $mine->id)
+        ->set('credential_key', $mine->uuid)
         ->call('saveCredential')
         ->assertHasNoErrors();
 
-    $info = Livewire::actingAs($dev)->test(Terminal::class)->call('open', $shared->id)->effects['returns'][0];
+    $info = Livewire::actingAs($dev)->test(Terminal::class)->call('open', $shared->uuid)->effects['returns'][0];
     $this->postJson(route('api.ssh.redeem'), ['ticket' => $info['ticket']], ['Authorization' => 'Bearer '.Gateway::token()])
         ->assertOk()
         ->assertJson(['user_id' => $dev->id, 'auth' => 'key', 'private_key' => $mine->private_key, 'host' => 'web1.example.com']);
@@ -289,7 +289,7 @@ test('stars on a shared connection are personal, and the same name may come from
     SshConnection::factory()->create(['user_id' => $bob->id, 'project_id' => $project->id, 'name' => 'web']);
 
     Livewire::actingAs($bob)->test(Terminal::class)
-        ->call('toggleFavorite', $adaWeb->id)
+        ->call('toggleFavorite', $adaWeb->uuid)
         ->call('newConnection')
         ->set('connection_name', 'web')
         ->set('connection_host', 'web9.example.com')
@@ -321,8 +321,8 @@ test('the project picker offers the person\'s projects and the form lists who wi
     $page->call('newConnection')
         ->call('pickProject', Project::query()->where('name', 'Elsewhere')->value('id'))
         ->assertSet('connection_project', null)
-        ->call('pickProject', $project->id)
-        ->assertSet('connection_project', $project->id)
+        ->call('pickProject', $project->uuid)
+        ->assertSet('connection_project', $project->uuid)
         ->assertSee('Bob Dev')
         ->assertSee('Carla Admin')
         ->assertDontSee('Dora PM');

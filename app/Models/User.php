@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ClaudeAuthMode;
 use App\Enums\UserRole;
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -23,7 +24,9 @@ use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 /**
+ * @property string $uuid
  * @property int $id
+ * @property string $uuid
  * @property string $name
  * @property string $email
  * @property UserRole $role
@@ -47,6 +50,8 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+
+    use HasPublicUuid;
 
     /** @var array<string, mixed> */
     protected $attributes = [

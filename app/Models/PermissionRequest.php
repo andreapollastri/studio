@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PermissionStatus;
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\PermissionRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,7 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
+ * @property string $uuid
  * @property int $id
+ * @property string $uuid
  * @property int $conversation_id
  * @property string $request_id
  * @property string $tool_name
@@ -27,6 +30,8 @@ class PermissionRequest extends Model
 {
     /** @use HasFactory<PermissionRequestFactory> */
     use HasFactory;
+
+    use HasPublicUuid;
 
     /**
      * @return array<string, string>

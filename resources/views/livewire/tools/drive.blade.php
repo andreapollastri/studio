@@ -1,4 +1,9 @@
-<div class="flex flex-col gap-5" x-data="{ dragging: false }"
+<div class="flex flex-col gap-5" x-data="{ dragging: false, uploading: false, progress: 0 }"
+    x-on:livewire-upload-start="uploading = true; progress = 0"
+    x-on:livewire-upload-finish="uploading = false"
+    x-on:livewire-upload-cancel="uploading = false"
+    x-on:livewire-upload-error="uploading = false"
+    x-on:livewire-upload-progress="progress = $event.detail.progress"
     @if ($canWrite)
         x-on:dragover.prevent="dragging = true"
         x-on:dragleave.prevent="if (! $el.contains($event.relatedTarget)) dragging = false"
@@ -12,7 +17,7 @@
                 <button type="button" wire:click="openFolder(null)" class="hover:text-zinc-900 dark:hover:text-white">{{ __('Drive') }}</button>
                 @foreach ($trail as $crumb)
                     <flux:icon.chevron-right variant="micro" class="size-3.5" />
-                    <button type="button" wire:click="openFolder({{ $crumb->id }})" @class(['hover:text-zinc-900 dark:hover:text-white', 'font-medium text-zinc-900 dark:text-white' => $loop->last])>{{ $crumb->name }}</button>
+                    <button type="button" wire:click="openFolder('{{ $crumb->uuid }}')" @class(['hover:text-zinc-900 dark:hover:text-white', 'font-medium text-zinc-900 dark:text-white' => $loop->last])>{{ $crumb->name }}</button>
                 @endforeach
                 @if ($projectName)
                     <flux:badge size="sm" color="sky" icon="rectangle-stack" class="ms-2">{{ $projectName }}</flux:badge>
@@ -43,8 +48,16 @@
         </div>
     </div>
 
-    <div wire:loading.flex wire:target="uploads" class="items-center gap-2 text-sm text-zinc-500">
-        <flux:icon.loading class="size-4" /> {{ __('Uploading…') }}
+    <div x-show="uploading" x-transition class="flex items-center gap-3 text-sm text-zinc-500" style="display: none">
+        <flux:icon.loading class="size-4" />
+        <span>{{ __('Uploading…') }}</span>
+        <div class="h-1.5 w-48 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+            <div class="h-full rounded-full bg-sky-500 transition-all" :style="`width: ${progress}%`"></div>
+        </div>
+        <span class="tabular-nums" x-text="progress + '%'"></span>
+    </div>
+    <div wire:loading.flex wire:target="openFolder" class="items-center gap-2 text-xs text-zinc-500">
+        <flux:icon.loading class="size-3.5" /> {{ __('Loading…') }}
     </div>
     @error('uploads.*')<flux:text class="text-sm text-red-600">{{ $message }}</flux:text>@enderror
 
@@ -78,10 +91,10 @@
             </thead>
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @foreach ($this->folders as $item)
-                    <tr wire:key="drive-folder-{{ $item->id }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                        <td class="px-3 py-2"><input type="checkbox" value="{{ $item->id }}" wire:model.live="selectedFolders" class="rounded" /></td>
+                    <tr wire:key="drive-folder-{{ $item->uuid }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                        <td class="px-3 py-2"><input type="checkbox" value="{{ $item->uuid }}" wire:model.live="selectedFolders" class="rounded" /></td>
                         <td class="px-3 py-2">
-                            <button type="button" wire:click="openFolder({{ $item->id }})" class="flex items-center gap-2 font-medium">
+                            <button type="button" wire:click="openFolder('{{ $item->uuid }}')" class="flex items-center gap-2 font-medium">
                                 <flux:icon.folder variant="solid" class="size-5 text-amber-400" />{{ $item->name }}
                             </button>
                             @if ($folder === null && $item->user_id !== auth()->id())
@@ -99,12 +112,12 @@
                             <flux:dropdown position="bottom" align="end">
                                 <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                                 <flux:menu>
-                                    <flux:menu.item icon="folder-open" wire:click="openFolder({{ $item->id }})">{{ __('Open') }}</flux:menu.item>
-                                    @if (in_array($item->id, $manageable, true))
-                                        <flux:menu.item icon="share" wire:click="share({{ $item->id }})">{{ __('Project and access') }}</flux:menu.item>
+                                    <flux:menu.item icon="folder-open" wire:click="openFolder('{{ $item->uuid }}')">{{ __('Open') }}</flux:menu.item>
+                                    @if (in_array($item->uuid, $manageable, true))
+                                        <flux:menu.item icon="share" wire:click="share('{{ $item->uuid }}')">{{ __('Project and access') }}</flux:menu.item>
                                     @endif
-                                    @if (in_array($item->id, $writable, true))
-                                        <flux:menu.item icon="pencil-square" wire:click="startRename('folder', {{ $item->id }})">{{ __('Rename') }}</flux:menu.item>
+                                    @if (in_array($item->uuid, $writable, true))
+                                        <flux:menu.item icon="pencil-square" wire:click="startRename('folder', '{{ $item->uuid }}')">{{ __('Rename') }}</flux:menu.item>
                                     @endif
                                 </flux:menu>
                             </flux:dropdown>
@@ -112,8 +125,8 @@
                     </tr>
                 @endforeach
                 @foreach ($this->files as $file)
-                    <tr wire:key="drive-file-{{ $file->id }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                        <td class="px-3 py-2"><input type="checkbox" value="{{ $file->id }}" wire:model.live="selectedFiles" class="rounded" /></td>
+                    <tr wire:key="drive-file-{{ $file->uuid }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                        <td class="px-3 py-2"><input type="checkbox" value="{{ $file->uuid }}" wire:model.live="selectedFiles" class="rounded" /></td>
                         <td class="px-3 py-2">
                             <a href="{{ route('drive.file', ['file' => $file, 'inline' => $file->isPreviewable() ? 1 : null]) }}" target="{{ $file->isPreviewable() ? '_blank' : '_self' }}" class="flex items-center gap-2">
                                 <flux:icon :name="str_starts_with((string) $file->mime, 'image/') ? 'photo' : 'document'" class="size-5 text-zinc-400" />
@@ -129,7 +142,7 @@
                                 <flux:menu>
                                     <flux:menu.item icon="arrow-down-tray" :href="route('drive.file', $file)">{{ __('Download') }}</flux:menu.item>
                                     @if ($canWrite)
-                                        <flux:menu.item icon="pencil-square" wire:click="startRename('file', {{ $file->id }})">{{ __('Rename') }}</flux:menu.item>
+                                        <flux:menu.item icon="pencil-square" wire:click="startRename('file', '{{ $file->uuid }}')">{{ __('Rename') }}</flux:menu.item>
                                     @endif
                                 </flux:menu>
                             </flux:dropdown>
@@ -198,7 +211,7 @@
     {{-- Project and access --}}
     <flux:modal name="drive-sharing" class="md:w-[40rem]">
         @if ($sharingFolder)
-            <div class="space-y-6" wire:key="drive-sharing-{{ $sharingFolder->id }}">
+            <div class="space-y-6" wire:key="drive-sharing-{{ $sharingFolder->uuid }}">
                 <div>
                     <flux:heading size="lg">{{ __('Project and access: :name', ['name' => $sharingFolder->name]) }}</flux:heading>
                     <flux:text class="mt-1">{{ __('Applies to everything inside, down to a folder tied to another project. Administrators always see everything. Changes apply at once.') }}</flux:text>
@@ -206,10 +219,10 @@
 
                 <div class="space-y-3">
                     <x-search-picker
-                        wire:key="drive-project-picker-{{ $sharingFolder->id }}"
+                        wire:key="drive-project-picker-{{ $sharingFolder->uuid }}"
                         search="searchProjects"
                         select="pickShareProject"
-                        :selected="$sharingFolder->project ? ['id' => $sharingFolder->project->id, 'label' => $sharingFolder->project->name] : null"
+                        :selected="$sharingFolder->project ? ['id' => $sharingFolder->project->uuid, 'label' => $sharingFolder->project->name] : null"
                         :placeholder="__('Personal: search a project to tie it to…')"
                     />
                     @if ($sharingFolder->project)
@@ -236,7 +249,7 @@
                         </thead>
                         <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                             @foreach ($audience as $entry)
-                                <tr wire:key="drive-audience-{{ $entry['user']->id }}">
+                                <tr wire:key="drive-audience-{{ $entry['user']->uuid }}">
                                     <td class="px-3 py-1.5">
                                         <div>{{ $entry['user']->name }}</div>
                                         <div class="text-xs text-zinc-500">{{ $entry['user']->role->label() }}</div>

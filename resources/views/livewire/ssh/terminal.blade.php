@@ -23,18 +23,18 @@
                 @forelse ($this->connections as $row)
                     @php($connection = $row['connection'])
                     <div
-                        wire:key="ssh-connection-{{ $connection->id }}"
+                        wire:key="ssh-connection-{{ $connection->uuid }}"
                         x-show="matches(@js(mb_strtolower($connection->name.' '.$connection->address().' '.$connection->user->name.' '.$connection->project?->name)))"
                         class="group flex items-center gap-1 rounded-lg px-1 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                     >
-                        <button type="button" class="shrink-0 cursor-pointer rounded p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700" title="{{ $row['favorite'] ? __('Remove from favourites') : __('Add to favourites') }}" wire:click="toggleFavorite({{ $connection->id }})">
+                        <button type="button" class="shrink-0 cursor-pointer rounded p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700" title="{{ $row['favorite'] ? __('Remove from favourites') : __('Add to favourites') }}" wire:click="toggleFavorite('{{ $connection->uuid }}')">
                             @if ($row['favorite'])
                                 <flux:icon.star variant="micro" class="size-4 text-amber-500" />
                             @else
                                 <flux:icon.star variant="micro" class="size-4 text-zinc-300 group-hover:text-zinc-400 dark:text-zinc-600" />
                             @endif
                         </button>
-                        <button type="button" class="min-w-0 flex-1 cursor-pointer text-start" x-on:click="open({{ $connection->id }})" title="{{ __('Open a terminal on :address', ['address' => $connection->address()]) }}">
+                        <button type="button" class="min-w-0 flex-1 cursor-pointer text-start" x-on:click="open('{{ $connection->uuid }}')" title="{{ __('Open a terminal on :address', ['address' => $connection->address()]) }}">
                             <div class="flex items-center gap-1.5">
                                 <span class="truncate text-sm font-medium">{{ $connection->name }}</span>
                                 @unless ($row['mine'])
@@ -57,16 +57,16 @@
                         <flux:dropdown position="bottom" align="end">
                             <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                             <flux:menu>
-                                <flux:menu.item icon="command-line" x-on:click="open({{ $connection->id }})">{{ __('Open a terminal') }}</flux:menu.item>
+                                <flux:menu.item icon="command-line" x-on:click="open('{{ $connection->uuid }}')">{{ __('Open a terminal') }}</flux:menu.item>
                                 @if ($row['mine'])
-                                    <flux:menu.item icon="pencil-square" wire:click="editConnection({{ $connection->id }})">{{ __('Edit') }}</flux:menu.item>
+                                    <flux:menu.item icon="pencil-square" wire:click="editConnection('{{ $connection->uuid }}')">{{ __('Edit') }}</flux:menu.item>
                                     @if ($connection->host_key)
-                                        <flux:menu.item icon="shield-exclamation" wire:click="forgetHostKey({{ $connection->id }})" wire:confirm="{{ __('Forget the host key :fingerprint? The next connection shows the key again and asks you to accept it.', ['fingerprint' => $connection->host_key]) }}">{{ __('Forget host key') }}</flux:menu.item>
+                                        <flux:menu.item icon="shield-exclamation" wire:click="forgetHostKey('{{ $connection->uuid }}')" wire:confirm="{{ __('Forget the host key :fingerprint? The next connection shows the key again and asks you to accept it.', ['fingerprint' => $connection->host_key]) }}">{{ __('Forget host key') }}</flux:menu.item>
                                     @endif
                                     <flux:menu.separator />
-                                    <flux:menu.item icon="trash" variant="danger" wire:click="deleteConnection({{ $connection->id }})" wire:confirm="{{ $connection->project_id ? __('Remove the connection :name? It disappears for everybody on :project too.', ['name' => $connection->name, 'project' => $connection->project?->name]) : __('Remove the connection :name?', ['name' => $connection->name]) }}">{{ __('Remove') }}</flux:menu.item>
+                                    <flux:menu.item icon="trash" variant="danger" wire:click="deleteConnection('{{ $connection->uuid }}')" wire:confirm="{{ $connection->project_id ? __('Remove the connection :name? It disappears for everybody on :project too.', ['name' => $connection->name, 'project' => $connection->project?->name]) : __('Remove the connection :name?', ['name' => $connection->name]) }}">{{ __('Remove') }}</flux:menu.item>
                                 @else
-                                    <flux:menu.item icon="key" wire:click="editCredential({{ $connection->id }})">{{ __('My key or password') }}</flux:menu.item>
+                                    <flux:menu.item icon="key" wire:click="editCredential('{{ $connection->uuid }}')">{{ __('My key or password') }}</flux:menu.item>
                                 @endif
                             </flux:menu>
                         </flux:dropdown>
@@ -84,7 +84,7 @@
             </div>
             <div class="flex flex-col gap-1">
                 @forelse ($this->keys as $key)
-                    <div wire:key="ssh-key-{{ $key->id }}" class="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                    <div wire:key="ssh-key-{{ $key->uuid }}" class="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
                         <flux:icon.key variant="micro" class="size-4 shrink-0 text-zinc-400" />
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-1.5">
@@ -93,8 +93,8 @@
                             </div>
                             <div class="truncate font-mono text-[11px] text-zinc-500" title="{{ $key->fingerprint }}">{{ $key->fingerprint }}</div>
                         </div>
-                        <flux:button size="xs" variant="ghost" icon="clipboard-document" :tooltip="__('Public key')" wire:click="showKey({{ $key->id }})" />
-                        <flux:button size="xs" variant="ghost" icon="trash" wire:click="deleteKey({{ $key->id }})" wire:confirm="{{ $key->connections_count ? __('Remove the key :name? :count connection(s) use it and will need another one.', ['name' => $key->name, 'count' => $key->connections_count]) : __('Remove the key :name?', ['name' => $key->name]) }}" />
+                        <flux:button size="xs" variant="ghost" icon="clipboard-document" :tooltip="__('Public key')" wire:click="showKey('{{ $key->uuid }}')" />
+                        <flux:button size="xs" variant="ghost" icon="trash" wire:click="deleteKey('{{ $key->uuid }}')" wire:confirm="{{ $key->connections_count ? __('Remove the key :name? :count connection(s) use it and will need another one.', ['name' => $key->name, 'count' => $key->connections_count]) : __('Remove the key :name?', ['name' => $key->name]) }}" />
                     </div>
                 @empty
                     <flux:text class="px-1 text-xs">{{ __('Generate a key here (Ed25519 or RSA) and copy its public half to the server, or import one you already use.') }}</flux:text>
@@ -217,7 +217,7 @@
                 @else
                     <flux:select wire:model="connection_key" :label="__('Key')">
                         @foreach ($this->keys as $key)
-                            <flux:select.option :value="$key->id">{{ $key->name }} · {{ $key->label() }}</flux:select.option>
+                            <flux:select.option :value="$key->uuid">{{ $key->name }} · {{ $key->label() }}</flux:select.option>
                         @endforeach
                     </flux:select>
                 @endif
@@ -231,7 +231,7 @@
                     wire:key="ssh-project-picker-{{ $editing ?? 'new' }}"
                     search="searchProjects"
                     select="pickProject"
-                    :selected="$pickedProject ? ['id' => $pickedProject->id, 'label' => $pickedProject->name] : null"
+                    :selected="$pickedProject ? ['id' => $pickedProject->uuid, 'label' => $pickedProject->name] : null"
                     :placeholder="__('Personal: search a project to share with…')"
                 />
                 <flux:description>{{ __('The project’s administrators and developers find host, port and user ready; each connects with their own key or password, never yours.') }}</flux:description>
@@ -245,7 +245,7 @@
                         <table class="w-full text-xs">
                             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                                 @forelse ($this->audience as $member)
-                                    <tr wire:key="ssh-audience-{{ $member['user']->id }}">
+                                    <tr wire:key="ssh-audience-{{ $member['user']->uuid }}">
                                         <td class="px-3 py-1.5">{{ $member['user']->name }}</td>
                                         <td class="px-3 py-1.5 text-zinc-500">{{ $member['user']->role->label() }}</td>
                                         <td class="px-3 py-1.5 text-end">
@@ -297,7 +297,7 @@
                     @else
                         <flux:select wire:model="credential_key" :label="__('Key')">
                             @foreach ($this->keys as $key)
-                                <flux:select.option :value="$key->id">{{ $key->name }} · {{ $key->label() }}</flux:select.option>
+                                <flux:select.option :value="$key->uuid">{{ $key->name }} · {{ $key->label() }}</flux:select.option>
                             @endforeach
                         </flux:select>
                     @endif

@@ -140,7 +140,7 @@ test('deleting a project takes every workspace and the site off the server, drop
     Http::fake(['https://api.github.com/repos/agency/shop/hooks/987654' => Http::response('', 204)]);
 
     // the page marks the row and queues the job; the job (run here, the queue is sync) does the rest
-    Livewire::actingAs($admin)->test(Projects::class)->call('delete', $project->id);
+    Livewire::actingAs($admin)->test(Projects::class)->call('delete', $project->uuid);
 
     $calls = array_map(fn ($line) => implode(' ', array_slice(explode(' ', $line), 0, 3)), array_filter(explode("\n", file_get_contents($log))));
     unset($_ENV['FAKE_STUDIO_ADMIN_LOG'], $_SERVER['FAKE_STUDIO_ADMIN_LOG']);

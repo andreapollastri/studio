@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Builder;
 
 /**
  * The searches behind the pickers of the tools pages (<x-search-picker>): the
- * projects the person works on, and the other people of this Studio.
+ * projects the person works on, and the other people of this Studio, by uuid.
  */
 trait SearchesDirectory
 {
-    /** @return array<int, array{id: int, label: string, sub: string}> */
+    /** @return array<int, array{id: string, label: string, sub: string}> */
     public function searchProjects(string $query = ''): array
     {
         return auth()->user()->accessibleProjects()
@@ -22,12 +22,12 @@ trait SearchesDirectory
             ->orderBy('name')
             ->limit(20)
             ->get()
-            ->map(fn (Project $project) => ['id' => $project->id, 'label' => $project->name, 'sub' => $project->slug])
+            ->map(fn (Project $project) => ['id' => $project->uuid, 'label' => $project->name, 'sub' => $project->slug])
             ->values()
             ->all();
     }
 
-    /** @return array<int, array{id: int, label: string, sub: string}> */
+    /** @return array<int, array{id: string, label: string, sub: string}> */
     public function searchUsers(string $query = ''): array
     {
         return User::query()
@@ -39,7 +39,7 @@ trait SearchesDirectory
             ->orderBy('name')
             ->limit(20)
             ->get()
-            ->map(fn (User $user) => ['id' => $user->id, 'label' => $user->name, 'sub' => $user->email.' · '.$user->role->label()])
+            ->map(fn (User $user) => ['id' => $user->uuid, 'label' => $user->name, 'sub' => $user->email.' · '.$user->role->label()])
             ->values()
             ->all();
     }

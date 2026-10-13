@@ -46,8 +46,8 @@ final class IngestBridgeEvents
                 'permission_resolved' => $this->permissionResolved($conversation, $event),
                 'result' => $this->result($conversation, $event),
                 'error' => $this->error($conversation, $event),
-                'text_delta' => ConversationUpdated::dispatch($conversation->id, 'text_delta', ['text' => (string) ($event['text'] ?? '')]),
-                'status' => ConversationUpdated::dispatch($conversation->id, 'status', ['status' => (string) ($event['status'] ?? '')]),
+                'text_delta' => ConversationUpdated::dispatch($conversation->uuid, 'text_delta', ['text' => (string) ($event['text'] ?? '')]),
+                'status' => ConversationUpdated::dispatch($conversation->uuid, 'status', ['status' => (string) ($event['status'] ?? '')]),
                 default => $this->raw($conversation, $event),
             };
 
@@ -57,7 +57,7 @@ final class IngestBridgeEvents
         $stored = array_values(array_diff(array_unique($kinds), ['text_delta', 'status']));
 
         if ($stored !== []) {
-            ConversationUpdated::dispatch($conversation->id, 'messages', ['kinds' => $stored, 'status' => $conversation->refresh()->status->value]);
+            ConversationUpdated::dispatch($conversation->uuid, 'messages', ['kinds' => $stored, 'status' => $conversation->refresh()->status->value]);
         }
 
         return $applied;

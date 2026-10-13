@@ -64,6 +64,17 @@ class SidePane extends Component
         }
     }
 
+    /** The workspace started or stopped: the preview, the terminal and the files follow. */
+    #[On('workspace-updated')]
+    public function onWorkspaceUpdated(): void
+    {
+        $this->workspace->refresh();
+
+        if ($this->workspace->isRunning() && $this->tab === 'changes') {
+            $this->loadChangesView();
+        }
+    }
+
     /** After every stored chat update the diff may have moved: refresh it while that tab is open. */
     #[On('chat-updated')]
     public function onChatUpdated(): void

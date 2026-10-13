@@ -45,7 +45,7 @@ class Projects extends Component
 
     public string $db_engine = 'mariadb';
 
-    /** @var list<int> */
+    /** @var list<string> uuids of the people on the project */
     public array $members = [];
 
     /** "existing" points at a repository; "new" creates one on the git provider with Laravel, Boost and Larapilot in it. */
@@ -138,9 +138,9 @@ class Projects extends Component
         Flux::modal('project-form')->show();
     }
 
-    public function edit(int $projectId): void
+    public function edit(string $project): void
     {
-        $project = Project::query()->findOrFail($projectId);
+        $project = Project::query()->where('uuid', $project)->firstOrFail();
 
         $this->resetForm();
 
@@ -151,7 +151,7 @@ class Projects extends Component
         $this->default_branch = $project->default_branch;
         $this->php_version = $project->php_version;
         $this->db_engine = $project->db_engine;
-        $this->members = array_values(array_map(intval(...), $project->members()->pluck('users.id')->all()));
+        $this->members = array_values(array_map(strval(...), $project->members()->pluck('users.uuid')->all()));
 
         Flux::modal('project-form')->show();
     }
@@ -186,7 +186,7 @@ class Projects extends Component
             'php_version' => ['required', Rule::in((array) config('studio.php_versions'))],
             'db_engine' => ['required', Rule::in(['mariadb', 'pgsql'])],
             'members' => ['array'],
-            'members.*' => ['integer', Rule::exists('users', 'id')],
+            'members.*' => ['string', Rule::exists('users', 'uuid')],
         ], [
             'new_owner.required' => __('Choose where the repository goes: :what.', ['what' => Str::lower($git->ownerLabel())]),
             'slug.max' => __('The slug becomes a Linux user and a host label: :max characters at most.', ['max' => Project::SLUG_MAX]),
@@ -233,7 +233,7 @@ class Projects extends Component
             ProvisionProjectSite::dispatch($project);
         }
 
-        $project->members()->sync($this->members);
+        $project->members()->sync(User::query()->whereIn('uuid', $this->members)->pluck('id')->all());
 
         Flux::modal('project-form')->close();
         Flux::toast(variant: 'success', text: $this->editingId ? __('Project updated.') : ($creatingRepository ? __('Repository created. Laravel, Boost and Larapilot are being installed and pushed; the site follows.') : __('Project created. The site is being set up.')));
@@ -241,9 +241,9 @@ class Projects extends Component
         $this->resetForm();
     }
 
-    public function deploy(int $projectId): void
+    public function deploy(string $project): void
     {
-        $project = Project::query()->findOrFail($projectId);
+        $project = Project::query()->where('uuid', $project)->firstOrFail();
         $this->authorize('update', $project);
 
         if ($project->site_status->isTransitional()) {
@@ -269,9 +269,9 @@ class Projects extends Component
      * every workspace off the server: the job needs it, and deleting it here first
      * would leave all of that behind.
      */
-    public function delete(int $projectId): void
+    public function delete(string $project): void
     {
-        $project = Project::query()->findOrFail($projectId);
+        $project = Project::query()->where('uuid', $project)->firstOrFail();
         $this->authorize('delete', $project);
 
         if ($project->site_status === SiteStatus::Deleting) {
@@ -284,9 +284,9 @@ class Projects extends Component
         Flux::toast(text: __('Deleting :name: its site and workspaces are being removed from the server.', ['name' => $project->name]));
     }
 
-    public function settings(int $projectId): void
+    public function settings(string $project): void
     {
-        $project = Project::query()->findOrFail($projectId);
+        $project = Project::query()->where('uuid', $project)->firstOrFail();
         $this->authorize('update', $project);
         $this->resetValidation();
 
@@ -415,7 +415,7 @@ class Projects extends Component
         $this->cancelMcp();
     }
 
-    public function editMcp(int $serverId): void
+    public function editMcp(string $serverId): void
     {
         $server = $this->mcpServer($serverId);
 
@@ -437,34 +437,35 @@ class Projects extends Component
         $this->resetValidation(['mcp_name', 'mcp_url', 'mcp_header_name', 'mcp_header_value', 'mcp_roles']);
     }
 
-    public function toggleMcp(int $serverId): void
+    public function toggleMcp(string $serverId): void
     {
         $server = $this->mcpServer($serverId);
         $server->update(['enabled' => ! $server->enabled]);
     }
 
-    public function deleteMcp(int $serverId): void
+    public function deleteMcp(string $serverId): void
     {
-        $this->mcpServer($serverId)->delete();
+        $server = $this->mcpServer($serverId);
+        $server->delete();
 
-        if ($this->mcp_id === $serverId) {
+        if ($this->mcp_id === $server->id) {
             $this->cancelMcp();
         }
     }
 
     /** One initialize call to the server, with its header, as Claude Code would make it. */
-    public function testMcp(int $serverId, McpProbe $probe): void
+    public function testMcp(string $serverId, McpProbe $probe): void
     {
         $server = $this->mcpServer($serverId);
         $server->update(['status' => $probe->check($server->url, $server->headers ?? []), 'checked_at' => now()]);
     }
 
-    private function mcpServer(int $serverId): ProjectMcpServer
+    private function mcpServer(string $serverId): ProjectMcpServer
     {
         $project = Project::query()->findOrFail($this->settingsId);
         $this->authorize('update', $project);
 
-        return $project->mcpServers()->findOrFail($serverId);
+        return $project->mcpServers()->where('uuid', $serverId)->firstOrFail();
     }
 
     /** @return list<string> */

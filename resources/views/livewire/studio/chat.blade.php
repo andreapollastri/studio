@@ -52,10 +52,10 @@
             <div class="max-w-3xl rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-700/60 dark:bg-sky-900/20">
                 <div class="flex items-start gap-3">
                     <flux:icon.chat-bubble-left-ellipsis class="mt-0.5 size-5 shrink-0 text-sky-600" />
-                    <form wire:submit="answer({{ $this->pending->id }})" class="min-w-0 flex-1 space-y-5">
+                    <form wire:submit="answer('{{ $this->pending->uuid }}')" class="min-w-0 flex-1 space-y-5">
                         <div class="text-sm font-semibold">{{ __('Claude has a question for you') }}</div>
                         @foreach ($this->pending->questions() as $i => $question)
-                            <div wire:key="question-{{ $this->pending->id }}-{{ $i }}">
+                            <div wire:key="question-{{ $this->pending->uuid }}-{{ $i }}">
                                 @if ($question['header'] !== '')
                                     <flux:badge size="sm" color="sky">{{ $question['header'] }}</flux:badge>
                                 @endif
@@ -88,7 +88,7 @@
                         @if ($canChat)
                             <div class="flex flex-wrap gap-2">
                                 <flux:button type="submit" size="sm" variant="primary" icon="paper-airplane">{{ __('Answer') }}</flux:button>
-                                <flux:button size="sm" variant="ghost" wire:click="skip({{ $this->pending->id }})">{{ __('Skip') }}</flux:button>
+                                <flux:button size="sm" variant="ghost" wire:click="skip('{{ $this->pending->uuid }}')">{{ __('Skip') }}</flux:button>
                             </div>
                         @endif
                     </form>
@@ -106,8 +106,8 @@
                         @endif
                         @if ($canChat)
                             <div class="mt-3 flex flex-wrap gap-2">
-                                <flux:button size="sm" variant="primary" icon="check" wire:click="allow({{ $this->pending->id }})">{{ __('Allow') }}</flux:button>
-                                <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="deny({{ $this->pending->id }})">{{ __('Deny') }}</flux:button>
+                                <flux:button size="sm" variant="primary" icon="check" wire:click="allow('{{ $this->pending->uuid }}')">{{ __('Allow') }}</flux:button>
+                                <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="deny('{{ $this->pending->uuid }}')">{{ __('Deny') }}</flux:button>
                             </div>
                         @endif
                     </div>

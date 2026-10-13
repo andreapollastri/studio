@@ -1,4 +1,4 @@
-<div class="flex h-full w-full flex-1 flex-col gap-6" @if ($projects->contains(fn ($p) => $p->site_status->isTransitional())) wire:poll.5s @endif>
+<div class="flex h-full w-full flex-1 flex-col gap-6" @if ($projects->contains(fn ($p) => $p->site_status->isTransitional())) wire:poll.3s @endif>
     <div class="flex items-start justify-between gap-4">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
@@ -28,7 +28,7 @@
             </thead>
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @forelse ($projects as $project)
-                    <tr wire:key="project-{{ $project->id }}">
+                    <tr wire:key="project-{{ $project->uuid }}">
                         <td class="px-4 py-2">
                             <div class="font-medium">{{ $project->name }}</div>
                             <div class="font-mono text-xs text-zinc-500">{{ $project->slug }}</div>
@@ -53,10 +53,10 @@
                         </td>
                         <td class="px-4 py-2 text-end tabular-nums">{{ $project->members_count }}</td>
                         <td class="px-4 py-2 text-end whitespace-nowrap">
-                            <flux:button size="xs" variant="ghost" icon="rocket-launch" wire:click="deploy({{ $project->id }})" :disabled="$project->site_status->isTransitional()">{{ $project->site_status === \App\Enums\SiteStatus::New ? __('Create site') : __('Deploy') }}</flux:button>
-                            <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="edit({{ $project->id }})" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Edit') }}</flux:button>
-                            <flux:button size="xs" variant="ghost" icon="cog-6-tooth" wire:click="settings({{ $project->id }})" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Settings') }}</flux:button>
-                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="delete({{ $project->id }})" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting" wire:confirm="{{ __('Delete the project, its site and every workspace on this server? The :provider repository is not touched.', ['provider' => $git->label()]) }}" />
+                            <flux:button size="xs" variant="ghost" icon="rocket-launch" wire:click="deploy('{{ $project->uuid }}')" :disabled="$project->site_status->isTransitional()">{{ $project->site_status === \App\Enums\SiteStatus::New ? __('Create site') : __('Deploy') }}</flux:button>
+                            <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="edit('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Edit') }}</flux:button>
+                            <flux:button size="xs" variant="ghost" icon="cog-6-tooth" wire:click="settings('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting">{{ __('Settings') }}</flux:button>
+                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="delete('{{ $project->uuid }}')" :disabled="$project->site_status === \App\Enums\SiteStatus::Deleting" wire:confirm="{{ __('Delete the project, its site and every workspace on this server? The :provider repository is not touched.', ['provider' => $git->label()]) }}" />
                         </td>
                     </tr>
                 @empty
@@ -120,7 +120,7 @@
             <flux:checkbox.group wire:model="members" :label="__('Members')">
                 <div class="grid gap-2 sm:grid-cols-2">
                     @foreach ($users as $user)
-                        <flux:checkbox :value="$user->id" :label="$user->name" :description="$user->email.' · '.$user->role->label()" />
+                        <flux:checkbox :value="$user->uuid" :label="$user->name" :description="$user->email.' · '.$user->role->label()" />
                     @endforeach
                 </div>
             </flux:checkbox.group>
@@ -196,7 +196,7 @@
                     @if ($mcpServers->isNotEmpty())
                         <ul class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
                             @foreach ($mcpServers as $server)
-                                <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs" wire:key="mcp-{{ $server->id }}">
+                                <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs" wire:key="mcp-{{ $server->uuid }}">
                                     <span @class(['font-mono font-semibold', 'text-zinc-400 line-through' => ! $server->enabled])>{{ $server->name }}</span>
                                     <span class="min-w-0 flex-1 truncate font-mono text-zinc-500" title="{{ $server->url }}">{{ $server->url }}</span>
                                     <span class="flex gap-1">
@@ -214,10 +214,10 @@
                                         @endif
                                     </span>
                                     <span class="flex w-full gap-1">
-                                        <flux:button size="xs" variant="ghost" icon="signal" wire:click="testMcp({{ $server->id }})">{{ __('Test') }}</flux:button>
-                                        <flux:button size="xs" variant="ghost" :icon="$server->enabled ? 'pause' : 'play'" wire:click="toggleMcp({{ $server->id }})">{{ $server->enabled ? __('Turn off') : __('Turn on') }}</flux:button>
-                                        <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editMcp({{ $server->id }})">{{ __('Edit') }}</flux:button>
-                                        <flux:button size="xs" variant="ghost" icon="trash" wire:click="deleteMcp({{ $server->id }})" wire:confirm="{{ __('Remove :name from the chats of this project?', ['name' => $server->name]) }}">{{ __('Remove') }}</flux:button>
+                                        <flux:button size="xs" variant="ghost" icon="signal" wire:click="testMcp('{{ $server->uuid }}')">{{ __('Test') }}</flux:button>
+                                        <flux:button size="xs" variant="ghost" :icon="$server->enabled ? 'pause' : 'play'" wire:click="toggleMcp('{{ $server->uuid }}')">{{ $server->enabled ? __('Turn off') : __('Turn on') }}</flux:button>
+                                        <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editMcp('{{ $server->uuid }}')">{{ __('Edit') }}</flux:button>
+                                        <flux:button size="xs" variant="ghost" icon="trash" wire:click="deleteMcp('{{ $server->uuid }}')" wire:confirm="{{ __('Remove :name from the chats of this project?', ['name' => $server->name]) }}">{{ __('Remove') }}</flux:button>
                                     </span>
                                 </li>
                             @endforeach

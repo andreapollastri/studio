@@ -31,7 +31,7 @@ test('an administrator saves features and access rules, and the server is asked 
 
     Livewire::actingAs($admin)
         ->test(Projects::class)
-        ->call('settings', $project->id)
+        ->call('settings', $project->uuid)
         ->assertSet('scheduler', true)
         ->assertSet('queues', 'default')
         ->set('scheduler', false)
@@ -62,7 +62,7 @@ test('a bad whitelist entry or queue name is refused before anything is saved', 
 
     Livewire::actingAs($admin)
         ->test(Projects::class)
-        ->call('settings', $project->id)
+        ->call('settings', $project->uuid)
         ->set('site_ips', 'office')
         ->call('saveSettings')
         ->assertHasErrors('site_ips')

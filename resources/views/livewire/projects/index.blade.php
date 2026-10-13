@@ -1,4 +1,8 @@
-<div class="flex h-full w-full flex-1 flex-col gap-6">
+<div
+    class="flex h-full w-full flex-1 flex-col gap-6"
+    {{-- A site being set up or a workspace on its way: keep the badges current. --}}
+    @if ($projects->contains(fn ($p) => $p->site_status->isTransitional()) || $workspaces->contains(fn ($w) => $w->status->isTransitional())) wire:poll.4s @else wire:poll.30s.visible @endif
+>
     <div class="flex items-start justify-between gap-4">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>

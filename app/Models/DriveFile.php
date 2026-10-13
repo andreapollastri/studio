@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPublicUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
  * any folder is its uploader's alone.
  *
  * @property int $id
+ * @property string $uuid
  * @property int $user_id
  * @property int|null $drive_folder_id
  * @property string $name
@@ -25,6 +27,8 @@ use Illuminate\Support\Facades\Storage;
 #[Fillable(['user_id', 'drive_folder_id', 'name', 'disk_path', 'size', 'mime'])]
 class DriveFile extends Model
 {
+    use HasPublicUuid;
+
     protected static function booted(): void
     {
         static::deleted(fn (DriveFile $file) => Storage::disk('local')->delete($file->disk_path));

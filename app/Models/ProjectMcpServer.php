@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\ProjectMcpServerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +15,9 @@ use Illuminate\Support\Carbon;
  * up in Claude Code as mcp__<name>__<tool>. The header, usually a bearer
  * token, is stored encrypted and only travels to the workspace bridge.
  *
+ * @property string $uuid
  * @property int $id
+ * @property string $uuid
  * @property int $project_id
  * @property string $name
  * @property string $url
@@ -30,6 +33,8 @@ class ProjectMcpServer extends Model
 {
     /** @use HasFactory<ProjectMcpServerFactory> */
     use HasFactory;
+
+    use HasPublicUuid;
 
     /** Who gets a new server unless the administrator says otherwise: everyone but clients. */
     public const DEFAULT_ROLES = ['admin', 'pm', 'dev'];

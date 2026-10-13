@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPublicUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * putting one's own items in order: sharing happens item by item.
  *
  * @property int $id
+ * @property string $uuid
  * @property int $user_id
  * @property int|null $parent_id
  * @property string $name
@@ -21,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['user_id', 'parent_id', 'name'])]
 class VaultFolder extends Model
 {
+    use HasPublicUuid;
+
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {

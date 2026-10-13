@@ -45,9 +45,9 @@ test('an item is stored encrypted and its secrets only leave on request', functi
         ->and($item->totp_secret)->toBe('JBSWY3DPEHPK3PXP')
         ->and($raw->password)->not->toContain('Sup3r')
         ->and($raw->username)->not->toContain('ada@')
-        ->and($page->instance()->reveal($item->id, 'password'))->toBe('Sup3r-secret!')
-        ->and($page->instance()->totp($item->id))->toHaveKeys(['code', 'remaining'])
-        ->and($page->instance()->totp($item->id)['code'])->toMatch('/^\d{6}$/');
+        ->and($page->instance()->reveal($item->uuid, 'password'))->toBe('Sup3r-secret!')
+        ->and($page->instance()->totp($item->uuid))->toHaveKeys(['code', 'remaining'])
+        ->and($page->instance()->totp($item->uuid)['code'])->toMatch('/^\d{6}$/');
 
     Livewire::actingAs($user)->test(Vault::class)
         ->call('newItem')->set('item_title', 'x')->set('item_totp', 'not base32 !!')->call('saveItem')
@@ -66,8 +66,8 @@ test('a project item reaches the members whose role is ticked, and every adminis
 
     $item = VaultItem::factory()->create(['user_id' => $owner->id]);
     $page = Livewire::actingAs($owner)->test(Vault::class)
-        ->call('sharing', $item->id)
-        ->call('pickShareProject', $project->id);
+        ->call('sharing', $item->uuid)
+        ->call('pickShareProject', $project->uuid);
 
     expect($item->fresh()->project_roles)->toBe(['dev']);
 
@@ -83,10 +83,10 @@ test('a project item reaches the members whose role is ticked, and every adminis
         ->and($item->fresh()->canEdit($admin))->toBeTrue();
 
     // A client sees it but may not change it, nor create anything.
-    Livewire::actingAs($client)->test(Vault::class)->assertSee($item->title)->call('editItem', $item->id)->assertForbidden();
+    Livewire::actingAs($client)->test(Vault::class)->assertSee($item->title)->call('editItem', $item->uuid)->assertForbidden();
     Livewire::actingAs($client)->test(Vault::class)->call('newItem')->assertForbidden();
     Livewire::actingAs($client)->test(Vault::class)->call('newFolder')->assertForbidden();
-    Livewire::actingAs($outsider)->test(Vault::class)->call('reveal', $item->id, 'password')->assertNotFound();
+    Livewire::actingAs($outsider)->test(Vault::class)->call('reveal', $item->uuid, 'password')->assertNotFound();
 
     // Personal items stay personal, even for administrators.
     $private = VaultItem::factory()->create(['user_id' => $owner->id]);
@@ -98,26 +98,26 @@ test('an item is shared with single people, to view or to edit, and the table sh
     $bob = User::factory()->create(['name' => 'Bob Builder']);
     $item = VaultItem::factory()->create(['user_id' => $owner->id]);
 
-    $page = Livewire::actingAs($owner)->test(Vault::class)->call('sharing', $item->id);
+    $page = Livewire::actingAs($owner)->test(Vault::class)->call('sharing', $item->uuid);
     expect(collect($page->instance()->searchUsers('bob'))->pluck('label')->all())->toBe(['Bob Builder']);
 
-    $page->call('addShare', $bob->id)->assertSee('Bob Builder')->assertSee('shared directly');
+    $page->call('addShare', $bob->uuid)->assertSee('Bob Builder')->assertSee('shared directly');
     expect($item->isVisibleTo($bob))->toBeTrue()->and($item->canEdit($bob))->toBeFalse();
 
-    Livewire::actingAs($bob)->test(Vault::class)->call('editItem', $item->id)->assertForbidden();
-    Livewire::actingAs($owner)->test(Vault::class)->call('sharing', $item->id)->call('setShareEdit', $bob->id, true);
+    Livewire::actingAs($bob)->test(Vault::class)->call('editItem', $item->uuid)->assertForbidden();
+    Livewire::actingAs($owner)->test(Vault::class)->call('sharing', $item->uuid)->call('setShareEdit', $bob->uuid, true);
     expect($item->fresh()->canEdit($bob))->toBeTrue()->and($item->fresh()->canManage($bob))->toBeFalse();
 
     Livewire::actingAs($bob)->test(Vault::class)
-        ->call('editItem', $item->id)
+        ->call('editItem', $item->uuid)
         ->set('item_password', 'changed-by-bob')
         ->call('saveItem')
         ->assertHasNoErrors();
     expect($item->fresh())->password->toBe('changed-by-bob')->updated_by->toBe($bob->id);
-    Livewire::actingAs($bob)->test(Vault::class)->call('sharing', $item->id)->assertForbidden();
-    Livewire::actingAs($bob)->test(Vault::class)->call('deleteItem', $item->id)->assertForbidden();
+    Livewire::actingAs($bob)->test(Vault::class)->call('sharing', $item->uuid)->assertForbidden();
+    Livewire::actingAs($bob)->test(Vault::class)->call('deleteItem', $item->uuid)->assertForbidden();
 
-    Livewire::actingAs($owner)->test(Vault::class)->call('sharing', $item->id)->call('removeShare', $bob->id);
+    Livewire::actingAs($owner)->test(Vault::class)->call('sharing', $item->uuid)->call('removeShare', $bob->uuid);
     expect($item->fresh()->isVisibleTo($bob))->toBeFalse();
 });
 
@@ -127,8 +127,8 @@ test('removing a folder moves its items, and those of the folders inside, to the
     $inner = $user->vaultFolders()->create(['name' => 'Acme', 'parent_id' => $outer->id]);
     $item = VaultItem::factory()->create(['user_id' => $user->id, 'vault_folder_id' => $inner->id]);
 
-    Livewire::actingAs($user)->test(Vault::class)->call('deleteFolder', $outer->id);
+    Livewire::actingAs($user)->test(Vault::class)->call('deleteFolder', $outer->uuid);
 
     expect($user->vaultFolders()->count())->toBe(0)->and($item->fresh()->vault_folder_id)->toBeNull();
-    Livewire::actingAs(User::factory()->create())->test(Vault::class)->call('renameFolder', $outer->id)->assertNotFound();
+    Livewire::actingAs(User::factory()->create())->test(Vault::class)->call('renameFolder', $outer->uuid)->assertNotFound();
 });

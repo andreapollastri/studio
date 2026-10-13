@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPublicUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * of the top folder and the administrators always read and write.
  *
  * @property int $id
+ * @property string $uuid
  * @property int $user_id
  * @property int|null $parent_id
  * @property int|null $project_id
@@ -26,6 +28,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['user_id', 'parent_id', 'project_id', 'project_access', 'name'])]
 class DriveFolder extends Model
 {
+    use HasPublicUuid;
+
     public const ROLES = ['client', 'pm', 'dev'];
 
     /**

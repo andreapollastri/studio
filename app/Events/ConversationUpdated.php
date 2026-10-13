@@ -20,14 +20,14 @@ class ConversationUpdated implements ShouldBroadcastNow
      * @param  array<string, mixed>  $data
      */
     public function __construct(
-        public int $conversationId,
+        public string $conversationUuid,
         public string $kind,
         public array $data = [],
     ) {}
 
     public function broadcastOn(): PrivateChannel
     {
-        return new PrivateChannel('conversations.'.$this->conversationId);
+        return new PrivateChannel('conversations.'.$this->conversationUuid);
     }
 
     public function broadcastAs(): string

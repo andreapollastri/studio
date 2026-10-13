@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\UserRole;
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\VaultItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\DB;
  * ticked in project_roles (client, pm, dev) plus every administrator.
  *
  * @property int $id
+ * @property string $uuid
  * @property int $user_id
  * @property int|null $vault_folder_id
  * @property int|null $project_id
@@ -43,6 +45,8 @@ class VaultItem extends Model
 {
     /** @use HasFactory<VaultItemFactory> */
     use HasFactory;
+
+    use HasPublicUuid;
 
     /** The roles a project item can be opened to. */
     public const PROJECT_ROLES = ['client', 'pm', 'dev'];

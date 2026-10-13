@@ -22,8 +22,9 @@ class ProvisionWorkspace implements ShouldQueue
 
     public function handle(WorkspaceManager $manager): void
     {
-        // Every visit of the page while the workspace is "to create" queues this job: one creates it.
-        if (! in_array($this->workspace->status, [WorkspaceStatus::New, WorkspaceStatus::Failed], true)) {
+        // Queued by whoever claimed the workspace (claimForProvisioning: "creating"); a job still
+        // queued from before the claim existed finds it "to create" or failed.
+        if (! in_array($this->workspace->status, [WorkspaceStatus::New, WorkspaceStatus::Failed, WorkspaceStatus::Creating], true)) {
             return;
         }
 

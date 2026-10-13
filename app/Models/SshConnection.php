@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\SshConnectionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +22,7 @@ use Illuminate\Support\Carbon;
  * They connect with a credential of their own (SshCredential).
  *
  * @property int $id
+ * @property string $uuid
  * @property int $user_id
  * @property int|null $project_id
  * @property string $name
@@ -42,6 +44,8 @@ class SshConnection extends Model
 {
     /** @use HasFactory<SshConnectionFactory> */
     use HasFactory;
+
+    use HasPublicUuid;
 
     protected $hidden = ['password'];
 

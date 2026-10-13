@@ -26,7 +26,7 @@ test('an administrator creates a project, becomes its deployer and the site is p
         ->call('create')
         ->set('name', 'Shop Acme')
         ->set('repo_url', 'https://github.com/acme/shop.git')
-        ->set('members', [$dev->id])
+        ->set('members', [$dev->uuid])
         ->call('save')
         ->assertHasNoErrors();
 
@@ -95,7 +95,7 @@ test('deleting a project marks it and leaves the work to the queue, once', funct
     $admin = User::factory()->admin()->create();
     $project = Project::factory()->online()->create();
 
-    Livewire::actingAs($admin)->test(Projects::class)->call('delete', $project->id)->call('delete', $project->id);
+    Livewire::actingAs($admin)->test(Projects::class)->call('delete', $project->uuid)->call('delete', $project->uuid);
 
     expect($project->fresh()->site_status)->toBe(SiteStatus::Deleting);
     Queue::assertPushed(DestroyProjectSite::class, 1);
@@ -107,7 +107,7 @@ test('editing a project keeps its site and token', function () {
 
     Livewire::actingAs($admin)
         ->test(Projects::class)
-        ->call('edit', $project->id)
+        ->call('edit', $project->uuid)
         ->set('name', 'Renamed')
         ->call('save')
         ->assertHasNoErrors();
@@ -123,7 +123,7 @@ test('an administrator can trigger a deploy of the project site', function () {
 
     Livewire::actingAs($admin)
         ->test(Projects::class)
-        ->call('deploy', $project->id);
+        ->call('deploy', $project->uuid);
 
     Queue::assertPushed(DeployProjectSite::class, fn (DeployProjectSite $job) => $job->project->is($project));
 });
@@ -133,7 +133,7 @@ test('a second deploy while the site is being created is ignored', function () {
     $admin = User::factory()->admin()->create();
     $project = Project::factory()->create(['site_status' => SiteStatus::Provisioning]);
 
-    Livewire::actingAs($admin)->test(Projects::class)->call('deploy', $project->id);
+    Livewire::actingAs($admin)->test(Projects::class)->call('deploy', $project->uuid);
 
     Queue::assertNothingPushed();
 });
@@ -172,7 +172,7 @@ test('an administrator gives a person a new password: shown once, sessions close
 
     $component = Livewire::actingAs($admin)
         ->test(Users::class)
-        ->call('resetPassword', $maria->id)
+        ->call('resetPassword', $maria->uuid)
         ->assertSet('resetFor', 'Maria');
 
     $password = $component->get('generatedPassword');
@@ -187,7 +187,7 @@ test('an administrator gives a person a new password: shown once, sessions close
 
     // your own password is changed in Settings, not here
     $before = $admin->password;
-    Livewire::actingAs($admin)->test(Users::class)->call('resetPassword', $admin->id)->assertSet('generatedPassword', null);
+    Livewire::actingAs($admin)->test(Users::class)->call('resetPassword', $admin->uuid)->assertSet('generatedPassword', null);
     expect($admin->fresh()->password)->toBe($before);
 });
 
@@ -210,7 +210,7 @@ test('an administrator cannot demote themselves', function () {
 
     Livewire::actingAs($admin)
         ->test(Users::class)
-        ->call('setRole', $admin->id, 'dev');
+        ->call('setRole', $admin->uuid, 'dev');
 
     expect($admin->fresh()->role)->toBe(UserRole::Admin);
 });

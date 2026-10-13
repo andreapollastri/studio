@@ -186,7 +186,7 @@ test('events posted by the bridge become messages, a pending permission, then an
 
     Livewire::actingAs($user)
         ->test(Chat::class, ['conversation' => $conversation])
-        ->call('allow', $conversation->pendingPermission()->id);
+        ->call('allow', $conversation->pendingPermission()->uuid);
 
     Http::assertSent(fn (Request $request) => $request->url() === "http://bridge.test:4455/conversations/{$conversation->id}/permissions/req_9"
         && $request['behavior'] === 'allow');
@@ -306,12 +306,12 @@ test('answering sends each question with the chosen labels, or the person\'s own
 
     Livewire::actingAs($user)
         ->test(Chat::class, ['conversation' => $conversation])
-        ->call('answer', $request->id)
+        ->call('answer', $request->uuid)
         ->assertHasErrors(['choices.0', 'choices.1'])
         ->set('choices.0', 'MAX')
         ->set('choices.1', ['Admin', 'API', 'Not an option'])
         ->set('others.1', 'the webhooks')
-        ->call('answer', $request->id)
+        ->call('answer', $request->uuid)
         ->assertHasNoErrors();
 
     Http::assertSent(fn (Request $sent) => $sent->url() === "http://bridge.test:4455/conversations/{$conversation->id}/permissions/req_q"
@@ -335,7 +335,7 @@ test('skipping Claude\'s questions lets it go on with its own judgement', functi
 
     Livewire::actingAs($user)
         ->test(Chat::class, ['conversation' => $conversation])
-        ->call('skip', $request->id);
+        ->call('skip', $request->uuid);
 
     Http::assertSent(fn (Request $sent) => str_ends_with($sent->url(), '/permissions/req_q')
         && $sent['behavior'] === 'deny'

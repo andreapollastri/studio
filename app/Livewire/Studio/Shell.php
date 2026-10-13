@@ -5,8 +5,6 @@ namespace App\Livewire\Studio;
 use App\Actions\Studio\StartConversation;
 use App\Enums\WorkspaceStatus;
 use App\Jobs\ProvisionWorkspace;
-use App\Jobs\StartWorkspace;
-use App\Jobs\StopWorkspace;
 use App\Models\Conversation;
 use App\Models\Project;
 use App\Models\Workspace;
@@ -16,6 +14,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 /**
@@ -78,26 +77,14 @@ class Shell extends Component
     {
         $this->authorize('chat', $this->project);
 
-        ProvisionWorkspace::dispatch($this->workspace);
+        if ($this->workspace->claimForProvisioning()) {
+            ProvisionWorkspace::dispatch($this->workspace);
+        }
         $this->workspace->refresh();
     }
 
-    public function start(): void
-    {
-        $this->authorize('chat', $this->project);
-
-        StartWorkspace::dispatch($this->workspace);
-        $this->workspace->refresh();
-    }
-
-    public function stop(): void
-    {
-        $this->authorize('chat', $this->project);
-
-        StopWorkspace::dispatch($this->workspace);
-        $this->workspace->refresh();
-    }
-
+    /** The header's WorkspaceStatus says the workspace moved on: draw the page again with it. */
+    #[On('workspace-updated')]
     public function refreshWorkspace(): void
     {
         $this->workspace->refresh();

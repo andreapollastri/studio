@@ -21,14 +21,14 @@
             </thead>
             <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @foreach ($users as $user)
-                    <tr wire:key="user-{{ $user->id }}">
+                    <tr wire:key="user-{{ $user->uuid }}">
                         <td class="px-4 py-2">
                             <div class="font-medium">{{ $user->name }}</div>
                             @if ($user->handle)<div class="font-mono text-xs text-zinc-500">{{ $user->handle }}</div>@endif
                         </td>
                         <td class="px-4 py-2 text-xs">{{ $user->email }}</td>
                         <td class="px-4 py-2">
-                            <flux:select size="sm" wire:change="setRole({{ $user->id }}, $event.target.value)">
+                            <flux:select size="sm" wire:change="setRole('{{ $user->uuid }}', $event.target.value)">
                                 @foreach ($roles as $role)
                                     <flux:select.option value="{{ $role->value }}" :selected="$user->role === $role">{{ $role->label() }}</flux:select.option>
                                 @endforeach
@@ -44,9 +44,9 @@
                         <td class="px-4 py-2 text-end tabular-nums">{{ $user->projects_count }}</td>
                         <td class="px-4 py-2 text-end whitespace-nowrap">
                             @unless ($user->is(auth()->user()))
-                                <flux:button size="xs" variant="ghost" icon="key" :tooltip="__('Reset password')" wire:click="resetPassword({{ $user->id }})" wire:confirm="{{ __('Give :name a new password? Their sessions are closed and their 2FA is removed; they set it up again after logging in.', ['name' => $user->name]) }}" />
+                                <flux:button size="xs" variant="ghost" icon="key" :tooltip="__('Reset password')" wire:click="resetPassword('{{ $user->uuid }}')" wire:confirm="{{ __('Give :name a new password? Their sessions are closed and their 2FA is removed; they set it up again after logging in.', ['name' => $user->name]) }}" />
                             @endunless
-                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="remove({{ $user->id }})" wire:confirm="{{ __('Delete the account? Their workspaces and conversations are removed from Studio.') }}" />
+                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="remove('{{ $user->uuid }}')" wire:confirm="{{ __('Delete the account? Their workspaces and conversations are removed from Studio.') }}" />
                         </td>
                     </tr>
                 @endforeach

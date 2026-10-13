@@ -48,7 +48,7 @@ final class StartTurn
 
         SendTurn::dispatch($conversation, $text);
 
-        ConversationUpdated::dispatch($conversation->id, 'messages', ['kinds' => ['user'], 'status' => ConversationStatus::Running->value]);
+        ConversationUpdated::dispatch($conversation->uuid, 'messages', ['kinds' => ['user'], 'status' => ConversationStatus::Running->value]);
 
         return $message;
     }

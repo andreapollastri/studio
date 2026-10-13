@@ -40,7 +40,7 @@ class SendTurn implements ShouldQueue
 
             $this->conversation->setStatus(ConversationStatus::Failed);
 
-            ConversationUpdated::dispatch($this->conversation->id, 'messages', ['kinds' => ['error'], 'status' => ConversationStatus::Failed->value]);
+            ConversationUpdated::dispatch($this->conversation->uuid, 'messages', ['kinds' => ['error'], 'status' => ConversationStatus::Failed->value]);
         }
     }
 }

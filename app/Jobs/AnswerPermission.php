@@ -36,7 +36,7 @@ class AnswerPermission implements ShouldQueue
 
             $conversation->setStatus(ConversationStatus::Failed);
 
-            ConversationUpdated::dispatch($conversation->id, 'messages', ['kinds' => ['error'], 'status' => ConversationStatus::Failed->value]);
+            ConversationUpdated::dispatch($conversation->uuid, 'messages', ['kinds' => ['error'], 'status' => ConversationStatus::Failed->value]);
         }
     }
 }

@@ -35,7 +35,7 @@ final class Access
 
     public function __construct(private readonly User $user)
     {
-        $this->folders = DriveFolder::query()->get(['id', 'user_id', 'parent_id', 'project_id', 'project_access', 'name'])->keyBy('id');
+        $this->folders = DriveFolder::query()->get(['id', 'uuid', 'user_id', 'parent_id', 'project_id', 'project_access', 'name'])->keyBy('id');
         $this->memberOf = array_fill_keys($user->projects()->pluck('projects.id')->all(), true);
     }
 
@@ -208,6 +208,18 @@ final class Access
     public function folder(int $folderId): ?DriveFolder
     {
         return $this->folders->get($folderId);
+    }
+
+    /** The id behind a folder's uuid, when this person may see the folder. */
+    public function idOf(?string $uuid): ?int
+    {
+        if ($uuid === null) {
+            return null;
+        }
+
+        $folder = $this->folders->firstWhere('uuid', $uuid);
+
+        return $folder !== null && $this->canRead($folder->id) ? $folder->id : null;
     }
 
     private function compute(int $folderId): ?string

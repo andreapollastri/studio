@@ -19,7 +19,7 @@ test('an administrator adds an MCP server to a project, with its header stored e
 
     Livewire::actingAs($admin)
         ->test(Projects::class)
-        ->call('settings', $project->id)
+        ->call('settings', $project->uuid)
         ->set('settingsTab', 'mcp')
         ->assertSee('MCP servers in the chat')
         ->set('mcp_name', 'Docs Site')
@@ -49,8 +49,8 @@ test('editing keeps the stored secret unless a new value is typed; names are uni
 
     $component = Livewire::actingAs($admin)
         ->test(Projects::class)
-        ->call('settings', $server->project_id)
-        ->call('editMcp', $server->id)
+        ->call('settings', $server->project->uuid)
+        ->call('editMcp', $server->uuid)
         ->assertSet('mcp_header_value', '')
         ->assertSet('mcp_has_secret', true)
         ->set('mcp_url', 'https://docs.example.com/v2/mcp')
@@ -60,15 +60,15 @@ test('editing keeps the stored secret unless a new value is typed; names are uni
     expect($server->fresh()->headers)->toBe(['Authorization' => 'Bearer keep-me'])
         ->and($server->fresh()->url)->toBe('https://docs.example.com/v2/mcp');
 
-    $component->call('editMcp', $server->id)->set('mcp_header_value', 'Bearer new-one')->call('saveMcp');
+    $component->call('editMcp', $server->uuid)->set('mcp_header_value', 'Bearer new-one')->call('saveMcp');
     expect($server->fresh()->headers)->toBe(['Authorization' => 'Bearer new-one']);
 
-    $component->call('editMcp', $server->id)->set('mcp_name', 'errors')->call('saveMcp')->assertHasErrors('mcp_name');
+    $component->call('editMcp', $server->uuid)->set('mcp_name', 'errors')->call('saveMcp')->assertHasErrors('mcp_name');
 
-    $component->call('toggleMcp', $server->id);
+    $component->call('toggleMcp', $server->uuid);
     expect($server->fresh()->enabled)->toBeFalse();
 
-    $component->call('deleteMcp', $server->id);
+    $component->call('deleteMcp', $server->uuid);
     expect(ProjectMcpServer::query()->whereKey($server->id)->exists())->toBeFalse();
 });
 
@@ -86,10 +86,10 @@ test('testing a server makes the initialize call with its header and keeps the a
 
     Livewire::actingAs($admin)
         ->test(Projects::class)
-        ->call('settings', $json->project_id)
-        ->call('testMcp', $json->id)
-        ->call('testMcp', $stream->id)
-        ->call('testMcp', $refused->id);
+        ->call('settings', $json->project->uuid)
+        ->call('testMcp', $json->uuid)
+        ->call('testMcp', $stream->uuid)
+        ->call('testMcp', $refused->uuid);
 
     expect($json->fresh()->status)->toBe('ok · docs-mcp 1.2.0')
         ->and($stream->fresh()->status)->toBe('ok · errors')

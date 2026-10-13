@@ -40,10 +40,10 @@
             <div class="flex flex-col gap-0.5">
                 <flux:heading size="sm" class="px-2">{{ __('Projects') }}</flux:heading>
                 @foreach ($this->projects as $entry)
-                    <button type="button" wire:key="vault-project-{{ $entry['project']->id }}" wire:click="show('project', {{ $entry['project']->id }})" @class([
+                    <button type="button" wire:key="vault-project-{{ $entry['project']->uuid }}" wire:click="show('project', '{{ $entry['project']->uuid }}')" @class([
                         'flex items-center gap-2 rounded-md px-2 py-1 text-start text-sm',
-                        'bg-zinc-100 font-medium dark:bg-zinc-800' => $view === 'project' && $project === $entry['project']->id,
-                        'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800' => ! ($view === 'project' && $project === $entry['project']->id),
+                        'bg-zinc-100 font-medium dark:bg-zinc-800' => $view === 'project' && $project === $entry['project']->uuid,
+                        'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800' => ! ($view === 'project' && $project === $entry['project']->uuid),
                     ])>
                         <flux:icon.rectangle-stack variant="micro" class="size-4 text-zinc-400" />
                         <span class="flex-1 truncate">{{ $entry['project']->name }}</span>
@@ -80,9 +80,9 @@
                 <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                     @forelse ($this->items as $item)
                         @php($mine = $item->isOwnedBy(auth()->user()))
-                        <tr wire:key="vault-item-{{ $item->id }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                        <tr wire:key="vault-item-{{ $item->uuid }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
                             <td class="px-4 py-2">
-                                <button type="button" class="text-start" wire:click="open({{ $item->id }})">
+                                <button type="button" class="text-start" wire:click="open('{{ $item->uuid }}')">
                                     <div class="flex items-center gap-1.5 font-medium">
                                         {{ $item->title }}
                                         @if ($item->totp_secret)<flux:icon.clock variant="micro" class="size-3.5 text-zinc-400" title="{{ __('Two-factor code') }}" />@endif
@@ -94,9 +94,9 @@
                                 @if ($item->username)
                                     <div class="flex items-center gap-1">
                                         <span class="max-w-48 truncate font-mono text-xs">{{ $item->username }}</span>
-                                        <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" x-on:click="copy({{ $item->id }}, 'username')" title="{{ __('Copy') }}">
-                                            <flux:icon.clipboard-document variant="micro" class="size-4" x-show="copied !== '{{ $item->id }}username'" />
-                                            <flux:icon.check variant="micro" class="size-4 text-green-500" x-show="copied === '{{ $item->id }}username'" />
+                                        <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" x-on:click="copy('{{ $item->uuid }}', 'username')" title="{{ __('Copy') }}">
+                                            <flux:icon.clipboard-document variant="micro" class="size-4" x-show="copied !== '{{ $item->uuid }}username'" />
+                                            <flux:icon.check variant="micro" class="size-4 text-green-500" x-show="copied === '{{ $item->uuid }}username'" />
                                         </button>
                                     </div>
                                 @endif
@@ -104,13 +104,13 @@
                             <td class="px-4 py-2">
                                 @if ($item->password)
                                     <div class="flex items-center gap-1">
-                                        <span class="font-mono text-xs" x-text="shown[{{ $item->id }}] ?? '••••••••••'"></span>
-                                        <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" x-on:click="toggle({{ $item->id }})" title="{{ __('Show') }}">
+                                        <span class="font-mono text-xs" x-text="shown['{{ $item->uuid }}'] ?? '••••••••••'"></span>
+                                        <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" x-on:click="toggle('{{ $item->uuid }}')" title="{{ __('Show') }}">
                                             <flux:icon.eye variant="micro" class="size-4" />
                                         </button>
-                                        <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" x-on:click="copy({{ $item->id }}, 'password')" title="{{ __('Copy') }}">
-                                            <flux:icon.clipboard-document variant="micro" class="size-4" x-show="copied !== '{{ $item->id }}password'" />
-                                            <flux:icon.check variant="micro" class="size-4 text-green-500" x-show="copied === '{{ $item->id }}password'" />
+                                        <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" x-on:click="copy('{{ $item->uuid }}', 'password')" title="{{ __('Copy') }}">
+                                            <flux:icon.clipboard-document variant="micro" class="size-4" x-show="copied !== '{{ $item->uuid }}password'" />
+                                            <flux:icon.check variant="micro" class="size-4 text-green-500" x-show="copied === '{{ $item->uuid }}password'" />
                                         </button>
                                     </div>
                                 @endif
@@ -126,24 +126,24 @@
                                 <flux:dropdown position="bottom" align="end">
                                     <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                                     <flux:menu>
-                                        <flux:menu.item icon="eye" wire:click="open({{ $item->id }})">{{ __('Open') }}</flux:menu.item>
+                                        <flux:menu.item icon="eye" wire:click="open('{{ $item->uuid }}')">{{ __('Open') }}</flux:menu.item>
                                         @if ($item->canEdit(auth()->user()))
-                                            <flux:menu.item icon="pencil-square" wire:click="editItem({{ $item->id }})">{{ __('Edit') }}</flux:menu.item>
+                                            <flux:menu.item icon="pencil-square" wire:click="editItem('{{ $item->uuid }}')">{{ __('Edit') }}</flux:menu.item>
                                         @endif
                                         @if ($item->canManage(auth()->user()))
-                                            <flux:menu.item icon="share" wire:click="sharing({{ $item->id }})">{{ __('Sharing') }}</flux:menu.item>
+                                            <flux:menu.item icon="share" wire:click="sharing('{{ $item->uuid }}')">{{ __('Sharing') }}</flux:menu.item>
                                         @endif
                                         @if ($mine && $this->folders->isNotEmpty())
                                             <flux:menu.submenu :heading="__('Move to')">
-                                                <flux:menu.item wire:click="moveItem({{ $item->id }}, null)">{{ __('Top level') }}</flux:menu.item>
+                                                <flux:menu.item wire:click="moveItem('{{ $item->uuid }}', null)">{{ __('Top level') }}</flux:menu.item>
                                                 @foreach ($this->folders as $target)
-                                                    <flux:menu.item wire:click="moveItem({{ $item->id }}, {{ $target->id }})">{{ $target->name }}</flux:menu.item>
+                                                    <flux:menu.item wire:click="moveItem('{{ $item->uuid }}', '{{ $target->uuid }}')">{{ $target->name }}</flux:menu.item>
                                                 @endforeach
                                             </flux:menu.submenu>
                                         @endif
                                         @if ($item->canManage(auth()->user()))
                                             <flux:menu.separator />
-                                            <flux:menu.item icon="trash" variant="danger" wire:click="deleteItem({{ $item->id }})" wire:confirm="{{ __('Remove :title? Everyone it is shared with loses it too.', ['title' => $item->title]) }}">{{ __('Remove') }}</flux:menu.item>
+                                            <flux:menu.item icon="trash" variant="danger" wire:click="deleteItem('{{ $item->uuid }}')" wire:confirm="{{ __('Remove :title? Everyone it is shared with loses it too.', ['title' => $item->title]) }}">{{ __('Remove') }}</flux:menu.item>
                                         @endif
                                     </flux:menu>
                                 </flux:dropdown>
@@ -223,7 +223,7 @@
                 <flux:select wire:model="item_folder" :label="__('Folder')">
                     <flux:select.option value="">{{ __('Top level') }}</flux:select.option>
                     @foreach ($this->folders as $target)
-                        <flux:select.option :value="$target->id">{{ $target->name }}</flux:select.option>
+                        <flux:select.option :value="$target->uuid">{{ $target->name }}</flux:select.option>
                     @endforeach
                 </flux:select>
             @endif
@@ -237,11 +237,11 @@
     {{-- Item details --}}
     <flux:modal name="vault-show" class="md:w-[34rem]">
         @if ($shownItem)
-            <div class="space-y-4" wire:key="vault-show-{{ $shownItem->id }}" x-data="{
+            <div class="space-y-4" wire:key="vault-show-{{ $shownItem->uuid }}" x-data="{
                 values: {}, copied: null, code: null, remaining: 0, timer: null,
-                async reveal(field) { if (this.values[field] !== undefined) { delete this.values[field]; return } this.values[field] = await $wire.reveal({{ $shownItem->id }}, field) ?? '' },
-                async copy(field) { const v = await $wire.reveal({{ $shownItem->id }}, field); if (v) { await navigator.clipboard.writeText(v); this.copied = field; setTimeout(() => this.copied = null, 1500) } },
-                async totp() { const r = await $wire.totp({{ $shownItem->id }}); if (!r) return; this.code = r.code; this.remaining = r.remaining; clearInterval(this.timer); this.timer = setInterval(() => { if (--this.remaining <= 0) this.totp() }, 1000) },
+                async reveal(field) { if (this.values[field] !== undefined) { delete this.values[field]; return } this.values[field] = await $wire.reveal('{{ $shownItem->uuid }}', field) ?? '' },
+                async copy(field) { const v = await $wire.reveal('{{ $shownItem->uuid }}', field); if (v) { await navigator.clipboard.writeText(v); this.copied = field; setTimeout(() => this.copied = null, 1500) } },
+                async totp() { const r = await $wire.totp('{{ $shownItem->uuid }}'); if (!r) return; this.code = r.code; this.remaining = r.remaining; clearInterval(this.timer); this.timer = setInterval(() => { if (--this.remaining <= 0) this.totp() }, 1000) },
                 init() { @if ($shownItem->totp_secret) this.totp() @endif },
                 destroy() { clearInterval(this.timer) },
             }">
@@ -290,10 +290,10 @@
                     <span class="text-xs text-green-600" x-show="copied" x-transition>{{ __('Copied') }}</span>
                     <div class="ms-auto flex gap-2">
                         @if ($shownItem->canManage(auth()->user()))
-                            <flux:button size="sm" variant="ghost" icon="share" wire:click="sharing({{ $shownItem->id }})">{{ __('Sharing') }}</flux:button>
+                            <flux:button size="sm" variant="ghost" icon="share" wire:click="sharing('{{ $shownItem->uuid }}')">{{ __('Sharing') }}</flux:button>
                         @endif
                         @if ($shownItem->canEdit(auth()->user()))
-                            <flux:button size="sm" icon="pencil-square" wire:click="editItem({{ $shownItem->id }})">{{ __('Edit') }}</flux:button>
+                            <flux:button size="sm" icon="pencil-square" wire:click="editItem('{{ $shownItem->uuid }}')">{{ __('Edit') }}</flux:button>
                         @endif
                         <flux:modal.close><flux:button size="sm" variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>
                     </div>
@@ -305,7 +305,7 @@
     {{-- Sharing --}}
     <flux:modal name="vault-sharing" class="md:w-[40rem]">
         @if ($shownItem && $shownItem->canManage(auth()->user()))
-            <div class="space-y-6" wire:key="vault-sharing-{{ $shownItem->id }}">
+            <div class="space-y-6" wire:key="vault-sharing-{{ $shownItem->uuid }}">
                 <div>
                     <flux:heading size="lg">{{ __('Sharing: :title', ['title' => $shownItem->title]) }}</flux:heading>
                     <flux:text class="mt-1">{{ __('Changes apply at once.') }}</flux:text>
@@ -314,10 +314,10 @@
                 <div class="space-y-2">
                     <flux:heading size="sm">{{ __('Project') }}</flux:heading>
                     <x-search-picker
-                        wire:key="vault-project-picker-{{ $shownItem->id }}"
+                        wire:key="vault-project-picker-{{ $shownItem->uuid }}"
                         search="searchProjects"
                         select="pickShareProject"
-                        :selected="$shownItem->project ? ['id' => $shownItem->project->id, 'label' => $shownItem->project->name] : null"
+                        :selected="$shownItem->project ? ['id' => $shownItem->project->uuid, 'label' => $shownItem->project->name] : null"
                         :placeholder="__('Search a project…')"
                     />
                     @if ($shownItem->project)
@@ -334,7 +334,7 @@
                 <div class="space-y-2">
                     <flux:heading size="sm">{{ __('People') }}</flux:heading>
                     <x-search-picker
-                        wire:key="vault-user-picker-{{ $shownItem->id }}"
+                        wire:key="vault-user-picker-{{ $shownItem->uuid }}"
                         search="searchUsers"
                         select="addShare"
                         :keep="false"
@@ -355,7 +355,7 @@
                         </thead>
                         <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                             @foreach ($shownItem->audience() as $entry)
-                                <tr wire:key="vault-audience-{{ $entry['user']->id }}">
+                                <tr wire:key="vault-audience-{{ $entry['user']->uuid }}">
                                     <td class="px-3 py-1.5">
                                         <div>{{ $entry['user']->name }}</div>
                                         <div class="text-xs text-zinc-500">{{ $entry['user']->role->label() }}</div>
@@ -365,7 +365,7 @@
                                     </td>
                                     <td class="px-3 py-1.5">
                                         @if ($entry['via'] === 'direct')
-                                            <flux:select size="sm" wire:change="setShareEdit({{ $entry['user']->id }}, $event.target.value === '1')">
+                                            <flux:select size="sm" wire:change="setShareEdit('{{ $entry['user']->uuid }}', $event.target.value === '1')">
                                                 <flux:select.option value="0" :selected="! $entry['can_edit']">{{ __('can view') }}</flux:select.option>
                                                 <flux:select.option value="1" :selected="$entry['can_edit']">{{ __('can edit') }}</flux:select.option>
                                             </flux:select>
@@ -375,7 +375,7 @@
                                     </td>
                                     <td class="px-3 py-1.5 text-end">
                                         @if ($entry['via'] === 'direct')
-                                            <flux:button size="xs" variant="ghost" icon="x-mark" wire:click="removeShare({{ $entry['user']->id }})" :tooltip="__('Stop sharing')" />
+                                            <flux:button size="xs" variant="ghost" icon="x-mark" wire:click="removeShare('{{ $entry['user']->uuid }}')" :tooltip="__('Stop sharing')" />
                                         @endif
                                     </td>
                                 </tr>

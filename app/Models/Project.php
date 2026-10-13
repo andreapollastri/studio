@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\SiteStatus;
 use App\Git\Providers\GitProvider;
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -15,7 +16,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
+ * @property string $uuid
  * @property int $id
+ * @property string $uuid
  * @property string $name
  * @property string $slug
  * @property string $repo_url
@@ -42,6 +45,8 @@ class Project extends Model
 {
     /** @use HasFactory<ProjectFactory> */
     use HasFactory;
+
+    use HasPublicUuid;
 
     /**
      * @return array<string, string>

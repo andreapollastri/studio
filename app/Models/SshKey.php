@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\SshKeyFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * the page shows the public half to copy into authorized_keys.
  *
  * @property int $id
+ * @property string $uuid
  * @property int $user_id
  * @property string $name
  * @property string $type ed25519, rsa or ecdsa
@@ -29,6 +31,8 @@ class SshKey extends Model
 {
     /** @use HasFactory<SshKeyFactory> */
     use HasFactory;
+
+    use HasPublicUuid;
 
     protected $hidden = ['private_key'];
 

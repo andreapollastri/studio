@@ -40,7 +40,7 @@ test('everyone but clients creates folders; files upload into them and download 
         ->assertHasErrors('folder_name');
 
     $folder = $user->driveFolders()->sole();
-    $page->call('openFolder', $folder->id)
+    $page->call('openFolder', $folder->uuid)
         ->set('uploads', [UploadedFile::fake()->create('logo.pdf', 20, 'application/pdf'), UploadedFile::fake()->create('logo.pdf', 10, 'application/pdf')])
         ->assertSee('logo.pdf')
         ->assertSee('logo (2).pdf');
@@ -67,8 +67,8 @@ test('a folder tied to a project opens by role, to read or to write, down the tr
     $private = $owner->driveFolders()->create(['name' => 'Private']);
 
     Livewire::actingAs($owner)->test(Drive::class)
-        ->call('share', $top->id)
-        ->call('pickShareProject', $project->id)
+        ->call('share', $top->uuid)
+        ->call('pickShareProject', $project->uuid)
         ->set('share_access.client', 'read')
         ->assertSee($dev->name)
         ->assertSee($client->name);
@@ -85,8 +85,8 @@ test('a folder tied to a project opens by role, to read or to write, down the tr
 
     // The developer finds the shared folder at the start of their drive; the client cannot write in it.
     Livewire::actingAs($dev)->test(Drive::class)->assertSee('Shop')->assertDontSee('Private');
-    Livewire::actingAs($client)->test(Drive::class, ['folder' => $inner->id])->call('newFolder')->assertForbidden();
-    Livewire::actingAs($dev)->test(Drive::class)->call('share', $top->id)->assertForbidden();
+    Livewire::actingAs($client)->test(Drive::class, ['folder' => $inner->uuid])->call('newFolder')->assertForbidden();
+    Livewire::actingAs($dev)->test(Drive::class)->call('share', $top->uuid)->assertForbidden();
 
     // A folder further down tied to another project closes it to members of the first.
     $other = Project::factory()->create();
@@ -101,7 +101,7 @@ test('removing a folder removes what is inside, from the disk too', function () 
     $inner = $user->driveFolders()->create(['name' => 'Older', 'parent_id' => $top->id]);
     $file = driveFile($inner, 'notes.txt');
 
-    Livewire::actingAs($user)->test(Drive::class)->set('selectedFolders', [$top->id])->call('deleteSelected');
+    Livewire::actingAs($user)->test(Drive::class)->set('selectedFolders', [$top->uuid])->call('deleteSelected');
 
     expect(DriveFolder::query()->count())->toBe(0)->and(DriveFile::query()->count())->toBe(0);
     Storage::disk('local')->assertMissing($file->disk_path);
@@ -135,14 +135,14 @@ test('from a project folder, files and folders are copied or moved into the pers
         };
     });
 
-    Livewire::actingAs($dev)->test(Drive::class, ['folder' => $top->id])
+    Livewire::actingAs($dev)->test(Drive::class, ['folder' => $top->uuid])
         ->assertSee('To the project')
         ->call('startTransfer', 'copy')
         ->assertSee('public')
         ->call('browse', 'public')
         ->assertSet('transfer_path', 'public')
-        ->set('selectedFolders', [$assets->id])
-        ->set('selectedFiles', [$readme->id])
+        ->set('selectedFolders', [$assets->uuid])
+        ->set('selectedFiles', [$readme->uuid])
         ->set('transfer_overwrite', true)
         ->call('transfer')
         ->assertSet('transfer_error', null);
@@ -152,9 +152,9 @@ test('from a project folder, files and folders are copied or moved into the pers
 
     // A move removes from the drive what arrived.
     $uploads = [];
-    Livewire::actingAs($dev)->test(Drive::class, ['folder' => $top->id])
+    Livewire::actingAs($dev)->test(Drive::class, ['folder' => $top->uuid])
         ->call('startTransfer', 'move')
-        ->set('selectedFolders', [$assets->id])
+        ->set('selectedFolders', [$assets->uuid])
         ->call('transfer');
 
     expect(array_keys($uploads))->toBe(['assets/logo.svg'])
@@ -173,11 +173,11 @@ test('no copy to the project without access to its file manager', function () {
     Workspace::factory()->running()->create(['user_id' => $client->id, 'project_id' => $project->id]);
 
     // A client never has the project's file manager; a PM without a workspace has nowhere to copy to.
-    Livewire::actingAs($client)->test(Drive::class, ['folder' => $top->id])->assertDontSee('To the project')->call('startTransfer', 'copy')->assertForbidden();
-    Livewire::actingAs($pm)->test(Drive::class, ['folder' => $top->id])->assertDontSee('To the project');
+    Livewire::actingAs($client)->test(Drive::class, ['folder' => $top->uuid])->assertDontSee('To the project')->call('startTransfer', 'copy')->assertForbidden();
+    Livewire::actingAs($pm)->test(Drive::class, ['folder' => $top->uuid])->assertDontSee('To the project');
     // Not tied to a project: nothing to copy to.
     $loose = $owner->driveFolders()->create(['name' => 'Loose']);
-    Livewire::actingAs($owner)->test(Drive::class, ['folder' => $loose->id])->assertDontSee('To the project');
+    Livewire::actingAs($owner)->test(Drive::class, ['folder' => $loose->uuid])->assertDontSee('To the project');
 });
 
 test('the tools pages render in Italian', function () {
@@ -187,4 +187,26 @@ test('the tools pages render in Italian', function () {
     $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()])->get(route('ssh'))->assertOk()->assertSee('Terminale SSH')->assertSee('Chiavi');
     $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()])->get(route('vault'))->assertOk()->assertSee('Le mie cartelle');
     $this->actingAs($user)->get(route('drive'))->assertOk()->assertSee('Il tuo drive è vuoto', false);
+});
+
+test('a folder created inside another shows up at once, and the URL names folders by uuid', function () {
+    $user = User::factory()->create();
+    $top = $user->driveFolders()->create(['name' => 'Clients']);
+
+    Livewire::actingAs($user)->test(Drive::class)
+        ->call('openFolder', $top->uuid)
+        ->assertSet('folder', $top->uuid)
+        ->call('newFolder')
+        ->set('folder_name', 'Acme')
+        ->call('saveFolder')
+        ->assertSee('Acme')
+        ->call('newFolder')
+        ->set('folder_name', 'Globex')
+        ->call('saveFolder')
+        ->assertSee('Acme')
+        ->assertSee('Globex');
+
+    $this->actingAs($user)->get(route('drive', ['folder' => $top->uuid]))->assertOk()->assertSee('Acme');
+    // A number in the URL is nobody's folder: the drive starts from the top.
+    $this->actingAs($user)->get(route('drive', ['folder' => $top->id]))->assertOk()->assertSee('Clients');
 });
