@@ -19,6 +19,8 @@ use App\Models\ProjectMcpServer;
 use App\Models\ProjectPreference;
 use App\Models\ProjectResource;
 use App\Models\User;
+use App\Models\VaultFolder;
+use App\Models\VaultItem;
 use App\Models\Workspace;
 use Illuminate\Database\Seeder;
 
@@ -210,6 +212,25 @@ class DemoSeeder extends Seeder
         $note(Message::ROLE_ASSISTANT, Message::KIND_TEXT, 'Two open pull requests: #48 (US-011, approved, waiting for the merge) and #51 (US-015, tests failing on the returns form).', ['parent_tool_use_id' => 'toolu_rel_2']);
         $note(Message::ROLE_TOOL, Message::KIND_TOOL_RESULT, '#48 approved; #51 failing', ['is_error' => false], 'toolu_rel_2');
         $note(Message::ROLE_ASSISTANT, Message::KIND_TEXT, "## Release 1.4 · what is missing\n\n| Story | State | What is left |\n| --- | --- | --- |\n| US-011 · Returns badge | in review | merge #48 |\n| US-014 · Date range filter | in progress | assets and review |\n| US-015 · Returns form | in progress | fix the failing tests in #51 |\n| US-016 · Returns approval | to do | not started, 3 points |\n| US-017 · Weekly sales dashboard | to do | 5 points, could move to 1.5 |\n\n**Realistic plan:** merge #48 today, finish US-014 and US-015 this week, move US-017 to 1.5. Nothing was changed: this conversation is in *Plan only*.");
+
+        // Andrea's password manager: the shop's folder opens to its PMs and developers, the agency's
+        // tools are shared with Maria to edit; what is inside goes with each folder.
+        $shopFolder = VaultFolder::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => 'Shop Acme', 'parent_id' => null], ['project_id' => $shop->id, 'project_roles' => ['pm', 'dev']]);
+        $production = VaultFolder::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => 'Production', 'parent_id' => $shopFolder->id], []);
+        $tools = VaultFolder::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => 'Agency tools', 'parent_id' => null], []);
+        $tools->sharedWith()->syncWithoutDetaching([$maria->id => ['can_edit' => true]]);
+        foreach ([
+            [$shopFolder, 'Back office admin', 'https://shop-acme.dev.agency.test/admin', 'admin@shop-acme.test'],
+            [$shopFolder, 'Stripe dashboard', 'https://dashboard.stripe.com', 'billing@shop-acme.test'],
+            [$production, 'Production database', 'mysql://10.0.0.12', 'shop_acme'],
+            [$production, 'Production server SSH', 'ssh://203.0.113.42', 'deploy'],
+            [$tools, 'Figma', 'https://figma.com', 'design@agency.test'],
+            [$tools, 'Mailgun', 'https://app.mailgun.com', 'ops@agency.test'],
+        ] as [$in, $title, $url, $username]) {
+            VaultItem::query()->updateOrCreate(['user_id' => $andrea->id, 'title' => $title], [
+                'vault_folder_id' => $in->id, 'url' => $url, 'username' => $username, 'password' => 'demo-'.substr(md5($title), 0, 12), 'updated_by' => $andrea->id,
+            ]);
+        }
 
         // MCP servers in the chats of Shop Acme: the project's documentation for everyone,
         // error tracking for administrators and developers.

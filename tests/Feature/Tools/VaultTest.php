@@ -132,3 +132,93 @@ test('removing a folder moves its items, and those of the folders inside, to the
     expect($user->vaultFolders()->count())->toBe(0)->and($item->fresh()->vault_folder_id)->toBeNull();
     Livewire::actingAs(User::factory()->create())->test(Vault::class)->call('renameFolder', $outer->uuid)->assertNotFound();
 });
+
+test('a folder shared with a person brings what is inside it, the folders below and later items included, to view or to edit', function () {
+    $owner = User::factory()->create(['name' => 'Ada Owner']);
+    $bob = User::factory()->create();
+    $outsider = User::factory()->create();
+    $clients = $owner->vaultFolders()->create(['name' => 'Clients']);
+    $acme = $owner->vaultFolders()->create(['name' => 'Acme', 'parent_id' => $clients->id]);
+    $top = VaultItem::factory()->create(['user_id' => $owner->id, 'vault_folder_id' => $clients->id, 'title' => 'Clients mailbox', 'password' => 'top-secret']);
+    $deep = VaultItem::factory()->create(['user_id' => $owner->id, 'vault_folder_id' => $acme->id, 'title' => 'Acme hosting']);
+    $elsewhere = VaultItem::factory()->create(['user_id' => $owner->id, 'title' => 'My bank']);
+
+    Livewire::actingAs($owner)->test(Vault::class)
+        ->call('folderSharing', $clients->uuid)
+        ->call('addFolderShare', $bob->uuid)
+        ->assertSee($bob->name);
+
+    // Bob reaches the folder and the one inside it, to read
+    $page = Livewire::actingAs($bob)->test(Vault::class)
+        ->assertSee('Shared folders')
+        ->assertSee(['Clients', 'Acme', 'Clients mailbox', 'Acme hosting'])
+        ->assertDontSee('My bank')
+        ->call('show', 'sharedfolder', $acme->uuid)
+        ->assertSee('Acme hosting')
+        ->assertDontSee('Clients mailbox')
+        ->assertSee('Shared with you by Ada Owner, to view.');
+    expect($page->instance()->reveal($top->uuid, 'password'))->toBe('top-secret');
+    $page->call('editItem', $deep->uuid)->assertForbidden();
+    Livewire::actingAs($bob)->test(Vault::class)->call('reveal', $elsewhere->uuid, 'password')->assertNotFound();
+
+    // an item filed in the folder later goes with it
+    $later = VaultItem::factory()->create(['user_id' => $owner->id, 'vault_folder_id' => $acme->id, 'title' => 'Acme DNS']);
+    Livewire::actingAs($bob)->test(Vault::class)->call('show', 'sharedfolder', $acme->uuid)->assertSee('Acme DNS');
+
+    // to edit: Bob changes items and adds one, which stays the owner's
+    Livewire::actingAs($owner)->test(Vault::class)->call('folderSharing', $clients->uuid)->call('setFolderShareEdit', $bob->uuid, true);
+    Livewire::actingAs($bob)->test(Vault::class)
+        ->call('editItem', $deep->uuid)->set('item_title', 'Acme hosting (new panel)')->call('saveItem')->assertHasNoErrors()
+        ->call('show', 'sharedfolder', $acme->uuid)
+        ->call('newItem')->assertSet('itemSharedFolder', $acme->uuid)
+        ->set('item_title', 'Acme FTP')->set('item_password', 'ftp-pass')->call('saveItem')->assertHasNoErrors();
+
+    $added = VaultItem::query()->where('title', 'Acme FTP')->sole();
+    expect($deep->fresh()->title)->toBe('Acme hosting (new panel)')
+        ->and($deep->fresh()->updated_by)->toBe($bob->id)
+        ->and($added->user_id)->toBe($owner->id)
+        ->and($added->vault_folder_id)->toBe($acme->id)
+        ->and($added->updated_by)->toBe($bob->id);
+
+    // the folder, its sharing and its items' removal stay the owner's
+    Livewire::actingAs($bob)->test(Vault::class)->call('folderSharing', $clients->uuid)->assertNotFound();
+    Livewire::actingAs($bob)->test(Vault::class)->call('renameFolder', $clients->uuid)->assertNotFound();
+    Livewire::actingAs($bob)->test(Vault::class)->call('deleteItem', $later->uuid)->assertForbidden();
+    Livewire::actingAs($outsider)->test(Vault::class)->call('show', 'sharedfolder', $clients->uuid)->assertNotFound();
+
+    // the item's own table says it arrives through the folder
+    expect($deep->fresh()->audience()->firstWhere('user.id', $bob->id))->toMatchArray(['via' => 'folder', 'can_edit' => true, 'from' => 'Clients']);
+
+    Livewire::actingAs($owner)->test(Vault::class)->call('folderSharing', $clients->uuid)->call('removeFolderShare', $bob->uuid);
+    expect(VaultItem::query()->visibleTo($bob)->count())->toBe(0);
+});
+
+test('a folder tied to a project opens to the roles ticked there, shows under the project and in its Access tab', function () {
+    $owner = User::factory()->admin()->create();
+    $project = Project::factory()->create(['name' => 'Shop']);
+    $dev = User::factory()->create();
+    $pm = User::factory()->create();
+    $otherAdmin = User::factory()->admin()->create();
+    $project->members()->attach([$dev->id => ['role' => 'dev'], $pm->id => ['role' => 'pm']]);
+
+    $folder = $owner->vaultFolders()->create(['name' => 'Shop servers']);
+    $item = VaultItem::factory()->create(['user_id' => $owner->id, 'vault_folder_id' => $folder->id, 'title' => 'Production SSH']);
+
+    Livewire::actingAs($owner)->test(Vault::class)
+        ->call('folderSharing', $folder->uuid)
+        ->call('pickFolderProject', $project->uuid)
+        ->assertSet('folder_share_roles', ['dev']);
+
+    expect($folder->fresh()->project_id)->toBe($project->id)->and($folder->fresh()->project_roles)->toBe(['dev']);
+
+    Livewire::actingAs($dev)->test(Vault::class)->assertSee('Production SSH')->call('show', 'project', $project->uuid)->assertSee('Production SSH');
+    Livewire::actingAs($pm)->test(Vault::class)->assertDontSee('Production SSH');
+    $this->actingAs($dev)->get(route('projects.access', $project))->assertSee('Production SSH');
+    $this->actingAs($pm)->get(route('projects.access', $project))->assertDontSee('Production SSH');
+
+    // administrators see and change project folders, as they do project items
+    expect($item->fresh()->canEdit($otherAdmin))->toBeTrue()->and($item->fresh()->canEdit($dev))->toBeFalse();
+
+    Livewire::actingAs($owner)->test(Vault::class)->call('folderSharing', $folder->uuid)->set('folder_share_roles', ['dev', 'pm']);
+    Livewire::actingAs($pm)->test(Vault::class)->assertSee('Production SSH');
+});

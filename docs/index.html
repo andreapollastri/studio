@@ -3592,13 +3592,28 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <ul>
           <li><strong>Items</strong>: title, URL, username, password, notes and a two-factor secret (base32 or
             <code>otpauth://</code>), for which Studio shows the current code. A generator makes passwords of any length.</li>
-          <li><strong>Folders</strong>: yours, nested, to put your own items in order.</li>
+          <li><strong>Folders</strong>: yours, nested, to put your own items in order, and to share many at once (below).</li>
           <li><strong>Projects</strong>: tie an item to a project and tick which roles on that project see it: clients, PMs,
             developers. It shows in the project's <a href="#work-access">Access</a> tab too. Administrators see every project
             item.</li>
           <li><strong>People</strong>: share an item with a single person, to view or to edit. The sharing dialog shows who
             sees it and why.</li>
+          <li><strong>Shared folders</strong>: <em>Sharing</em> in a folder's menu shares it as an item is shared, with a
+            project for the roles ticked and with single people, to view or to edit. Everything inside it goes with it: its
+            items, the folders inside it and what is added later. Who receives it finds it under <em>Shared folders</em>,
+            with the folders inside it; who may edit changes the items and adds new ones, which stay the owner's. The
+            folder itself, its sharing and removing items stay the owner's. A folder tied to a project shows under the
+            project and in its <a href="#work-access">Access</a> tab; an item's sharing table says which folder brings it
+            to whom.</li>
         </ul>
+        <figure class="shot">
+          <img src="img/vault.png" alt="The password manager of Maria: the folder Agency tools, shared with her by Andrea to view and edit, with its two items; Shop Acme and Production under Shared folders" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>A shared folder.</strong> <em>Shared folders</em> lists what others share with you, with the folders inside; the pencil means you may edit.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/vault-folder-sharing.png" alt="Sharing the folder Shop Acme: tied to the project Shop Acme for its PMs and developers, and the table of who sees it and why" loading="lazy" width="2880" height="2200" />
+          <figcaption><strong>Sharing a folder.</strong> A project with its roles, single people to view or to edit, and who reaches it and through what.</figcaption>
+        </figure>
         <p>Everything but title and URL is encrypted with <code>APP_KEY</code>. Secrets do not sit in the page: they come
           from the server when you press show or copy. Personal items stay personal, also for administrators; clients see
           what is shared with them and create nothing.</p>

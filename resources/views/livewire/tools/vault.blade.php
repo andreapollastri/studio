@@ -4,7 +4,7 @@
     <aside class="flex shrink-0 flex-col gap-4 lg:w-64" x-data="{ open: false }">
         <div>
             <flux:heading size="xl">{{ __('Password manager') }}</flux:heading>
-            <flux:text class="mt-1 text-xs">{{ __('Encrypted on this server. Share an item with a project, by role, or with single people.') }}</flux:text>
+            <flux:text class="mt-1 text-xs">{{ __('Encrypted on this server. Share an item or a whole folder with a project, by role, or with single people.') }}</flux:text>
         </div>
 
         {{-- Below lg the sections sit above the items: folded behind the one that is open. --}}
@@ -25,6 +25,14 @@
                 </button>
             @endforeach
         </nav>
+
+        @if ($this->sharedFolders->isNotEmpty())
+            @php($sharedTree = $this->sharedFolders->groupBy(fn ($f) => $this->access->isRoot($f) ? 0 : $f->parent_id))
+            <div class="flex flex-col gap-0.5">
+                <flux:heading size="sm" class="px-2">{{ __('Shared folders') }}</flux:heading>
+                @include('livewire.tools.partials.vault-shared-folders', ['tree' => $sharedTree, 'parent' => 0, 'depth' => 0])
+            </div>
+        @endif
 
         @if ($canCreate)
             <div class="flex flex-col gap-0.5">
@@ -65,9 +73,14 @@
     {{-- Items --}}
     <section class="flex min-w-0 flex-1 flex-col gap-4">
         <div class="flex flex-wrap items-center gap-3">
-            <flux:heading size="lg" class="flex-1">{{ trim($search) !== '' ? __('Search') : $heading }}</flux:heading>
+            <div class="min-w-0 flex-1">
+                <flux:heading size="lg">{{ trim($search) !== '' ? __('Search') : $heading }}</flux:heading>
+                @if ($sharedFolder && trim($search) === '')
+                    <flux:text class="text-xs">{{ __('Shared with you by :owner, :access.', ['owner' => $sharedFolder->user->name, 'access' => $this->access->canWrite($sharedFolder->id) ? __('to view and edit') : __('to view')]) }}</flux:text>
+                @endif
+            </div>
             <flux:input size="sm" icon="magnifying-glass" wire:model.live.debounce.250ms="search" :placeholder="__('Search everything…')" class="max-w-64" clearable />
-            @if ($canCreate)
+            @if ($canAddHere)
                 <flux:button size="sm" variant="primary" icon="plus" wire:click="newItem">{{ __('New item') }}</flux:button>
             @endif
         </div>
@@ -128,6 +141,9 @@
                                     @unless ($mine)<flux:badge size="sm" :title="__('Owner')">{{ $item->user->handle ?: $item->user->name }}</flux:badge>@endunless
                                     @if ($item->project)<flux:badge size="sm" color="sky" icon="rectangle-stack">{{ $item->project->name }} · {{ implode(', ', $item->project_roles ?? []) ?: __('admins only') }}</flux:badge>@endif
                                     @if ($item->shared_with_count)<flux:badge size="sm" color="violet" icon="users">{{ $item->shared_with_count }}</flux:badge>@endif
+                                    @if ($item->folder && (in_array($item->vault_folder_id, $sharedMine, true) || ! $mine))
+                                        <flux:badge size="sm" color="amber" icon="folder" :title="__('Shared through its folder')">{{ $item->folder->name }}</flux:badge>
+                                    @endif
                                 </div>
                             </td>
                             <td class="px-4 py-2 text-end whitespace-nowrap" data-cell="actions">
@@ -227,7 +243,9 @@
             </flux:field>
             <flux:input wire:model="item_totp" :label="__('Two-factor secret')" :description="__('Optional: the base32 secret or otpauth:// link of the authenticator setup; Studio then shows the current code.')" autocomplete="off" class="font-mono" />
             <flux:textarea wire:model="item_notes" :label="__('Notes')" rows="3" />
-            @if ($canCreate && $itemOwned)
+            @if ($itemSharedFolder && $sharedFolder)
+                <flux:text class="text-xs">{{ __('It goes in :folder, shared with you to edit: it stays :owner\'s, and everyone the folder is shared with sees it.', ['folder' => $sharedFolder->name, 'owner' => $sharedFolder->user->name]) }}</flux:text>
+            @elseif ($canCreate && $itemOwned)
                 <flux:select wire:model="item_folder" :label="__('Folder')">
                     <flux:select.option value="">{{ __('Top level') }}</flux:select.option>
                     @foreach ($this->folders as $target)
@@ -317,6 +335,9 @@
                 <div>
                     <flux:heading size="lg">{{ __('Sharing: :title', ['title' => $shownItem->title]) }}</flux:heading>
                     <flux:text class="mt-1">{{ __('Changes apply at once.') }}</flux:text>
+                    @if ($shownItem->folder && in_array($shownItem->vault_folder_id, $sharedMine, true))
+                        <flux:text class="mt-1 text-xs">{{ __('Its folder is shared too: who it reaches is in the table.') }}</flux:text>
+                    @endif
                 </div>
 
                 <div class="space-y-2">
@@ -369,7 +390,7 @@
                                         <div class="text-xs text-zinc-500">{{ ($entry['role'] ?? $entry['user']->role)?->label() }}</div>
                                     </td>
                                     <td class="px-3 py-1.5 text-xs text-zinc-500">
-                                        {{ match ($entry['via']) { 'owner' => __('owner'), 'direct' => __('shared directly'), 'admin' => __('administrator'), default => __('project role') } }}
+                                        {{ match ($entry['via']) { 'owner' => __('owner'), 'direct' => __('shared directly'), 'admin' => __('administrator'), 'folder' => __('folder :name', ['name' => $entry['from']]), default => __('project role') } }}
                                     </td>
                                     <td class="px-3 py-1.5">
                                         @if ($entry['via'] === 'direct')
@@ -391,6 +412,96 @@
                         </tbody>
                     </table>
                 </div>
+
+                <div class="flex justify-end">
+                    <flux:modal.close><flux:button variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>
+                </div>
+            </div>
+        @endif
+    </flux:modal>
+    {{-- Sharing a folder --}}
+    <flux:modal name="vault-folder-sharing" class="md:w-[40rem]">
+        @if ($folderBeingShared)
+            <div class="space-y-6" wire:key="vault-folder-sharing-{{ $folderBeingShared->uuid }}">
+                <div>
+                    <flux:heading size="lg">{{ __('Sharing the folder :name', ['name' => $folderBeingShared->name]) }}</flux:heading>
+                    <flux:text class="mt-1">{{ __('Everything inside it goes with it: its items, the folders inside it and what you add later. Changes apply at once.') }}</flux:text>
+                </div>
+
+                <div class="space-y-2">
+                    <flux:heading size="sm">{{ __('Project') }}</flux:heading>
+                    <x-search-picker
+                        wire:key="vault-folder-project-picker-{{ $folderBeingShared->uuid }}"
+                        search="searchProjects"
+                        select="pickFolderProject"
+                        :selected="$folderBeingShared->project ? ['id' => $folderBeingShared->project->uuid, 'label' => $folderBeingShared->project->name] : null"
+                        :placeholder="__('Search a project…')"
+                    />
+                    @if ($folderBeingShared->project)
+                        <div class="flex flex-wrap items-center gap-4 pt-1">
+                            <flux:text class="text-xs">{{ __('Members who see it:') }}</flux:text>
+                            @foreach (['client' => __('Client'), 'pm' => __('PM'), 'dev' => __('Developer')] as $role => $label)
+                                <flux:checkbox wire:model.live="folder_share_roles" :value="$role" :label="$label" />
+                            @endforeach
+                        </div>
+                        <flux:text class="text-xs">{{ __('Administrators always see project folders. The folder also shows in the project\'s Access tab.') }}</flux:text>
+                    @endif
+                </div>
+
+                <div class="space-y-2">
+                    <flux:heading size="sm">{{ __('People') }}</flux:heading>
+                    <x-search-picker
+                        wire:key="vault-folder-user-picker-{{ $folderBeingShared->uuid }}"
+                        search="searchUsers"
+                        select="addFolderShare"
+                        :keep="false"
+                        :clearable="false"
+                        :placeholder="__('Add a person: name, email…')"
+                    />
+                </div>
+
+                <div class="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
+                    <table class="w-full text-sm">
+                        <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800">
+                            <tr>
+                                <th class="px-3 py-2 text-start">{{ __('Who') }}</th>
+                                <th class="px-3 py-2 text-start">{{ __('Through') }}</th>
+                                <th class="px-3 py-2 text-start">{{ __('Access') }}</th>
+                                <th class="px-3 py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                            @foreach ($folderBeingShared->audience() as $entry)
+                                @php($here = $entry['via'] === 'direct' && $entry['from'] === null)
+                                <tr wire:key="vault-folder-audience-{{ $entry['user']->uuid }}">
+                                    <td class="px-3 py-1.5">
+                                        <div>{{ $entry['user']->name }}</div>
+                                        <div class="text-xs text-zinc-500">{{ ($entry['role'] ?? $entry['user']->role)?->label() }}</div>
+                                    </td>
+                                    <td class="px-3 py-1.5 text-xs text-zinc-500">
+                                        {{ match ($entry['via']) { 'owner' => __('owner'), 'direct' => $entry['from'] ? __('folder :name', ['name' => $entry['from']]) : __('shared directly'), 'admin' => __('administrator'), default => $entry['from'] ? __('project role, folder :name', ['name' => $entry['from']]) : __('project role') } }}
+                                    </td>
+                                    <td class="px-3 py-1.5">
+                                        @if ($here)
+                                            <flux:select size="sm" wire:change="setFolderShareEdit('{{ $entry['user']->uuid }}', $event.target.value === '1')">
+                                                <flux:select.option value="0" :selected="! $entry['can_edit']">{{ __('can view') }}</flux:select.option>
+                                                <flux:select.option value="1" :selected="$entry['can_edit']">{{ __('can edit') }}</flux:select.option>
+                                            </flux:select>
+                                        @else
+                                            <span class="text-xs">{{ $entry['can_edit'] ? __('can edit') : __('can view') }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-1.5 text-end">
+                                        @if ($here)
+                                            <flux:button size="xs" variant="ghost" icon="x-mark" wire:click="removeFolderShare('{{ $entry['user']->uuid }}')" :tooltip="__('Stop sharing')" />
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <flux:text class="text-xs">{{ __('Who can edit changes the items inside and adds new ones, which stay yours. Folders, sharing and removal stay yours alone.') }}</flux:text>
 
                 <div class="flex justify-end">
                     <flux:modal.close><flux:button variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>

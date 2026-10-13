@@ -171,6 +171,19 @@
     "wait": 1200
   },
   {
+    "url": "${BASE}/passwords",
+    "wait": 1200
+  },
+  {
+    "eval": "(() => { const p = document.querySelector('input[name=password]'); if (!p) return false; p.value = 'password'; p.form.submit(); return true; })()",
+    "wait": 2500
+  },
+  {
+    "name": "vault",
+    "url": "${BASE}/passwords?view=sharedfolder&folder=${VAULT_TOOLS}",
+    "wait": 1500
+  },
+  {
     "name": "studio-empty",
     "url": "${BASE}/p/supplier-portal",
     "wait": 1200
@@ -303,6 +316,21 @@
     "url": "${BASE}/admin/connectors",
     "height": 1400,
     "wait": 1200
+  },
+  {
+    "url": "${BASE}/passwords",
+    "wait": 1200
+  },
+  {
+    "eval": "(() => { const p = document.querySelector('input[name=password]'); if (!p) return false; p.value = 'password'; p.form.submit(); return true; })()",
+    "wait": 2500
+  },
+  {
+    "name": "vault-folder-sharing",
+    "url": "${BASE}/passwords?view=folder&folder=${VAULT_SHOP}",
+    "eval": "(() => { Livewire.all().find(c => c.name === 'tools.vault').$wire.call('folderSharing', '${VAULT_SHOP}'); return true; })()",
+    "height": 1100,
+    "wait": 2000
   },
   {
     "url": "${BASE}/infrastructure/digitalocean?tab=droplets",

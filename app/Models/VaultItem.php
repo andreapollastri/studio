@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\UserRole;
 use App\Models\Concerns\HasPublicUuid;
+use App\Vault\FolderAccess;
 use Database\Factories\VaultItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -19,8 +20,9 @@ use Illuminate\Support\Facades\DB;
  * secret are encrypted with APP_KEY; title and URL stay readable for search.
  *
  * Who sees it: its owner; the people it is shared with, to read or to change;
- * and, when it belongs to a project, the project's members whose role is
- * ticked in project_roles (client, pm, dev) plus every administrator.
+ * when it belongs to a project, the project's members whose role is ticked in
+ * project_roles (client, pm, dev) plus every administrator; and whoever its
+ * folder, or a folder above it, is shared with (App\Vault\FolderAccess).
  *
  * @property int $id
  * @property string $uuid
@@ -104,6 +106,11 @@ class VaultItem extends Model
             $query->where('user_id', $user->id)
                 ->orWhereHas('sharedWith', fn (Builder $q) => $q->whereKey($user->id));
 
+            // what a shared folder holds, at any depth
+            if (($folders = FolderAccess::for($user)->readableIds()) !== []) {
+                $query->orWhereIn('vault_folder_id', $folders);
+            }
+
             if ($user->isAdmin()) {
                 $query->orWhereNotNull('project_id');
             } else {
@@ -114,6 +121,18 @@ class VaultItem extends Model
                 }
             }
         });
+    }
+
+    /**
+     * The items of a project: tied to it themselves, or in a folder tied to it (or inside one).
+     *
+     * @param  Builder<VaultItem>  $query
+     */
+    public function scopeOfProject(Builder $query, int $projectId): void
+    {
+        $folders = FolderAccess::projectFolderIds($projectId);
+
+        $query->where(fn (Builder $q) => $q->where('project_id', $projectId)->when($folders !== [], fn (Builder $q) => $q->orWhereIn('vault_folder_id', $folders)));
     }
 
     public function isVisibleTo(User $user): bool
@@ -131,7 +150,8 @@ class VaultItem extends Model
     {
         return $this->isOwnedBy($user)
             || ($user->isAdmin() && $this->project_id !== null)
-            || $this->sharedWith()->whereKey($user->id)->wherePivot('can_edit', true)->exists();
+            || $this->sharedWith()->whereKey($user->id)->wherePivot('can_edit', true)->exists()
+            || FolderAccess::for($user)->canWrite($this->vault_folder_id);
     }
 
     /** Project, people and deletion: the owner, or an administrator on a project item. */
@@ -143,7 +163,7 @@ class VaultItem extends Model
     /**
      * Everyone who sees the item and why, for the sharing table.
      *
-     * @return Collection<int, array{user: User, role: UserRole|null, via: string, can_edit: bool}>
+     * @return Collection<int, array{user: User, role: UserRole|null, via: string, can_edit: bool, from: string|null}>
      */
     public function audience(): Collection
     {
@@ -168,12 +188,22 @@ class VaultItem extends Model
             }
         }
 
+        // whoever the folder holding it reaches
+        if ($this->folder !== null) {
+            foreach ($this->folder->audience() as $entry) {
+                if ($entry['via'] === 'owner') {
+                    continue;
+                }
+                $people[$entry['user']->id] ??= $this->entry($entry['user'], $entry['role'], 'folder', $entry['can_edit'], $entry['from'] ?? $this->folder->name);
+            }
+        }
+
         return collect(array_values($people));
     }
 
-    /** @return array{user: User, role: UserRole|null, via: string, can_edit: bool} */
-    private function entry(User $user, ?UserRole $role, string $via, bool $canEdit): array
+    /** @return array{user: User, role: UserRole|null, via: string, can_edit: bool, from: string|null} */
+    private function entry(User $user, ?UserRole $role, string $via, bool $canEdit, ?string $from = null): array
     {
-        return ['user' => $user, 'role' => $role, 'via' => $via, 'can_edit' => $canEdit];
+        return ['user' => $user, 'role' => $role, 'via' => $via, 'can_edit' => $canEdit, 'from' => $from];
     }
 }

@@ -35,7 +35,7 @@ class Access extends Component
 
         return view('livewire.projects.access', [
             'title' => __(':project · Access', ['project' => $this->project->name]),
-            'passwords' => VaultItem::query()->visibleTo($user)->where('project_id', $this->project->id)->orderBy('title')->get(),
+            'passwords' => VaultItem::query()->visibleTo($user)->ofProject($this->project->id)->orderBy('title')->get(),
             'connections' => $user->canUseSsh()
                 ? SshConnection::query()->visibleTo($user)->where('project_id', $this->project->id)->orderBy('name')->get()
                 : collect(),

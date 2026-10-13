@@ -61,6 +61,8 @@ sed -e "s#\${BASE}#http://127.0.0.1:8767#g" -e "s#\${BASE2}#http://127.0.0.1:876
     -e "s#\${CONV_PLAN}#$(q "select uuid from conversations where title = 'Release 1.4: what is missing'")#g" \
     -e "s#\${PROJECT_SHOP}#$(q "select uuid from projects where slug = 'shop-acme'")#g" \
     -e "s#\${MCP_ERRORS}#$(q "select uuid from project_mcp_servers where name = 'errors'")#g" \
+    -e "s#\${VAULT_TOOLS}#$(q "select uuid from vault_folders where name = 'Agency tools'")#g" \
+    -e "s#\${VAULT_SHOP}#$(q "select uuid from vault_folders where name = 'Shop Acme'")#g" \
     "$JOBS" >"$WORK/jobs.json"
 
 (cd "$ROOT/tools/screenshots" && node shots.mjs "$WORK/jobs.json" "$OUT")

@@ -139,6 +139,13 @@ server is in `installer/upgrades/<version>.sh`.
   `workspace-env` also re-applies the commit identity. Claude Code's managed settings deny reading
   `~/.claude-*` too (patched in place on existing servers).
 
+### Password manager
+- **Shared folders**: *Sharing* in a folder's menu shares it as an item is shared, with a project for the
+  roles ticked and with single people, to view or to edit; its items, the folders inside it and what is added
+  later go with it. Who receives it finds it under *Shared folders*; who may edit changes the items and adds
+  new ones, which stay the owner's. A project's folder shows under the project and in its *Access* tab, and an
+  item's sharing table says which folder brings it to whom.
+
 ### Fixed
 - Creating a workspace stopped on the server with `studio-admin stopped (exit 1) at: [ -n "$claude_api_key" ]`
   for everyone without an API key: Studio sends the key empty since it goes with each turn, and the empty test

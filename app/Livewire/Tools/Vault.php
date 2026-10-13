@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\VaultFolder;
 use App\Models\VaultItem;
+use App\Vault\FolderAccess;
 use App\Vault\Totp;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
@@ -20,8 +21,9 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * The password manager: a person's items in their own folders, the items
- * shared with them, and those of the projects they work on (by role).
+ * The password manager: a person's items in their own folders, the items and
+ * folders shared with them, and those of the projects they work on (by role).
+ * A folder is shared as an item is, and everything inside it goes with it.
  * Secrets never sit in the page: reveal() hands one over when it is asked for,
  * to show or to copy. Folders, items, projects and people go by uuid.
  */
@@ -31,7 +33,7 @@ class Vault extends Component
 {
     use SearchesDirectory;
 
-    /** all, folder (with $folder; null: the top level), shared, project (with $project) */
+    /** all, folder (with $folder; null: the top level), shared, sharedfolder (with $folder), project (with $project) */
     #[Url]
     public string $view = 'all';
 
@@ -80,11 +82,41 @@ class Vault extends Component
     /** @var list<string> */
     public array $share_roles = [];
 
+    /** uuid of the folder whose sharing the modal shows */
+    public ?string $sharingFolder = null;
+
+    /** @var list<string> */
+    public array $folder_share_roles = [];
+
+    /** uuid of someone else's folder the new item goes in, when it is shared with this person to edit */
+    public ?string $itemSharedFolder = null;
+
+    public const VIEWS = ['all', 'folder', 'shared', 'sharedfolder', 'project'];
+
     public function mount(): void
     {
-        if (! in_array($this->view, ['all', 'folder', 'shared', 'project'], true)) {
+        if (! in_array($this->view, self::VIEWS, true)) {
             $this->view = 'all';
         }
+
+        if ($this->view === 'sharedfolder' && ! $this->access()->canRead($this->sharedFolderId($this->folder))) {
+            $this->view = 'shared';
+            $this->folder = null;
+        }
+    }
+
+    /** What of other people's folders this person reaches. */
+    #[Computed]
+    public function access(): FolderAccess
+    {
+        return FolderAccess::for(auth()->user());
+    }
+
+    /** @return BaseCollection<int, VaultFolder> the folders shared with this person, for the tree */
+    #[Computed]
+    public function sharedFolders(): BaseCollection
+    {
+        return $this->access()->folders();
     }
 
     /** @return Collection<int, VaultFolder> every folder of this person, for the tree */
@@ -98,11 +130,22 @@ class Vault extends Component
     #[Computed]
     public function projects(): BaseCollection
     {
-        $counts = VaultItem::query()->visibleTo(auth()->user())->whereNotNull('project_id')
-            ->selectRaw('project_id, count(*) as aggregate')->groupBy('project_id')->pluck('aggregate', 'project_id');
+        $user = auth()->user();
+        // projects with items of their own, or with folders tied to them that this person reaches or owns
+        $ids = VaultItem::query()->visibleTo($user)->whereNotNull('project_id')->distinct()->pluck('project_id')
+            ->merge(VaultFolder::query()->whereNotNull('project_id')
+                ->where(fn ($q) => $q->where('user_id', $user->id)->orWhereIn('id', $this->access()->readableIds()))
+                ->pluck('project_id'))
+            ->unique();
 
-        return Project::query()->whereIn('id', $counts->keys())->orderBy('name')->get()
-            ->map(fn (Project $project) => ['project' => $project, 'count' => (int) $counts[$project->id]]);
+        $projects = Project::query()->whereIn('id', $ids)->orderBy('name')->get();
+        /** @var array<int, int> $counts */
+        $counts = array_filter($projects->mapWithKeys(fn (Project $project) => [$project->id => VaultItem::query()->visibleTo($user)->ofProject($project->id)->count()])->all());
+
+        return $projects->filter(fn (Project $project) => isset($counts[$project->id]))
+            ->map(fn (Project $project) => ['project' => $project, 'count' => $counts[$project->id]])
+            ->values()
+            ->toBase();
     }
 
     /** @return Collection<int, VaultItem> */
@@ -117,7 +160,8 @@ class Vault extends Component
             match ($this->view) {
                 'folder' => $query->where('user_id', $user->id)->where('vault_folder_id', $this->folderId($this->folder)),
                 'shared' => $query->where('user_id', '!=', $user->id),
-                'project' => $query->where('project_id', Project::query()->where('uuid', (string) $this->project)->value('id') ?? 0),
+                'sharedfolder' => $query->where('vault_folder_id', $this->sharedFolderId($this->folder) ?? 0),
+                'project' => $query->ofProject((int) (Project::query()->where('uuid', (string) $this->project)->value('id') ?? 0)),
                 default => null,
             };
         }
@@ -135,8 +179,12 @@ class Vault extends Component
 
     public function show(string $view, ?string $id = null): void
     {
-        $this->view = in_array($view, ['all', 'folder', 'shared', 'project'], true) ? $view : 'all';
-        $this->folder = $this->view === 'folder' && $id !== null ? $this->ownFolder($id)->uuid : null;
+        $this->view = in_array($view, self::VIEWS, true) ? $view : 'all';
+        $this->folder = match (true) {
+            $this->view === 'folder' && $id !== null => $this->ownFolder($id)->uuid,
+            $this->view === 'sharedfolder' => $this->access()->canRead($this->sharedFolderId($id)) ? $id : abort(404),
+            default => null,
+        };
         $this->project = $this->view === 'project' ? $id : null;
         $this->search = '';
         unset($this->items);
@@ -203,10 +251,12 @@ class Vault extends Component
 
     public function newItem(): void
     {
-        $this->authorizeCreate();
+        $inShared = $this->view === 'sharedfolder' && $this->access()->canWrite($this->sharedFolderId($this->folder));
+        $inShared || $this->authorizeCreate();
         $this->reset(['itemEditing', 'item_title', 'item_url', 'item_username', 'item_password', 'item_notes', 'item_totp']);
         $this->item_folder = $this->view === 'folder' ? $this->folder : null;
-        $this->itemOwned = true;
+        $this->itemSharedFolder = $inShared ? $this->folder : null;
+        $this->itemOwned = ! $inShared;
         $this->resetValidation();
 
         Flux::modal('vault-item')->show();
@@ -226,6 +276,7 @@ class Vault extends Component
         $this->item_totp = (string) $item->totp_secret;
         $this->itemOwned = $item->isOwnedBy(auth()->user());
         $this->item_folder = $this->itemOwned ? $item->folder?->uuid : null;
+        $this->itemSharedFolder = null;
         $this->resetValidation();
 
         Flux::modal('vault-show')->close();
@@ -236,7 +287,10 @@ class Vault extends Component
     {
         $user = auth()->user();
         $existing = $this->itemEditing ? $this->visibleItem($this->itemEditing) : null;
-        $existing ? abort_unless($existing->canEdit($user), 403) : $this->authorizeCreate();
+        // a new item in someone else's folder, shared with this person to edit: the folder's owner owns it
+        $sharedFolder = ! $existing && $this->itemSharedFolder !== null ? $this->access()->folder((int) $this->sharedFolderId($this->itemSharedFolder)) : null;
+        abort_if($this->itemSharedFolder !== null && ! $existing && ($sharedFolder === null || ! $this->access()->canWrite($sharedFolder->id)), 403);
+        $existing ? abort_unless($existing->canEdit($user), 403) : ($sharedFolder !== null || $this->authorizeCreate());
 
         $validated = $this->validate([
             'item_title' => ['required', 'string', 'max:120'],
@@ -268,11 +322,13 @@ class Vault extends Component
                 $attributes['vault_folder_id'] = $folderId;
             }
             $existing->update($attributes);
+        } elseif ($sharedFolder !== null) {
+            VaultItem::query()->create([...$attributes, 'user_id' => $sharedFolder->user_id, 'vault_folder_id' => $sharedFolder->id]);
         } else {
             $user->vaultItems()->create([...$attributes, 'vault_folder_id' => $folderId]);
         }
 
-        $this->reset(['itemEditing', 'item_title', 'item_url', 'item_username', 'item_password', 'item_notes', 'item_totp']);
+        $this->reset(['itemEditing', 'item_title', 'item_url', 'item_username', 'item_password', 'item_notes', 'item_totp', 'itemSharedFolder']);
         unset($this->items, $this->projects);
         Flux::modal('vault-item')->close();
         Flux::toast(variant: 'success', text: __('Saved.'));
@@ -387,16 +443,105 @@ class Vault extends Component
         unset($this->items);
     }
 
+    // ---------------------------------------------------------------- sharing a folder
+
+    public function folderSharing(string $id): void
+    {
+        $folder = $this->ownFolder($id);
+
+        $this->sharingFolder = $folder->uuid;
+        $this->folder_share_roles = $folder->project_roles ?? [];
+
+        Flux::modal('vault-folder-sharing')->show();
+    }
+
+    public function pickFolderProject(?string $id): void
+    {
+        $folder = $this->sharedOwnFolder();
+        $project = $id !== null ? auth()->user()->accessibleProjects()->where('uuid', $id)->first() : null;
+
+        if ($id !== null && $project === null) {
+            return;
+        }
+
+        $roles = $project === null ? null : ($folder->project_id === $project->id ? $folder->project_roles : ($this->folder_share_roles ?: ['dev']));
+        $folder->update(['project_id' => $project?->id, 'project_roles' => $roles]);
+        $this->folder_share_roles = $roles ?? [];
+        unset($this->items, $this->projects, $this->folders);
+    }
+
+    public function updatedFolderShareRoles(): void
+    {
+        $folder = $this->sharedOwnFolder();
+        $roles = array_values(array_intersect(VaultItem::PROJECT_ROLES, $this->folder_share_roles));
+        $this->folder_share_roles = $roles;
+
+        if ($folder->project_id !== null) {
+            $folder->update(['project_roles' => $roles]);
+        }
+        unset($this->items, $this->projects);
+    }
+
+    public function addFolderShare(?string $userId): void
+    {
+        $folder = $this->sharedOwnFolder();
+        $user = $userId !== null ? User::query()->where('uuid', $userId)->first() : null;
+
+        if ($user === null || $user->id === $folder->user_id) {
+            return;
+        }
+
+        $folder->sharedWith()->syncWithoutDetaching([$user->id => ['can_edit' => false]]);
+        unset($this->folders);
+    }
+
+    public function setFolderShareEdit(string $userId, bool $canEdit): void
+    {
+        $user = User::query()->where('uuid', $userId)->firstOrFail();
+        $this->sharedOwnFolder()->sharedWith()->updateExistingPivot($user->id, ['can_edit' => $canEdit]);
+    }
+
+    public function removeFolderShare(string $userId): void
+    {
+        $user = User::query()->where('uuid', $userId)->firstOrFail();
+        $this->sharedOwnFolder()->sharedWith()->detach($user->id);
+        unset($this->folders);
+    }
+
     public function render(): View
     {
         $user = auth()->user();
         $shownItem = $this->shown ? VaultItem::query()->visibleTo($user)->with(['user', 'project', 'editor', 'sharedWith'])->where('uuid', $this->shown)->first() : null;
 
+        $sharedFolder = $this->view === 'sharedfolder' ? $this->access()->folder((int) $this->sharedFolderId($this->folder)) : null;
+        $folderBeingShared = $this->sharingFolder ? $user->vaultFolders()->with(['project', 'sharedWith', 'user'])->where('uuid', $this->sharingFolder)->first() : null;
+
+        // my folders that are shared, themselves or through a folder above them
+        $mine = $this->folders()->keyBy('id');
+        $sharedSelf = $mine->isEmpty() ? [] : VaultFolder::query()->whereIn('id', $mine->keys())
+            ->where(fn ($q) => $q->whereNotNull('project_id')->orWhereHas('sharedWith'))->pluck('id')->all();
+        $sharedMine = $mine->filter(function (VaultFolder $folder) use ($mine, $sharedSelf) {
+            for ($f = $folder, $hops = 0; $f !== null && $hops < 50; $f = $mine->get((int) $f->parent_id), $hops++) {
+                if (in_array($f->id, $sharedSelf, true)) {
+                    return true;
+                }
+            }
+
+            return false;
+        })->keys()->all();
+
         return view('livewire.tools.vault', [
             'shownItem' => $shownItem,
             'canCreate' => $user->canChat(),
+            // a new item here: in one's own folders, or in a folder shared with one to edit
+            'canAddHere' => $sharedFolder !== null ? $this->access()->canWrite($sharedFolder->id) : $user->canChat(),
+            'sharedFolder' => $sharedFolder,
+            'folderBeingShared' => $folderBeingShared,
+            'sharedSelf' => $sharedSelf,
+            'sharedMine' => $sharedMine,
             'heading' => match ($this->view) {
                 'folder' => $this->folder ? ($this->folders()->firstWhere('uuid', $this->folder)->name ?? __('Folder')) : __('My items'),
+                'sharedfolder' => $sharedFolder->name ?? __('Folder'),
                 'shared' => __('Shared with me'),
                 'project' => Project::query()->where('uuid', (string) $this->project)->value('name') ?? __('Project'),
                 default => __('All items'),
@@ -418,6 +563,23 @@ class Vault extends Component
     private function folderId(?string $uuid): ?int
     {
         return $uuid === null ? null : auth()->user()->vaultFolders()->where('uuid', $uuid)->value('id');
+    }
+
+    /** The id behind a folder someone shared with this person; null when they do not reach it. */
+    private function sharedFolderId(?string $uuid): ?int
+    {
+        if ($uuid === null) {
+            return null;
+        }
+
+        $id = $this->access()->folders()->firstWhere('uuid', $uuid)?->id;
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    private function sharedOwnFolder(): VaultFolder
+    {
+        return $this->ownFolder((string) $this->sharingFolder);
     }
 
     private function visibleItem(string $id): VaultItem
