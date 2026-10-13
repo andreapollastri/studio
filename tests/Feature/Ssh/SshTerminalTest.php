@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Ssh\Terminal;
+use App\Models\Project;
 use App\Models\SshConnection;
 use App\Models\SshKey;
 use App\Models\User;
@@ -188,12 +189,12 @@ test('a ticket is worthless once its owner may no longer use SSH, or after a min
     $connection = SshConnection::factory()->create(['user_id' => $user->id]);
     $headers = ['Authorization' => 'Bearer '.Gateway::token()];
 
-    $ticket = Gateway::issue($connection);
+    $ticket = Gateway::issue($connection, $user);
     $user->forceFill(['role' => 'pm'])->save();
     $this->postJson(route('api.ssh.redeem'), ['ticket' => $ticket], $headers)->assertNotFound();
 
     $user->forceFill(['role' => 'dev'])->save();
-    $ticket = Gateway::issue($connection);
+    $ticket = Gateway::issue($connection, $user);
     $this->travel(61)->seconds();
     $this->postJson(route('api.ssh.redeem'), ['ticket' => $ticket], $headers)->assertNotFound();
 });
@@ -216,4 +217,113 @@ test('the token is the one the gateway derives from APP_KEY', function () {
 
     // ssh-gateway/test/gateway.test.js checks the same value.
     expect(Gateway::token())->toBe('3cbfdfe372730db4a31a4aa64b773622c18352b46de851cf894f0f5238604d32');
+});
+
+test('a connection tied to a project shows up for its developers and every administrator, without its credential', function () {
+    $owner = User::factory()->create(['name' => 'Ada']);
+    $project = Project::factory()->create(['name' => 'Shop']);
+    $project->members()->attach($owner);
+    $dev = User::factory()->create();
+    $project->members()->attach($dev);
+    $outsider = User::factory()->create();
+    $pm = User::factory()->pm()->create();
+    $project->members()->attach($pm);
+    $admin = User::factory()->admin()->create();
+
+    $key = SshKey::factory()->create(['user_id' => $owner->id]);
+    $shared = SshConnection::factory()->withKey($key)->create(['user_id' => $owner->id, 'project_id' => $project->id, 'name' => 'web']);
+    SshConnection::factory()->create(['user_id' => $owner->id, 'name' => 'private box']);
+
+    expect(SshConnection::query()->visibleTo($dev)->pluck('name')->all())->toBe(['web'])
+        ->and(SshConnection::query()->visibleTo($admin)->pluck('name')->all())->toBe(['web'])
+        ->and(SshConnection::query()->visibleTo($outsider)->count())->toBe(0)
+        ->and(SshConnection::query()->visibleTo($pm)->count())->toBe(0);
+
+    // The developer sees it, tagged with its owner, and may not edit or remove it.
+    $page = Livewire::actingAs($dev)->test(Terminal::class)
+        ->assertSee('web')
+        ->assertSee('Ada')
+        ->assertSee('Shop')
+        ->assertSee('your key?');
+    $page->call('editConnection', $shared->id)->assertNotFound();
+    Livewire::actingAs($dev)->test(Terminal::class)->call('deleteConnection', $shared->id)->assertNotFound();
+    Livewire::actingAs($dev)->test(Terminal::class)->call('forgetHostKey', $shared->id)->assertNotFound();
+
+    // Opening it without a credential asks for one; the owner's key never comes along.
+    Livewire::actingAs($dev)->test(Terminal::class)
+        ->call('open', $shared->id)
+        ->assertReturned(null)
+        ->assertSet('credentialFor', $shared->id);
+
+    $ticket = Gateway::issue($shared, $dev);
+    $this->postJson(route('api.ssh.redeem'), ['ticket' => $ticket], ['Authorization' => 'Bearer '.Gateway::token()])->assertNotFound();
+
+    // With a key of their own it works, with that key.
+    $mine = SshKey::factory()->create(['user_id' => $dev->id]);
+    Livewire::actingAs($dev)->test(Terminal::class)
+        ->call('editCredential', $shared->id)
+        ->set('credential_auth', 'key')
+        ->set('credential_key', $key->id)
+        ->call('saveCredential')
+        ->assertHasErrors('credential_key')
+        ->set('credential_key', $mine->id)
+        ->call('saveCredential')
+        ->assertHasNoErrors();
+
+    $info = Livewire::actingAs($dev)->test(Terminal::class)->call('open', $shared->id)->effects['returns'][0];
+    $this->postJson(route('api.ssh.redeem'), ['ticket' => $info['ticket']], ['Authorization' => 'Bearer '.Gateway::token()])
+        ->assertOk()
+        ->assertJson(['user_id' => $dev->id, 'auth' => 'key', 'private_key' => $mine->private_key, 'host' => 'web1.example.com']);
+
+    // Leaving the project takes the connection away, and its tickets with it.
+    $ticket = Gateway::issue($shared, $dev);
+    $project->members()->detach($dev);
+    $this->postJson(route('api.ssh.redeem'), ['ticket' => $ticket], ['Authorization' => 'Bearer '.Gateway::token()])->assertNotFound();
+});
+
+test('stars on a shared connection are personal, and the same name may come from two people', function () {
+    $project = Project::factory()->create();
+    [$ada, $bob] = User::factory()->count(2)->create();
+    $project->members()->attach([$ada->id, $bob->id]);
+    $adaWeb = SshConnection::factory()->create(['user_id' => $ada->id, 'project_id' => $project->id, 'name' => 'web']);
+    SshConnection::factory()->create(['user_id' => $bob->id, 'project_id' => $project->id, 'name' => 'web']);
+
+    Livewire::actingAs($bob)->test(Terminal::class)
+        ->call('toggleFavorite', $adaWeb->id)
+        ->call('newConnection')
+        ->set('connection_name', 'web')
+        ->set('connection_host', 'web9.example.com')
+        ->set('connection_username', 'deploy')
+        ->set('connection_auth', 'password')
+        ->set('connection_password', 'x')
+        ->call('saveConnection')
+        ->assertHasErrors(['connection_name' => 'unique']);
+
+    expect($adaWeb->fresh()->favorite)->toBeFalse()
+        ->and($adaWeb->credentials()->where('user_id', $bob->id)->value('favorite'))->toBeTrue();
+});
+
+test('the project picker offers the person\'s projects and the form lists who will see the connection', function () {
+    $owner = User::factory()->create();
+    $project = Project::factory()->create(['name' => 'Shop']);
+    Project::factory()->create(['name' => 'Elsewhere']);
+    $project->members()->attach($owner);
+    $dev = User::factory()->create(['name' => 'Bob Dev']);
+    $project->members()->attach($dev);
+    User::factory()->admin()->create(['name' => 'Carla Admin']);
+    $pm = User::factory()->pm()->create(['name' => 'Dora PM']);
+    $project->members()->attach($pm);
+
+    $page = Livewire::actingAs($owner)->test(Terminal::class);
+    expect(collect($page->instance()->searchProjects(''))->pluck('label')->all())->toBe(['Shop'])
+        ->and($page->instance()->searchProjects('else'))->toBe([]);
+
+    $page->call('newConnection')
+        ->call('pickProject', Project::query()->where('name', 'Elsewhere')->value('id'))
+        ->assertSet('connection_project', null)
+        ->call('pickProject', $project->id)
+        ->assertSet('connection_project', $project->id)
+        ->assertSee('Bob Dev')
+        ->assertSee('Carla Admin')
+        ->assertDontSee('Dora PM');
 });

@@ -6,3 +6,4 @@
 
 import './echo';
 import './ssh';
+import './search-picker';

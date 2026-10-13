@@ -81,6 +81,11 @@ export function createServer(config, options = {}) {
         return json(res, 200, await files.write(body.path, body.content, body.hash ?? null));
       }
 
+      if (req.method === 'PUT' && path === '/files/upload') {
+        const overwrite = ['1', 'true'].includes(url.searchParams.get('overwrite') ?? '');
+        return json(res, 201, await files.upload(url.searchParams.get('path') ?? '', req, { overwrite, maxBytes: config.uploadMaxBytes }));
+      }
+
       if (req.method === 'POST' && path === '/files') {
         const body = await readJson(req, config.maxBodyBytes);
         return json(res, 201, await files.create(body.path, body.type ?? 'file'));

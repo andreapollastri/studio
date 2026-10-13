@@ -17,13 +17,19 @@
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
-                @can('ssh')
-                    <flux:sidebar.group :heading="__('Tools')" class="grid">
+                <flux:sidebar.group :heading="__('Tools')" class="grid">
+                    @can('ssh')
                         <flux:sidebar.item icon="command-line" :href="route('ssh')" :current="request()->routeIs('ssh')" wire:navigate>
                             {{ __('SSH terminal') }}
                         </flux:sidebar.item>
-                    </flux:sidebar.group>
-                @endcan
+                    @endcan
+                    <flux:sidebar.item icon="key" :href="route('vault')" :current="request()->routeIs('vault')" wire:navigate>
+                        {{ __('Password manager') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="cloud" :href="route('drive')" :current="request()->routeIs('drive')" wire:navigate>
+                        {{ __('Drive') }}
+                    </flux:sidebar.item>
+                </flux:sidebar.group>
 
                 @if (auth()->user()->isAdmin())
                     <flux:sidebar.group :heading="__('Administration')" class="grid">

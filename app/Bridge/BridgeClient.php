@@ -6,6 +6,7 @@ use App\Models\Conversation;
 use App\Models\PermissionRequest;
 use App\Models\ProjectMcpServer;
 use App\Models\Workspace;
+use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
@@ -225,6 +226,22 @@ final class BridgeClient
     public function writeFile(string $path, string $content, ?string $hash = null): array
     {
         return $this->request(fn (PendingRequest $http) => $http->put('/files', ['path' => $path, 'content' => $content, 'hash' => $hash]));
+    }
+
+    /**
+     * Any bytes into a file of the workspace, streamed (the drive's "copy to"):
+     * missing folders are created, an existing file is replaced only with $overwrite.
+     *
+     * @param  resource  $stream
+     * @return array<string, mixed> path, size
+     */
+    public function uploadFile(string $path, $stream, bool $overwrite = false): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http
+            ->timeout(600)
+            ->withBody(Utils::streamFor($stream), 'application/octet-stream')
+            ->withQueryParameters(['path' => $path, 'overwrite' => $overwrite ? '1' : '0'])
+            ->put('/files/upload'));
     }
 
     /**

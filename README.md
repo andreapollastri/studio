@@ -78,7 +78,9 @@ MCP servers from the repository, hooks. *Model & mode* picks the model, the effo
 | Bridge (Node, `bridge/`): drives `claude -p` stream-json, permissions, resume, skills, git | done, tested with a fake CLI |
 | Updater (`installer/studio-update`): stable and beta channels, force, system step, upgrade scripts, dump, migrate, switch, health check, rollback, signatures | done, tested end to end in a sandbox with a real git repository and stubbed system commands (`tests/installer/`, 18 checks) |
 | Installer (`installer/install.sh`), system steps (`installer/lib/system.sh`) and helper (`installer/studio-admin`) | written for Ubuntu 24.04/26.04 and shellchecked, **not yet run on a live server** |
-| SSH terminal (*Tools → SSH terminal*, admins and developers): saved connections with favourites, several terminals at once (tabs or side by side), Ed25519/RSA keys generated or imported (OpenSSH, PEM, PuTTY, with passphrase), passwords, host keys accepted on first use | done, tested (Pest, and `ssh-gateway/` against a real SSH server); the `studio-ssh` unit and its Caddy route not yet run on a live server |
+| SSH terminal (*Tools → SSH terminal*, admins and developers): saved connections with favourites, several terminals at once (tabs or side by side), Ed25519/RSA keys generated or imported (OpenSSH, PEM, PuTTY, with passphrase), passwords, host keys accepted on first use; a connection tied to a project shows up for its admins and developers, who connect with their own key or password | done, tested (Pest, and `ssh-gateway/` against a real SSH server); the `studio-ssh` unit and its Caddy route not yet run on a live server |
+| Password manager (*Tools → Password manager*): nested personal folders, items encrypted (username, password, notes, TOTP with live codes), password generator; an item is tied to a project for the roles ticked (client, PM, dev) and shared with single people to view or edit, with a table of who sees it and why | done, tested |
+| Drive (*Tools → Drive*): folders and files on Studio's disk, upload by button or drag and drop; a folder tied to a project opens by role to view or to view and edit, down the tree; administrators see everything, clients create nothing; *Copy / Move into the workspace* sends files or whole folders to the person's workspace of that project through the bridge | done, tested (the bridge's `PUT /files/upload` against real directories) |
 | Not started | atomic releases for project sites, notifications, mobile layout |
 
 ## Run it locally (no server)
@@ -145,6 +147,8 @@ browser ──wss /ssh/ws──▶ ssh-gateway ──SSH──▶ any host
   lifecycle of a project site; `App\Workspaces\NativeDriver` the workspaces.
 - `App\Git\Providers\{GitHub,GitLab,Bitbucket,AzureDevOps}` behind `GitProvider`: token check, owners,
   new repositories, the push webhook and its verification, the agent's environment.
+- `App\Drive\Access` decides who reads and writes where in the drive (the whole tree at once); `App\Drive\WorkspaceTransfer`
+  streams drive files into a workspace through the bridge. `App\Models\VaultItem::scopeVisibleTo` is the same for the password manager.
 - `App\Ssh\Gateway` issues the SSH page's one-time tickets and redeems them for the gateway (its token is
   an HMAC of `APP_KEY`, so the `studio-ssh` unit reads Studio's `.env`); `App\Ssh\Keys` generates and imports keys.
 - `App\Server\Updates` reads the updater's state and asks the helper to check, update or switch the nightly timer.

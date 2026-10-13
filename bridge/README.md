@@ -35,6 +35,7 @@ Studio in advance.
 | GET | `/conversations[/{key}]` | | snapshots |
 | GET | `/skills` | | `{skills: [{name, description, source}]}` |
 | GET | `/git` | | `{branch, status[], stat, diff}` |
+| PUT | `/files/upload?path=…&overwrite=0\|1` | raw bytes | 201 `{path, size}`; 409 when it exists (without overwrite), 413 over `BRIDGE_UPLOAD_MAX` (512 MB) |
 
 ## Tests
 

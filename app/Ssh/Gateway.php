@@ -3,6 +3,7 @@
 namespace App\Ssh;
 
 use App\Models\SshConnection;
+use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -32,17 +33,19 @@ final class Gateway
         return (str_starts_with($app, 'https://') ? 'wss://'.substr($app, 8) : 'ws://'.Str::after($app, 'http://')).'/ssh/ws';
     }
 
-    public static function issue(SshConnection $connection): string
+    /** A ticket for one session of this person on this connection, with their own credential. */
+    public static function issue(SshConnection $connection, User $user): string
     {
         $ticket = Str::random(48);
-        Cache::put(self::key($ticket), ['connection_id' => $connection->id, 'user_id' => $connection->user_id], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
+        Cache::put(self::key($ticket), ['connection_id' => $connection->id, 'user_id' => $user->id], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
 
         return $ticket;
     }
 
     /**
-     * The connection behind a ticket, secret included; null when the ticket is
-     * unknown, spent or expired, or its owner may no longer use the terminal.
+     * The connection behind a ticket, with the secret of the person it was
+     * issued to; null when the ticket is unknown, spent or expired, or that
+     * person may no longer use the terminal or see the connection.
      *
      * @return array<string, mixed>|null
      */
@@ -57,15 +60,18 @@ final class Gateway
             return null;
         }
 
-        $connection = SshConnection::query()->with(['user', 'key'])->whereKey($issued['connection_id'] ?? 0)->first();
-        if ($connection === null || $connection->user_id !== $issued['user_id'] || ! $connection->user->canUseSsh() || ! $connection->hasCredential()) {
+        $user = User::query()->whereKey($issued['user_id'] ?? 0)->first();
+        $connection = SshConnection::query()->with('key')->whereKey($issued['connection_id'] ?? 0)->first();
+        if ($user === null || $connection === null || ! $user->canUseSsh() || ! $connection->isVisibleTo($user) || ! $connection->canConnect($user)) {
             return null;
         }
 
-        $connection->forceFill(['last_used_at' => now()])->save();
-        Log::info('SSH session opened', ['user' => $connection->user->email, 'connection' => $connection->name, 'target' => $connection->address()]);
+        if ($connection->isOwnedBy($user)) {
+            $connection->forceFill(['last_used_at' => now()])->save();
+        }
+        Log::info('SSH session opened', ['user' => $user->email, 'connection' => $connection->name, 'owner' => $connection->user_id, 'target' => $connection->address()]);
 
-        return $connection->forGateway();
+        return $connection->forGateway($user);
     }
 
     private static function key(string $ticket): string

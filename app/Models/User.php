@@ -117,6 +117,24 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(SshKey::class);
     }
 
+    /** @return HasMany<VaultFolder, $this> */
+    public function vaultFolders(): HasMany
+    {
+        return $this->hasMany(VaultFolder::class);
+    }
+
+    /** @return HasMany<VaultItem, $this> */
+    public function vaultItems(): HasMany
+    {
+        return $this->hasMany(VaultItem::class);
+    }
+
+    /** @return HasMany<DriveFolder, $this> */
+    public function driveFolders(): HasMany
+    {
+        return $this->hasMany(DriveFolder::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;

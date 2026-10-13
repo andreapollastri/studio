@@ -27,6 +27,8 @@ export function loadConfig(env = process.env) {
     runHistory: Number(env.BRIDGE_RUN_HISTORY || 20),
     // File manager: largest file (bytes) that can be opened or saved from the dashboard.
     fileMaxBytes: Number(env.BRIDGE_FILE_MAX || 512 * 1024),
+    // Largest file Studio's drive may copy into the workspace.
+    uploadMaxBytes: Number(env.BRIDGE_UPLOAD_MAX || 512 * 1024 * 1024),
     log: env.BRIDGE_LOG !== '0',
   };
 }

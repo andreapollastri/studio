@@ -105,6 +105,11 @@ return [
         'ticket_ttl' => (int) env('STUDIO_SSH_TICKET_TTL', 60),
     ],
 
+    // The drive (Tools → Drive): files on the local disk under storage/app/private/drive.
+    'drive' => [
+        'max_upload_mb' => (int) env('STUDIO_DRIVE_MAX_UPLOAD_MB', 100),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Demo data

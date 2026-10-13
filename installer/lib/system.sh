@@ -359,6 +359,9 @@ EOF
     for v in /etc/php/*/fpm/pool.d/studio.conf; do [ -f "$v" ] && [ "$v" != "/etc/php/${php}/fpm/pool.d/studio.conf" ] && rm -f "$v"; done
     render_tpl "$rel/installer/templates/fpm-pool.conf.tpl" "/etc/php/${php}/fpm/pool.d/studio.conf" \
         NAME=studio USER=studio GROUP=studio MAX=12 LOG=/var/lib/studio/php.log
+    # The drive takes files up to STUDIO_DRIVE_MAX_UPLOAD_MB (100 MB by default) through Livewire
+    printf 'php_admin_value[upload_max_filesize] = 256M\nphp_admin_value[post_max_size] = 260M\nphp_admin_value[max_execution_time] = 600\n' \
+        >> "/etc/php/${php}/fpm/pool.d/studio.conf"
 
     for unit in studio-queue studio-reverb studio-scheduler; do
         render_tpl "$rel/installer/templates/${unit}.service" "/etc/systemd/system/${unit}.service" STUDIO_DIR="$STUDIO_HOME/current" PHP="php${php}"

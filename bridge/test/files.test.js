@@ -119,3 +119,32 @@ test('the HTTP routes expose the file manager behind the bearer token', async ()
 
   await server.shutdown();
 });
+
+test('an upload streams any bytes into a new file, replaces one only when asked, and keeps to its limit', async () => {
+  const root = await workspace();
+  const server = createServer(testConfig({ workspaceDir: root, uploadMaxBytes: 64 }));
+  const base = await listen(server);
+  const auth = { authorization: 'Bearer bridge-secret', 'content-type': 'application/octet-stream' };
+  const bytes = Buffer.from([0, 1, 2, 255, 0x89, 0x50]);
+
+  const created = await fetch(`${base}/files/upload?path=storage/drive/blob.bin`, { method: 'PUT', headers: auth, body: bytes });
+  assert.equal(created.status, 201);
+  assert.deepEqual(await created.json(), { path: 'storage/drive/blob.bin', size: 6 });
+  assert.deepEqual(await readFile(join(root, 'storage', 'drive', 'blob.bin')), bytes);
+
+  const again = await fetch(`${base}/files/upload?path=storage/drive/blob.bin`, { method: 'PUT', headers: auth, body: 'x' });
+  assert.equal(again.status, 409);
+  const replaced = await fetch(`${base}/files/upload?path=storage/drive/blob.bin&overwrite=1`, { method: 'PUT', headers: auth, body: 'x' });
+  assert.equal(replaced.status, 201);
+  assert.equal(await readFile(join(root, 'storage', 'drive', 'blob.bin'), 'utf8'), 'x');
+
+  const onDir = await fetch(`${base}/files/upload?path=app&overwrite=1`, { method: 'PUT', headers: auth, body: 'x' });
+  assert.equal(onDir.status, 409);
+  const tooBig = await fetch(`${base}/files/upload?path=big.bin`, { method: 'PUT', headers: auth, body: Buffer.alloc(65) });
+  assert.equal(tooBig.status, 413);
+  await assert.rejects(stat(join(root, 'big.bin')));
+  const escape = await fetch(`${base}/files/upload?path=../x`, { method: 'PUT', headers: auth, body: 'x' });
+  assert.equal(escape.status, 400);
+
+  await server.shutdown();
+});

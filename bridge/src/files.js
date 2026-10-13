@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 /**
  * The project file manager: browse, read, write, create, rename and delete
@@ -126,6 +129,46 @@ export class Files {
     await rename(tmp, abs);
 
     return { path, size: bytes.length, hash: hashOf(bytes) };
+  }
+
+  /**
+   * Any bytes, streamed from a request body into a file (Studio's drive copies
+   * files in this way, binary or large). An existing file is replaced only
+   * with `overwrite`; a directory never is.
+   */
+  async upload(input, body, { overwrite = false, maxBytes = 512 * 1024 * 1024 } = {}) {
+    const path = cleanPath(input);
+    if (path === '') throw new FileError(400, 'a name is required');
+    const abs = await this.absolute(path);
+    try {
+      const info = await stat(abs);
+      if (info.isDirectory()) throw new FileError(409, `${path} is a directory`);
+      if (!overwrite) throw new FileError(409, `${path} already exists`);
+    } catch (error) {
+      if (error instanceof FileError) throw error;
+      if (error.code !== 'ENOENT') throw this.translate(error, path);
+    }
+
+    await mkdir(dirname(abs), { recursive: true });
+    const tmp = `${abs}${TMP_SUFFIX}-${process.pid}-${Date.now()}`;
+    let size = 0;
+    const limit = new Transform({
+      transform(chunk, encoding, done) {
+        size += chunk.length;
+        if (size > maxBytes) return done(new FileError(413, `the file is larger than ${maxBytes} bytes`));
+        done(null, chunk);
+      },
+    });
+
+    try {
+      await pipeline(body, limit, createWriteStream(tmp));
+      await rename(tmp, abs);
+    } catch (error) {
+      await rm(tmp, { force: true });
+      throw error instanceof FileError ? error : this.translate(error, path);
+    }
+
+    return { path, size };
   }
 
   /** A new empty file or a new directory; refuses to overwrite. */
