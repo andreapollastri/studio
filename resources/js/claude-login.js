@@ -1,0 +1,131 @@
+/**
+ * "Sign in with Claude" on Settings → Connections: the official
+ * `claude auth login` of Claude Code, running as the person in their own home
+ * on the server, shown in a terminal. The person opens Anthropic's sign-in
+ * page, approves, and pastes the code back; the CLI keeps the login in their
+ * ~/.claude. Studio relays the terminal and keeps nothing.
+ *
+ * The CLI hands its sign-in link over with an OSC 52 "copy to clipboard"
+ * sequence when the person presses c: caught here, it becomes a button.
+ */
+import { FONT, loadXterm, THEME } from './xterm';
+
+const LINK = /https:\/\/[^\s"'<>\x1b\x07]+/;
+const ESCAPES = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
+
+function claudeLogin() {
+    let term = null;
+    let fit = null;
+    let ws = null;
+    let screen = '';
+
+    return {
+        state: 'idle', // idle, connecting, running, done, error
+        error: null,
+        link: null,
+        code: '',
+        exitCode: null,
+
+        async start() {
+            this.reset();
+            this.state = 'connecting';
+            const info = await this.$wire.claudeLoginTicket();
+            if (!info?.ticket) {
+                this.state = 'idle';
+                return;
+            }
+
+            const { Terminal, FitAddon, WebLinksAddon } = await loadXterm();
+            term = new Terminal({ cursorBlink: true, fontFamily: FONT, fontSize: 13, lineHeight: 1.15, scrollback: 2000, theme: THEME, convertEol: false });
+            fit = new FitAddon();
+            term.loadAddon(fit);
+            term.loadAddon(new WebLinksAddon((event, uri) => window.open(uri, '_blank', 'noopener')));
+            term.parser.registerOscHandler(52, (data) => {
+                const encoded = data.split(';').pop();
+                try {
+                    const text = new TextDecoder().decode(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)));
+                    const found = text.match(LINK);
+                    if (found) this.link = found[0];
+                } catch {}
+                return true;
+            });
+            term.open(this.$refs.term);
+            fit.fit();
+            term.onData((data) => this.send(data));
+
+            const url = `${info.url}?ticket=${encodeURIComponent(info.ticket)}&cols=${term.cols}&rows=${term.rows}`;
+            ws = new WebSocket(url);
+            ws.onmessage = (event) => {
+                let message;
+                try { message = JSON.parse(event.data); } catch { return; }
+
+                if (message.type === 'data') {
+                    term.write(message.data);
+                    this.spotLink(message.data);
+                } else if (message.type === 'status') {
+                    this.state = 'running';
+                    term.focus();
+                } else if (message.type === 'error') {
+                    this.state = 'error';
+                    this.error = message.message;
+                } else if (message.type === 'exit') {
+                    this.exitCode = message.code;
+                    this.state = message.code === 0 ? 'done' : 'error';
+                    if (message.code !== 0 && !this.error) this.error = 'The sign-in did not complete.';
+                    this.$wire.refreshClaude();
+                }
+            };
+            ws.onclose = (event) => {
+                if (this.state === 'connecting' || this.state === 'running') {
+                    this.state = 'error';
+                    this.error ??= event.code === 1006 ? 'The sign-in service cannot be reached. Is the studio-ssh service running?' : 'The sign-in stopped.';
+                }
+            };
+        },
+
+        /** A link printed plainly (not wrapped by the CLI) works too. */
+        spotLink(chunk) {
+            screen = (screen + chunk).slice(-8000);
+            if (this.link) return;
+            const found = screen.replace(ESCAPES, '').match(/https:\/\/claude\.ai\/[^\s"'<>]+|https:\/\/[^\s"'<>]*anthropic\.com\/[^\s"'<>]+/);
+            if (found && found[0].length > 40) this.link = found[0];
+        },
+
+        /** Ask the CLI for its link: it copies it (OSC 52) when c is pressed. */
+        askLink() {
+            this.send('c');
+            term?.focus();
+        },
+
+        pasteCode() {
+            const code = this.code.trim();
+            if (!code) return;
+            this.send(code + '\r');
+            this.code = '';
+            term?.focus();
+        },
+
+        send(data) {
+            if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'data', data }));
+        },
+
+        reset() {
+            try { ws?.close(1000); } catch {}
+            try { term?.dispose(); } catch {}
+            ws = null; term = null; fit = null; screen = '';
+            this.error = null; this.link = null; this.code = ''; this.exitCode = null;
+        },
+
+        destroy() {
+            this.reset();
+        },
+    };
+}
+
+const register = () => window.Alpine.data('claudeLogin', claudeLogin);
+
+if (window.Alpine) {
+    register();
+} else {
+    document.addEventListener('alpine:init', register);
+}

@@ -14,6 +14,14 @@ case "$cmd" in
     printf '{"ok":true,"app_url":"https://%s","bridge_url":"http://127.0.0.1:%s","path":"/srv/studio/workspaces/%s/%s"}\n' "$host" "$port" "$handle" "$slug" ;;
   workspace-start|workspace-stop|workspace-delete|workspace-env|workspace-configure|project-configure)
     printf '{"ok":true}\n' ;;
+  person-ensure|claude-logout)
+    printf '{"ok":true}\n' ;;
+  claude-status)
+    if [ "${FAKE_CLAUDE_METHOD:-none}" = none ]; then
+      printf '{"ok":true,"logged_in":false,"auth_method":"none","status":{"authMethod":"none"}}\n'
+    else
+      printf '{"ok":true,"logged_in":true,"auth_method":"%s","status":{"authMethod":"%s"}}\n' "$FAKE_CLAUDE_METHOD" "$FAKE_CLAUDE_METHOD"
+    fi ;;
   workspace-status)
     printf '{"ok":true,"status":"%s"}\n' "${FAKE_STUDIO_ADMIN_STATUS:-running}" ;;
   project-bootstrap)

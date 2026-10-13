@@ -19,6 +19,9 @@ export function loadConfig(env = process.env) {
     readyTimeout: Number(env.SSH_GATEWAY_READY_TIMEOUT || 20) * 1000,
     hostKeyTimeout: Number(env.SSH_GATEWAY_HOST_KEY_TIMEOUT || 120) * 1000,
     log: env.SSH_GATEWAY_LOG !== '0',
+    // The person's `claude auth login` goes through the privileged helper, as their Linux user.
+    loginCommand: loginCommand(env.SSH_GATEWAY_HELPER || '/usr/local/sbin/studio-admin', env.SSH_GATEWAY_HELPER_SUDO !== '0'),
+    loginTimeout: Number(env.SSH_GATEWAY_LOGIN_TIMEOUT || 600) * 1000,
   };
 }
 
@@ -33,4 +36,8 @@ function originOf(url) {
   } catch {
     return '';
   }
+}
+
+function loginCommand(helper, sudo) {
+  return (handle, cols, rows) => [...(sudo ? ['sudo', '-n', helper] : [helper]), 'claude-login', handle, String(cols), String(rows)];
 }

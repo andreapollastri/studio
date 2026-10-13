@@ -2349,7 +2349,7 @@
         <figure class="shot">
           <img src="img/connections.png" alt="Settings → Connections: the git provider token field with instructions, the Claude credential with its kind" loading="lazy" width="2880" height="1800" />
           <figcaption><strong>Settings → Connections.</strong> The instructions are on the page, for the provider of this Studio
-            (here GitHub): how to create the token, and <code>claude setup-token</code> or an API key for Claude.</figcaption>
+            (here GitHub): how to create the token, and <em>Sign in with Claude</em> or an API key for Claude.</figcaption>
         </figure>
 
         <h3>The git provider</h3>
@@ -2361,10 +2361,14 @@
           helper hands it to git from the environment, with the user name the provider expects.</p>
 
         <h3>Claude</h3>
-        <p>Either a subscription or an API key. With Claude Pro or Max: on your own computer, signed in to Claude Code, run
-          <code>claude setup-token</code> and paste the long-lived token. With an Anthropic Console account: paste the API
-          key. The workspace exports <code>CLAUDE_CODE_OAUTH_TOKEN</code> or <code>ANTHROPIC_API_KEY</code> accordingly,
-          and Claude Code's login files live in that person's home on the server, denied to the agent itself.</p>
+        <p>Either a subscription or an API key. With Claude Pro or Max: <em>Sign in with Claude</em> opens a terminal with
+          Claude Code's own <code>claude auth login</code>, running as you in your home on the server
+          (<code>/home/ws-&lt;login&gt;</code>). Open Anthropic's sign-in page, approve, paste the code back: the login stays in
+          your <code>~/.claude</code>, every workspace of yours uses it, and Studio never sees or keeps it. Anthropic does not
+          let a platform collect or forward claude.ai credentials, which is why Studio no longer takes a
+          <code>setup-token</code>; signing in to the unmodified Claude Code where a platform hosts it is what its terms allow.
+          With an Anthropic Console account: paste the API key, and the workspace exports <code>ANTHROPIC_API_KEY</code>.
+          The login files are denied to the agent itself.</p>
 
         <div class="note"><strong>Changing a token</strong> updates every workspace the person already has and restarts its
           bridge. Removing one stops what depends on it: no git token, no new workspaces; no Claude, no chat.</div>

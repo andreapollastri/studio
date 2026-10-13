@@ -215,6 +215,19 @@ test('an administrator cannot demote themselves', function () {
     expect($admin->fresh()->role)->toBe(UserRole::Admin);
 });
 
+test('an administrator cannot delete themselves, and is not offered to', function () {
+    $admin = User::factory()->admin()->create();
+    $other = User::factory()->create();
+
+    Livewire::actingAs($admin)
+        ->test(Users::class)
+        ->assertDontSeeHtml("remove('{$admin->uuid}')")
+        ->assertSeeHtml("remove('{$other->uuid}')")
+        ->call('remove', $admin->uuid);
+
+    expect($admin->fresh())->not->toBeNull();
+});
+
 test('an administrator creates a repository on GitHub and the project is marked for bootstrap', function () {
     Queue::fake();
     $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_login' => 'andrea', 'git_token' => 'github_pat_admin']);

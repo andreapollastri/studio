@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import ssh2 from 'ssh2';
 import WebSocket from 'ws';
+import { spawn as spawnReal } from 'node:child_process';
 import { createGateway, CLOSE } from '../src/server.js';
 import { fingerprint } from '../src/session.js';
 import { gatewayToken, loadConfig } from '../src/config.js';
@@ -147,4 +148,43 @@ test('another origin and too many sessions are refused', async (t) => {
   assert.equal(await second.closed, CLOSE.tooMany);
   first.ws.close();
   await first.closed;
+});
+
+test('a claude-login ticket runs the helper\'s sign-in for that person and relays the terminal both ways', async (t) => {
+  let launched;
+  const spawn = (bin, args) => {
+    launched = [bin, ...args];
+    // a stand-in for `claude auth login`: shows a prompt, echoes the pasted code, exits 0
+    return spawnReal(process.execPath, ['-e', `
+      process.stdout.write('Paste code here if prompted > ');
+      process.stdin.once('data', (d) => { process.stdout.write('\\nLogin successful: ' + d.toString().trim() + '\\n'); process.exit(0); });
+    `]);
+  };
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0', SSH_GATEWAY_HELPER: '/usr/local/sbin/studio-admin' }), origin: '' };
+  const gw = createGateway(config, { redeem: async (ticket) => (ticket === 'good' ? { kind: 'claude-login', user_id: 3, handle: 'ada' } : null), spawn });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until(() => s.output().includes('Paste code here'));
+  assert.deepEqual(launched, ['sudo', '-n', '/usr/local/sbin/studio-admin', 'claude-login', 'ada', '100', '30']);
+
+  s.send({ type: 'data', data: 'abc123\r' });
+  const exit = await s.until((m) => m.type === 'exit');
+  assert.equal(exit.code, 0);
+  assert.match(s.output(), /Login successful: abc123/);
+  await s.closed;
+});
+
+test('a claude-login ticket without a valid home name is refused before anything runs', async (t) => {
+  let ran = false;
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'claude-login', user_id: 3, handle: '../root' }), spawn: () => { ran = true; } });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  assert.match((await s.until((m) => m.type === 'error')).message, /no home/);
+  await s.closed;
+  assert.equal(ran, false);
 });

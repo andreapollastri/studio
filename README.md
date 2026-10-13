@@ -40,8 +40,10 @@ What lives where on the server:
 Bitbucket Cloud or Azure DevOps (one organization), the same remote forges Larapilot integrates with.
 Every project is a repository there; Studio never mixes providers and keeps no history of a previous one
 (`php artisan studio:git-provider` changes it only while there are no projects). People sign in with email
-and password (plus two-factor), then connect their own token for the provider and their own Claude credential
-(`claude setup-token` or an API key) in *Settings → Connections*, which explains for each provider how to
+and password (plus two-factor), then connect their own token for the provider and their own Claude in
+*Settings → Connections*: *Sign in with Claude* runs Claude Code's official `claude auth login` in the person's own
+home on the server (`/home/ws-<handle>`, shared by all their workspaces), so a Pro or Max subscription is used the way
+Anthropic allows on hosted platforms and Studio never holds it; or an Anthropic API key. The page explains for each provider how to
 create the token and how organizations, groups, workspaces or projects work. A project is an existing
 repository, or one Studio creates on the spot with the latest Laravel, Laravel Boost and Larapilot.
 

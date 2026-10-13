@@ -81,5 +81,5 @@ test('a Claude credential is stored with its kind and pushed to existing native 
 test('the connections page is where a new person starts', function () {
     $user = User::factory()->create();
 
-    $this->actingAs($user)->get(route('connections.edit'))->assertOk()->assertSee('claude setup-token')->assertSee('github_pat_');
+    $this->actingAs($user)->get(route('connections.edit'))->assertOk()->assertSee('Sign in with Claude')->assertDontSee('setup-token')->assertSee('github_pat_');
 });

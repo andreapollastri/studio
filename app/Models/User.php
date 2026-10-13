@@ -34,7 +34,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $git_token
  * @property string|null $git_login
  * @property ClaudeAuthMode $claude_auth_mode
- * @property string|null $claude_token
+ * @property string|null $claude_token only an API key: a subscription is the login in the person's home
+ * @property Carbon|null $claude_checked_at
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
@@ -85,6 +86,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'role' => UserRole::class,
             'git_token' => 'encrypted',
             'claude_token' => 'encrypted',
+            'claude_checked_at' => 'datetime',
             'claude_auth_mode' => ClaudeAuthMode::class,
         ];
     }
@@ -169,7 +171,12 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     /** A Claude credential was saved: the person's workspace can run Claude Code. */
     public function hasClaude(): bool
     {
-        return $this->claude_auth_mode !== ClaudeAuthMode::None && filled($this->claude_token);
+        return match ($this->claude_auth_mode) {
+            // signed in to Claude Code in their home: Studio holds nothing for it
+            ClaudeAuthMode::Subscription => true,
+            ClaudeAuthMode::ApiKey => filled($this->claude_token),
+            ClaudeAuthMode::None => false,
+        };
     }
 
     /**

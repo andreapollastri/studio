@@ -45,8 +45,8 @@
                         <td class="px-4 py-2 text-end whitespace-nowrap">
                             @unless ($user->is(auth()->user()))
                                 <flux:button size="xs" variant="ghost" icon="key" :tooltip="__('Reset password')" wire:click="resetPassword('{{ $user->uuid }}')" wire:confirm="{{ __('Give :name a new password? Their sessions are closed and their 2FA is removed; they set it up again after logging in.', ['name' => $user->name]) }}" />
+                                <flux:button size="xs" variant="ghost" icon="trash" wire:click="remove('{{ $user->uuid }}')" wire:confirm="{{ __('Delete the account? Their workspaces and conversations are removed from Studio.') }}" />
                             @endunless
-                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="remove('{{ $user->uuid }}')" wire:confirm="{{ __('Delete the account? Their workspaces and conversations are removed from Studio.') }}" />
                         </td>
                     </tr>
                 @endforeach
