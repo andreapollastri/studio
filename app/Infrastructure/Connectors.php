@@ -9,6 +9,7 @@ use App\Infrastructure\Connectors\Cloudflare;
 use App\Infrastructure\Connectors\DigitalOcean;
 use App\Infrastructure\Connectors\Hackly;
 use App\Infrastructure\Connectors\Hetzner;
+use App\Infrastructure\Connectors\Johnny;
 use App\Models\ConnectorSetting;
 use App\Models\User;
 use RuntimeException;
@@ -25,6 +26,7 @@ final class Connectors
         'cipi' => Cipi::class,
         'boogle' => Boogle::class,
         'hackly' => Hackly::class,
+        'johnny' => Johnny::class,
     ];
 
     /** @return array<string, Connector> */

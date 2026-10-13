@@ -98,13 +98,13 @@ since last opened, failed workspaces and sites, and what waits on each git accou
 
 **Infrastructure.** Studio also drives the clouds and services the team runs its servers on, through their APIs:
 AWS (EC2, every kind of Lightsail resource, RDS, S3, Route 53, CloudFront), DigitalOcean, Hetzner Cloud, Cloudflare,
-[Cipi](https://cipi.sh) servers, [Boogle](https://boogle.web.ap.it) and [Hackly](https://hackly.web.ap.it). It is for
+[Cipi](https://cipi.sh) servers, [Boogle](https://boogle.web.ap.it), [Hackly](https://hackly.web.ap.it) and [Johnny](https://johnny.web.ap.it) storage. It is for
 administrators only: no other role sees the menu, the pages or the accounts.
 
 1. *Administration → Connectors*: switch on the connectors the team uses. Only those show in the menu, under
    *Infrastructure*; turning one off hides it again and keeps its accounts.
 2. On the connector's page, *Accounts → Add an account*: a name and the credentials (an IAM access key, a team or project
-   token, the address and token of a Cipi server or of a Boogle or Hackly instance). Studio checks them against the
+   token, the address and token of a Cipi server or of a Boogle, Hackly or Johnny instance). Studio checks them against the
    provider before saving and stores them encrypted; any number of accounts per connector.
 3. Pick the account at the top and a tab: lists with search and filters (the region for AWS), a button to create, a menu
    of actions on every row. Secrets the provider hands back once (root passwords, private keys) show once, with *Copy*.
@@ -154,7 +154,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Groups of projects per person, with their Claude and git accounts; projects on any enabled git host, each workspace with the git account and commit identity of its repository's host | done, tested |
 | Agent browser (Playwright MCP signed in to the preview with the person's pass), screenshots in the chat, subagents as cards, Studio's `code-reviewer` and `browser-qa` | done, tested (bridge against the fake CLI; Playwright MCP 0.0.83 run for real against a site behind a pass cookie: navigate, screenshot, console); not yet run on a live server |
 | Conversations in a sandbox: worktree on its own branch, database copy, build and preview host; merge, push, remove; the side pane follows it | done, tested (bridge against real git repositories, Studio with stand-ins for the bridge and the helper); `sandbox-create`/`sandbox-delete` shellchecked, not yet run on a live server |
-| Infrastructure connectors (*Administration → Connectors*, menu *Infrastructure*): AWS (EC2, all of Lightsail, RDS, S3, Route 53, CloudFront, cost), DigitalOcean, Hetzner Cloud, Cloudflare, Cipi servers, Boogle, Hackly; multi-account, credentials encrypted and checked on save, enabled per connector, administrators only (members see what is attached to their projects) | done, tested against each API's documented requests and answers (HTTP fakes, AWS SigV4 against the AWS test suite); not yet run against the live services |
+| Infrastructure connectors (*Administration → Connectors*, menu *Infrastructure*): AWS (EC2, all of Lightsail, RDS, S3, Route 53, CloudFront, cost), DigitalOcean, Hetzner Cloud, Cloudflare, Cipi servers, Boogle, Hackly, Johnny; multi-account, credentials encrypted and checked on save, enabled per connector, administrators only (members see what is attached to their projects) | done, tested against each API's documented requests and answers (HTTP fakes, AWS SigV4 against the AWS test suite); not yet run against the live services |
 | Git dashboard (*Tools → Git*): GitHub, GitLab, Bitbucket Cloud, Azure DevOps in one page; personal accounts, several per person on any host, each with its commit identity | done, tested against each API's documented requests and answers (HTTP fakes); not yet run against the live services |
 | Not started | atomic releases for project sites, notifications, mobile layout |
 

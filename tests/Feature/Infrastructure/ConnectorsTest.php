@@ -8,6 +8,8 @@ use App\Livewire\Admin\Connectors as AdminConnectors;
 use App\Livewire\Infrastructure\Console;
 use App\Models\ConnectorAccount;
 use App\Models\ConnectorSetting;
+use App\Models\Project;
+use App\Models\ProjectResource;
 use App\Models\User;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +32,7 @@ function droplet(int $id, string $name, string $status = 'active'): array
 }
 
 test('every connector describes itself consistently', function () {
-    expect(array_keys(Connectors::all()))->toBe(['aws', 'digitalocean', 'hetzner', 'cloudflare', 'cipi', 'boogle', 'hackly']);
+    expect(array_keys(Connectors::all()))->toBe(['aws', 'digitalocean', 'hetzner', 'cloudflare', 'cipi', 'boogle', 'hackly', 'johnny']);
 
     foreach (Connectors::all() as $key => $connector) {
         /** @var Connector $connector */
@@ -359,4 +361,67 @@ test('every tab and every form of every connector renders, whatever the provider
 
         $page->call('manageAccounts')->call('editAccount')->assertOk();
     }
+});
+
+test('Johnny panels: buckets, a bucket with its key in one step, keys and their permissions per bucket', function () {
+    enable('johnny');
+    $admin = User::factory()->admin()->create();
+
+    Http::fake([
+        'storage.acme.test/api/buckets/provision' => Http::response(['bucket' => 'b-x7k2', 'region' => 'johnny', 'endpoint' => 'https://s3.acme.test', 'path_style' => true, 'key_name' => 'b-x7k2-key',
+            'credentials' => ['access_key_id' => 'GKabc', 'secret_access_key' => 'shown-once'], 'env' => ['AWS_BUCKET' => 'b-x7k2']], 201),
+        'storage.acme.test/api/buckets/shop-uploads/keys/GK0011*' => Http::response(null, 204),
+        'storage.acme.test/api/buckets/shop-uploads/keys' => Http::response(['bucket' => 'shop-uploads', 'key_id' => 'GK0022', 'read' => true, 'write' => true, 'owner' => false], 201),
+        'storage.acme.test/api/buckets/shop-uploads' => Http::response(['data' => ['name' => 'shop-uploads', 'created' => '2026-10-01T10:00:00Z', 'keys' => [
+            ['id' => 'GK0011', 'name' => 'shop-app', 'permissions' => 'RW-'],
+        ]]]),
+        'storage.acme.test/api/buckets' => fn (Request $r) => $r->method() === 'POST'
+            ? Http::response(['data' => ['name' => $r['name']]], 201)
+            : Http::response(['data' => [['name' => 'default', 'created' => '2026-09-01T10:00:00Z'], ['name' => 'shop-uploads', 'created' => '2026-10-01T10:00:00Z']]]),
+        'storage.acme.test/api/keys' => fn (Request $r) => $r->method() === 'POST'
+            ? Http::response(['id' => 'GK0033', 'name' => $r['name'], 'credentials' => ['access_key_id' => 'GK0033', 'secret_access_key' => 'key-secret']], 201)
+            : Http::response(['data' => [['id' => 'GK0011', 'name' => 'shop-app', 'created' => '2026-10-01'], ['id' => 'GK0022', 'name' => 'backups', 'created' => '2026-10-02']]]),
+    ]);
+
+    // the account is checked against the panel before it is saved
+    $page = Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny'])
+        ->assertSee('No Johnny account yet')
+        ->call('manageAccounts')->call('editAccount')
+        ->set('account_name', 'Agency storage')->set('credentials.url', 'storage.acme.test')->set('credentials.token', '1|sanctum')
+        ->call('saveAccount')->assertHasNoErrors();
+    expect(ConnectorAccount::query()->where('connector', 'johnny')->sole()->status)->toBe('ok · 2 buckets');
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://storage.acme.test/api/buckets' && $r->hasHeader('Authorization', 'Bearer 1|sanctum') && $r->hasHeader('Accept', 'application/json'));
+
+    $page = Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'buckets'])
+        ->assertSee(['default', 'shop-uploads'])
+        // a bad name never reaches the panel
+        ->call('start', 'create')->set('form.name', 'Shop Uploads')->call('submit')->assertHasErrors('form.name')
+        ->set('form.name', 'shop-media')->call('submit')->assertHasNoErrors()
+        // provisioning hands over the secret once
+        ->call('start', 'provision')->call('submit')
+        ->assertSet('resultTitle', 'Bucket b-x7k2 and its key')
+        ->assertSee('shown-once');
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://storage.acme.test/api/buckets' && $r->method() === 'POST' && $r['name'] === 'shop-media');
+
+    // the keys of a bucket: give one access, take permissions from another; at least one flag
+    $page->call('start', 'keys', 'shop-uploads')->assertSet('tab', 'bucket-keys')->assertSee(['shop-app', 'RW-'])
+        ->call('start', 'grant')->set('form.key_id', 'GK0022')->set('form.write', true)->call('submit')->assertHasNoErrors()
+        ->call('start', 'revoke', 'GK0011')->set('form.read', false)->call('submit');
+    Http::assertNotSent(fn (Request $r) => $r->method() === 'DELETE');
+    $page->call('start', 'revoke', 'GK0011')->set('form.read', false)->set('form.write', true)->call('submit');
+
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://storage.acme.test/api/buckets/shop-uploads/keys' && $r['key_id'] === 'GK0022' && $r['read'] === true && $r['write'] === true && $r['owner'] === false);
+    Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && $r->url() === 'https://storage.acme.test/api/buckets/shop-uploads/keys/GK0011' && $r['write'] === true && $r['read'] === false);
+
+    // the default bucket is not offered for deletion; a new key shows its secret once
+    expect(collect(Connectors::make('johnny')->section('buckets')->actions)->firstWhere('key', 'delete')->appliesTo(['name' => 'default']))->toBeFalse();
+    Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'keys'])
+        ->assertSee(['shop-app', 'GK0022'])
+        ->call('start', 'create')->set('form.name', 'shop-cdn')->call('submit')->assertSee('key-secret');
+
+    // like any connector, a bucket is attached to a project for the roles chosen
+    $project = Project::factory()->create();
+    Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'buckets'])
+        ->call('attach', 'shop-uploads')->set('attach_project', $project->uuid)->set('attach_actions', ['bucket-keys.@grant'])->call('saveAttachment')->assertHasNoErrors();
+    expect(ProjectResource::query()->sole()->resource_id)->toBe('shop-uploads');
 });

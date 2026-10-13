@@ -1856,6 +1856,7 @@
       <a href="#infra-cipi">Cipi</a>
       <a href="#infra-boogle">Boogle</a>
       <a href="#infra-hackly">Hackly</a>
+      <a href="#infra-johnny">Johnny</a>
 
       <div class="docs-nav-label">Tools</div>
       <a href="#tools-ssh">SSH terminal</a>
@@ -1955,7 +1956,7 @@
 
         <h3>Infrastructure</h3>
         <div class="walkthrough-grid">
-          <dl><dt>Connectors</dt><dd>AWS, DigitalOcean, Hetzner Cloud, Cloudflare, Cipi, Boogle and Hackly, driven through
+          <dl><dt>Connectors</dt><dd>AWS, DigitalOcean, Hetzner Cloud, Cloudflare, Cipi, Boogle, Hackly and Johnny, driven through
             their APIs, each with any number of accounts: servers, DNS, firewalls, volumes, databases, apps, deploys,
             exceptions and security findings. For administrators. See <a href="#infra">Connectors</a>.</dd></dl>
           <dl><dt>Safe by default</dt><dd>Credentials are checked against the provider and stored encrypted; the pages ask
@@ -3760,7 +3761,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <span class="section-label">Infrastructure</span>
           <h2>Connectors</h2>
           <p>The clouds and services your servers run on, driven from Studio through their APIs: AWS, DigitalOcean, Hetzner,
-            Cloudflare, Cipi, Boogle and Hackly. Servers, DNS, firewalls, volumes, databases, apps, deploys, exceptions and
+            Cloudflare, Cipi, Boogle, Hackly and Johnny. Servers, DNS, firewalls, volumes, databases, apps, deploys, exceptions and
             security findings, without opening seven consoles.</p>
         </div>
         <div class="walkthrough-grid">
@@ -3770,7 +3771,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <dl><dt>On or off</dt><dd>A connector is off until an administrator turns it on. Only the ones that are on appear in
             the menu, in the folding <em>Infrastructure</em> group after <em>Tools</em>.</dd></dl>
           <dl><dt>Many accounts</dt><dd>Each connector holds any number of accounts: several AWS accounts, a DigitalOcean team
-            per client, a Hetzner project each, one Cipi server each, several Boogle or Hackly instances.</dd></dl>
+            per client, a Hetzner project each, one Cipi server each, several Boogle, Hackly or Johnny instances.</dd></dl>
           <dl><dt>Credentials</dt><dd>Checked against the provider before they are saved, stored encrypted with
             <code>APP_KEY</code>, never shown again and never sent to the browser.</dd></dl>
         </div>
@@ -4217,6 +4218,38 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </ul>
         <div class="note"><strong>Scan only what you may.</strong> Hackly scans targets whose DNS proves ownership; a
           penetration test needs its own fresh authorization. Studio starts them, it does not lift those checks.</div>
+      </section>
+
+      <section class="doc-section" id="infra-johnny">
+        <div class="section-header">
+          <span class="section-label">Infrastructure</span>
+          <h2>Johnny</h2>
+          <p><a href="https://johnny.web.ap.it/" target="_blank" rel="noopener">Johnny</a>, S3-compatible storage on your
+            own server (Garage behind Caddy): one Studio account per panel, as many panels as you run.</p>
+        </div>
+        <p>Buckets (create, details, delete an empty one; the <code>default</code> bucket stays), the keys that reach each
+          bucket with their permissions (give a key read, write or owner, take them away), the keys themselves (create one:
+          its secret shows once; delete), and <em>Bucket with its key</em>: a bucket, a key of its own with every permission
+          on it and the <code>.env</code> lines of a Laravel <code>s3</code> disk, in one step.</p>
+
+        <h3>The credentials</h3>
+        <ol>
+          <li>On the Johnny panel: <em>Settings → Panel API tokens</em>, create a token named <code>studio</code>; or, on its
+            server, <code>sudo -u www-data php /opt/johnny/panel/artisan johnny:api-token you@example.com --name=studio</code>.</li>
+          <li>In Studio: the <strong>Panel address</strong> (<code>https://panel.example.com</code>) and the
+            <strong>API token</strong>. Studio checks it by listing the buckets.</li>
+        </ol>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>Storage for a new app</strong>: <em>Buckets → Bucket with its key</em>, a name or none (Johnny makes a
+            <code>b-…</code> one); copy the <code>env</code> lines of the result into the app's <code>.env</code> or a
+            password manager item: the secret does not show again.</li>
+          <li><strong>One more app on a bucket</strong>: <em>Keys → New key</em>, then on the bucket <em>Keys → Give a key
+            access</em> with read and write.</li>
+          <li><strong>A project's bucket</strong>: <em>Attach to a project…</em> in the bucket's menu; its developers see its
+            keys in the project's <a href="#work-project">Infrastructure</a> tab and, if you tick it, may give a key access.</li>
+        </ul>
       </section>
 
 <!-- Deep dive -->

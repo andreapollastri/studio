@@ -146,6 +146,12 @@ server is in `installer/upgrades/<version>.sh`.
   new ones, which stay the owner's. A project's folder shows under the project and in its *Access* tab, and an
   item's sharing table says which folder brings it to whom.
 
+### Johnny
+- **A connector for [Johnny](https://johnny.web.ap.it)**, S3-compatible storage on one's own server, through its
+  panel's API, any number of panels: buckets, the keys that reach each with their permissions (give or take read,
+  write, owner), keys (the secret shows once), and a bucket with its own key and the `.env` lines of a Laravel `s3`
+  disk in one step. Turned on in *Administration → Connectors*; a bucket attaches to a project like anything else.
+
 ### Fixed
 - Creating a workspace stopped on the server with `studio-admin stopped (exit 1) at: [ -n "$claude_api_key" ]`
   for everyone without an API key: Studio sends the key empty since it goes with each turn, and the empty test
