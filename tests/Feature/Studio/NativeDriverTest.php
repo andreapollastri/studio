@@ -1,10 +1,13 @@
 <?php
 
-use App\Enums\ClaudeAuthMode;
+use App\Accounts\Accounts;
 use App\Enums\WorkspaceStatus;
 use App\Jobs\ProvisionWorkspace;
 use App\Jobs\RefreshWorkspaces;
+use App\Jobs\SyncWorkspaceCredentials;
+use App\Models\ConnectorAccount;
 use App\Models\Project;
+use App\Models\ProjectGroup;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Server\ServerException;
@@ -33,14 +36,11 @@ afterEach(function () {
 
 function connectedUser(): User
 {
-    return User::factory()->create([
-        'handle' => 'maria',
-        'git_login' => 'MariaRossi',
-        'git_token' => 'github_pat_secret',
+    return User::factory()
+        ->withGit('github_pat_secret', attributes: ['login' => 'MariaRossi', 'git_name' => 'Maria Rossi', 'git_email' => 'maria@personal.test'])
         // signed in to Claude Code in their home: nothing of it travels
-        'claude_auth_mode' => ClaudeAuthMode::Subscription,
-        'claude_token' => null,
-    ]);
+        ->withClaude('subscription')
+        ->create(['handle' => 'maria']);
 }
 
 test('the helper client sends secrets on stdin and refuses odd arguments', function () {
@@ -97,18 +97,79 @@ test('provisioning a native workspace hands the helper the project, the ports an
         ->and($sent['git_token'])->toBe('github_pat_secret')
         ->and($sent['git_username'])->toBe('x-access-token')
         ->and($sent['git_env'])->toBe(['GITHUB_TOKEN' => 'github_pat_secret', 'GH_TOKEN' => 'github_pat_secret'])
+        // commits carry the identity of the account, not of the person's Studio profile
+        ->and($sent['git_name'])->toBe('Maria Rossi')
+        ->and($sent['git_email'])->toBe('maria@personal.test')
         ->and($sent['claude_api_key'])->toBeNull()
-        ->and($sent)->not->toHaveKey('claude_token');
+        ->and($sent)->not->toHaveKey('claude_token')
+        ->and($workspace->git_account_id)->toBe($user->gitAccounts()->value('id'));
 });
 
-test('without a GitHub token the workspace fails with a readable reason', function () {
-    $user = User::factory()->create(['handle' => null, 'git_token' => null]);
-    $workspace = Workspace::factory()->create(['user_id' => $user->id, 'driver' => 'native']);
+test('without an account on the repository\'s host the workspace fails with a readable reason', function () {
+    $user = User::factory()->withGit(host: 'github.com')->create(['handle' => null]);
+    $project = Project::factory()->create(['repo_url' => 'https://gitlab.client.test/shop/app.git']);
+    $workspace = Workspace::factory()->create(['user_id' => $user->id, 'project_id' => $project->id, 'driver' => 'native']);
 
     app(NativeDriver::class)->provision($workspace);
 
     expect($workspace->fresh()->status)->toBe(WorkspaceStatus::Failed)
-        ->and($workspace->fresh()->last_error)->toContain('GitHub');
+        ->and($workspace->fresh()->last_error)->toContain('gitlab.client.test');
+});
+
+test('each project runs on the person\'s account on its host, with that account\'s identity: chosen, from the group, or the one there', function () {
+    $user = connectedUser();
+    // the work GitHub, the client's GitLab, each with its own identity
+    $work = ConnectorAccount::query()->create(['user_id' => $user->id, 'connector' => 'github', 'name' => 'Acme work', 'login' => 'maria-acme', 'host' => 'github.com', 'git_name' => 'Maria Rossi', 'git_email' => 'maria@acme.test', 'credentials' => ['token' => 'github_pat_work'], 'status' => 'ok']);
+    ConnectorAccount::query()->create(['user_id' => $user->id, 'connector' => 'gitlab', 'name' => 'Client', 'login' => 'mrossi', 'host' => 'gitlab.client.test', 'git_name' => 'M. Rossi', 'git_email' => 'mrossi@client.test', 'credentials' => ['token' => 'glpat-client', 'url' => 'https://gitlab.client.test'], 'status' => 'ok']);
+    $clientProject = Project::factory()->create(['slug' => 'portal', 'repo_url' => 'https://gitlab.client.test/acme/portal.git']);
+    $acme = Project::factory()->create(['slug' => 'acme']);
+    $own = Project::factory()->create(['slug' => 'blog']);
+
+    $provision = function (Project $project) use ($user): array {
+        file_put_contents($this->log, '');
+        app(NativeDriver::class)->provision(app(WorkspaceManager::class)->forUser($project, $user));
+        $line = Str::afterLast(trim(file_get_contents($this->log)), "\n");
+
+        return json_decode(substr($line, strpos($line, '{')), true);
+    };
+
+    // the only account on the client's GitLab, whatever else the person has; its CLI is installed the first time
+    expect($provision($clientProject))
+        ->toMatchArray(['git_token' => 'glpat-client', 'git_username' => 'oauth2', 'git_name' => 'M. Rossi', 'git_email' => 'mrossi@client.test'])
+        ->and($provision($clientProject)['git_env'])->toMatchArray(['GITLAB_TOKEN' => 'glpat-client', 'GITLAB_HOST' => 'https://gitlab.client.test']);
+
+    // the group "Work" pushes to GitHub as the work account; a project outside it keeps the oldest one there
+    $group = ProjectGroup::query()->create(['user_id' => $user->id, 'name' => 'Work', 'git_account_id' => $work->id]);
+    Accounts::choose($user, $acme, ['project_group_id' => $group->id]);
+    Accounts::choose($user, $clientProject, ['project_group_id' => $group->id]);
+
+    expect($provision($acme))->toMatchArray(['git_token' => 'github_pat_work', 'git_email' => 'maria@acme.test'])
+        ->and($provision($own))->toMatchArray(['git_token' => 'github_pat_secret', 'git_email' => 'maria@personal.test'])
+        // the group's GitHub account cannot push to GitLab: the client's account stays
+        ->and($provision($clientProject))->toMatchArray(['git_email' => 'mrossi@client.test'])
+        ->and(Accounts::git($user, $acme)->reason())->toContain('Work');
+
+    // a choice for one project wins over its group
+    Accounts::choose($user, $acme, ['git_account_id' => $user->gitAccounts()->where('name', 'github.com')->value('id')]);
+    expect($provision($acme))->toMatchArray(['git_email' => 'maria@personal.test']);
+});
+
+test('a change of account restarts only the workspaces it moves', function () {
+    $user = connectedUser();
+    $work = ConnectorAccount::query()->create(['user_id' => $user->id, 'connector' => 'github', 'name' => 'Acme work', 'login' => 'maria-acme', 'host' => 'github.com', 'git_email' => 'maria@acme.test', 'credentials' => ['token' => 'github_pat_work'], 'status' => 'ok']);
+    $first = Project::factory()->create(['slug' => 'one']);
+    $second = Project::factory()->create(['slug' => 'two']);
+    $personal = $user->gitAccounts()->where('name', 'github.com')->value('id');
+    foreach ([$first, $second] as $project) {
+        Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $user->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/'.$project->slug, 'git_account_id' => $personal, 'callback_token' => 'cb-'.$project->slug, 'callback_token_hash' => hash('sha256', 'cb-'.$project->slug)]);
+    }
+
+    Accounts::choose($user, $second, ['git_account_id' => $work->id]);
+    SyncWorkspaceCredentials::dispatchSync($user, false);
+
+    $log = file_get_contents($this->log);
+    expect($log)->toContain('workspace-env maria two')->not->toContain('workspace-env maria one')
+        ->and(Workspace::query()->where('project_id', $second->id)->value('git_account_id'))->toBe($work->id);
 });
 
 test('stop, start and refresh go through the helper', function () {
@@ -137,12 +198,12 @@ test('stop, start and refresh go through the helper', function () {
         ->and($start['reverb_port'])->toBe(20000 + $workspace->id);
 });
 
-test('removing the git token in Settings clears it from the workspaces: the field is sent, empty', function () {
+test('removing the git account clears it from the workspaces: the field is sent, empty', function () {
     $user = connectedUser();
     $project = Project::factory()->create(['slug' => 'shop']);
     $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $user->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/shop']);
 
-    $user->forceFill(['git_token' => null, 'git_login' => null])->save();
+    $user->gitAccounts()->delete();
     app(NativeDriver::class)->syncCredentials($workspace->fresh());
 
     $line = trim(file_get_contents($this->log));
@@ -209,9 +270,8 @@ test('the creation jobs queued by repeated visits create the workspace once', fu
         ->and($workspace->refresh()->status)->toBe(WorkspaceStatus::Running);
 });
 
-test('an API key is the only Claude credential that travels to a workspace, apart from Claude Code\'s own variable', function () {
-    $user = connectedUser();
-    $user->forceFill(['claude_auth_mode' => ClaudeAuthMode::ApiKey, 'claude_token' => 'sk-ant-api03-key'])->save();
+test('no Claude key is left in a workspace: the account of the project goes with every turn', function () {
+    $user = User::factory()->withGit()->withClaude('api_key', token: 'sk-ant-api03-key')->create(['handle' => 'maria']);
     $project = Project::factory()->create(['slug' => 'shop']);
     $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $user->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/shop']);
 
@@ -220,5 +280,7 @@ test('an API key is the only Claude credential that travels to a workspace, apar
     $line = trim(file_get_contents($this->log));
     $sent = json_decode(substr($line, strpos($line, '{')), true);
 
-    expect($sent['claude_api_key'])->toBe('sk-ant-api03-key')->and($sent)->not->toHaveKey('claude_env');
+    expect(array_key_exists('claude_api_key', $sent))->toBeTrue()
+        ->and($sent['claude_api_key'])->toBeNull()
+        ->and($line)->not->toContain('sk-ant-api03-key');
 });

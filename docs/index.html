@@ -1800,10 +1800,11 @@
       <a href="#roles">Roles</a>
 
       <div class="docs-nav-label">Set up</div>
-      <a href="#setup-git">The git provider</a>
+      <a href="#setup-git">The git hosts</a>
       <a href="#setup-project">A project</a>
       <a href="#setup-people">People</a>
       <a href="#setup-connections">Git &amp; Claude</a>
+      <a class="sub" href="#setup-groups">Groups of projects</a>
       <a href="#setup-site">The project site</a>
       <a href="#setup-settings">Project settings</a>
       <a href="#setup-mcp">MCP servers</a>
@@ -1825,18 +1826,27 @@
 
       <div class="docs-nav-label">Infrastructure</div>
       <a href="#infra">Connectors</a>
-      <a class="sub" href="#infra-aws">AWS</a>
-      <a class="sub" href="#infra-digitalocean">DigitalOcean</a>
-      <a class="sub" href="#infra-hetzner">Hetzner</a>
-      <a class="sub" href="#infra-cloudflare">Cloudflare</a>
-      <a class="sub" href="#infra-cipi">Cipi</a>
-      <a class="sub" href="#infra-boogle">Boogle</a>
-      <a class="sub" href="#infra-hackly">Hackly</a>
+      <a class="sub" href="#infra-enable">Turn one on</a>
+      <a class="sub" href="#infra-accounts">Accounts</a>
+      <a class="sub" href="#infra-page">Working on a page</a>
+      <a class="sub" href="#infra-troubleshooting">When it does not work</a>
+      <a href="#infra-aws">AWS</a>
+      <a href="#infra-digitalocean">DigitalOcean</a>
+      <a href="#infra-hetzner">Hetzner</a>
+      <a href="#infra-cloudflare">Cloudflare</a>
+      <a href="#infra-cipi">Cipi</a>
+      <a href="#infra-boogle">Boogle</a>
+      <a href="#infra-hackly">Hackly</a>
 
       <div class="docs-nav-label">Tools</div>
       <a href="#tools-ssh">SSH terminal</a>
       <a href="#tools-passwords">Password manager</a>
       <a href="#tools-drive">Drive</a>
+      <a href="#git">Git hosting</a>
+      <a class="sub" href="#git-github">GitHub</a>
+      <a class="sub" href="#git-gitlab">GitLab</a>
+      <a class="sub" href="#git-bitbucket">Bitbucket</a>
+      <a class="sub" href="#git-azure">Azure DevOps</a>
 
       <div class="docs-nav-label">Deep dive</div>
       <a href="#deep-dive">Architecture</a>
@@ -1863,8 +1873,9 @@
             role or with single people. See <a href="#tools-passwords">Password manager</a>.</dd></dl>
           <dl><dt>Drive</dt><dd>Folders and files with access by project and role, and <em>Copy / Move into the workspace</em>.
             See <a href="#tools-drive">Drive</a>.</dd></dl>
-          <dl><dt>Sign in with Claude</dt><dd>A Pro or Max subscription is your own <code>claude auth login</code> in your home on
-            the server; Studio keeps nothing of it. Or an API key: one or the other, as you choose. See
+          <dl><dt>Your accounts</dt><dd>Several git accounts (personal, work, a client's), each with its commit identity, and
+            several Claude accounts: subscriptions signed in with your own <code>claude auth login</code> in your home on the
+            server (Studio keeps nothing of them) and API keys. Groups of projects choose which ones they use. See
             <a href="#setup-connections">Git &amp; Claude</a>.</dd></dl>
           <dl><dt>Live pages</dt><dd>The workspace badge, the chat, the projects and the System page update on their own; an
             update is followed through its switch and the page reloads onto the new release.</dd></dl>
@@ -1908,7 +1919,7 @@
             in the dashboard, and people sign in with a password.</li>
           <li><strong>The git provider.</strong> GitHub, GitLab (gitlab.com or your own), Bitbucket Cloud or Azure DevOps (with
             its organization): one for the whole Studio, the same forges Larapilot integrates with. See
-            <a href="#setup-git">The git provider</a>.</li>
+            <a href="#setup-git">The git hosts</a>.</li>
           <li><strong>Your token there.</strong> With the instructions on screen you create it; the script verifies it with the
             provider and stores it for your account. It clones and deploys project sites and creates new repositories. Every
             other person adds their own later.</li>
@@ -2156,7 +2167,7 @@
           <table>
             <thead><tr><th>Role</th><th>Can</th><th>Permission preset</th></tr></thead>
             <tbody>
-              <tr><td><strong>Administrator</strong></td><td>Everything: projects and their settings, MCP servers, people; a workspace on every project</td><td><code>acceptEdits</code></td></tr>
+              <tr><td><strong>Administrator</strong></td><td>Everything: projects and their settings, MCP servers, people; a workspace on every project; the <a href="#infra">infrastructure connectors</a>, which no other role sees</td><td><code>acceptEdits</code></td></tr>
               <tr><td><strong>PM</strong></td><td>Chat on their projects, approve; preview, changes and history, terminal and files of their own workspace</td><td><code>default</code>: Claude asks before commands and edits outside the automatic scope</td></tr>
               <tr><td><strong>Developer</strong></td><td>The same as a PM, with the developer's preset: implement, test, open pull requests</td><td><code>acceptEdits</code>: edits run, commands still ask</td></tr>
               <tr><td><strong>Client</strong></td><td>Look: the project site as preview, and its Larapilot dashboard; no chat, no workspace</td><td>—</td></tr>
@@ -2178,11 +2189,12 @@
       <section class="doc-section" id="setup-git">
         <div class="section-header">
           <span class="section-label">Set up</span>
-          <h2>The git provider</h2>
-          <p>One Studio works with one git provider, chosen in the installer: GitHub, GitLab, Bitbucket Cloud or Azure DevOps,
-            the same remote forges <a href="https://larapilot.web.ap.it/#deep-dive-integrations--remote-forges" target="_blank" rel="noopener">Larapilot
-            integrates with</a>. Every project is a repository there and every person connects a token for it. Studio never
-            mixes providers and keeps no history of a previous one.</p>
+          <h2>The git hosts</h2>
+          <p>Projects live on GitHub, GitLab, Bitbucket Cloud or Azure DevOps, the same remote forges
+            <a href="https://larapilot.web.ap.it/#deep-dive-integrations--remote-forges" target="_blank" rel="noopener">Larapilot
+            integrates with</a>, and on several of them at once: the installer picks the default one, <em>Administration →
+            Connectors → Git hosting</em> turns the others on. Every person adds their own accounts there, as many as they work
+            with (see <a href="#setup-connections">Git &amp; Claude</a>).</p>
         </div>
 
         <div class="table-card">
@@ -2197,18 +2209,20 @@
           </table>
         </div>
 
-        <p>The installer asks for the provider, the address of a self-managed GitLab or the Azure DevOps organization, checks
-          the administrator's token there and installs the provider's CLI. In every workspace the person's token is in the
+        <p>The installer asks for the default provider, the address of a self-managed GitLab or the Azure DevOps organization,
+          checks the administrator's token there (it becomes their first account) and installs the provider's CLI; the CLI of
+          another host is installed the first time a workspace on it needs it. In every workspace the token of the person's
+          account on the repository's host is in the
           environment three ways: for git, through the askpass helper and with the user name the provider expects
           (<code>x-access-token</code>, <code>oauth2</code>, <code>x-bitbucket-api-token-auth</code>); for the CLI; and for
           Larapilot's integration. A repository Studio creates gets that integration turned on in its first commit
           (<code>larapilot:settings-set --gitlab=YES</code> and so on); in an existing repository the team turns it on once and
           commits <code>.larapilot/config.yaml</code>.</p>
 
-        <div class="note"><strong>Changing provider.</strong> While Studio has no projects,
-          <code>php artisan studio:git-provider gitlab --url=https://git.example.com</code> on the server switches it and forgets
-          every token of the previous provider; <code>sudo studio-update ensure</code> then installs the new CLI. With projects
-          the provider stays: another provider means another Studio.</div>
+        <div class="note"><strong>Changing the default.</strong>
+          <code>php artisan studio:git-provider gitlab --url=https://git.example.com</code> on the server makes another host the
+          default, with projects too: nothing moves and nobody's accounts are forgotten. <code>sudo studio-update ensure</code>
+          then installs its CLI.</div>
 
         <h3 id="setup-git-github">GitHub</h3>
         <p><strong>Organizations.</strong> A new repository goes to your account or to an organization you belong to; the form
@@ -2241,7 +2255,7 @@
             and for administrators the new repositories and the webhook. <code>read_repository</code> and
             <code>write_repository</code> alone let git work, not merge requests.</li>
           <li><strong>Expiration.</strong> GitLab asks for a date. Replace the token in Studio before it expires.</li>
-          <li><strong>Copy it</strong> into <em>Settings → Connections</em>. It starts with <code>glpat-</code>.</li>
+          <li><strong>Copy it</strong> into <em>Tools → GitLab → My accounts</em>. It starts with <code>glpat-</code>.</li>
         </ol>
 
         <h3 id="setup-git-bitbucket">Bitbucket Cloud</h3>
@@ -2325,7 +2339,7 @@
         <p>Where a new repository can go depends on the provider: your account or one of your organizations on GitHub, your
           namespace or a group on GitLab, a workspace or one of its projects on Bitbucket, a project of the organization on
           Azure DevOps. Your token needs the right to create repositories there; the scopes are in
-          <a href="#setup-git">The git provider</a>. What lands in the new repository: <code>composer create-project
+          <a href="#setup-git">The git hosts</a>. What lands in the new repository: <code>composer create-project
           laravel/laravel</code> at its current release; <code>laravel/boost</code> and <code>andreapollastri/larapilot</code>
           as dev dependencies, with <code>larapilot:install</code> and <code>boost:install</code> run (Boost is always there:
           if its install fails, the project stops with the reason instead of going on without it); Larapilot's integration for
@@ -2370,8 +2384,9 @@
             it is never shown again.</li>
           <li><strong>They sign in</strong> with email and password, change it, and turn on two-factor in <em>Settings →
             Security</em>: an authenticator app or a passkey.</li>
-          <li><strong>They connect the git provider and Claude</strong> in <em>Settings → Connections</em>. Until both are there, a
-            project opens on a page that says so instead of a chat.</li>
+          <li><strong>They add their accounts</strong>: git in <em>Tools → GitHub</em> (GitLab, Bitbucket, Azure DevOps), Claude in
+            <em>Settings → Connections</em>. Until there is an account on the host of a project's repository and a Claude
+            account, the project opens on a page that says so instead of a chat.</li>
           <li><strong>They open a project.</strong> Studio shows the projects they are members of. The first open builds the
             workspace.</li>
         </ol>
@@ -2387,37 +2402,55 @@
         <div class="section-header">
           <span class="section-label">Set up</span>
           <h2>Git &amp; Claude</h2>
-          <p>Two credentials per person, stored encrypted, handed only to that person's workspaces.</p>
+          <p>Each person brings their own accounts, as many as they work with, stored encrypted and handed only to their own
+            workspaces; groups of projects say which ones each project uses.</p>
         </div>
 
         <figure class="shot">
-          <img src="img/connections.png" alt="Settings → Connections: the git provider token field with instructions, the Claude credential with its kind" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Settings → Connections.</strong> The instructions are on the page, for the provider of this Studio
-            (here GitHub): how to create the token, and <em>Sign in with Claude</em> or an API key for Claude.</figcaption>
+          <img src="img/connections.png" alt="Settings → Connections: the git accounts with their identities, the Claude accounts with their kind" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Settings → Connections.</strong> Every git account with the name and email its commits carry, every
+            Claude account (subscription or API key) with where it is used.</figcaption>
         </figure>
 
-        <h3>The git provider</h3>
-        <p>A personal token on the provider of this Studio, with the scopes in <a href="#setup-git">The git provider</a>.
-          Studio verifies it there, reads the login, and uses it as the person's handle: their previews are
-          <code>&lt;login&gt;-&lt;project&gt;.&lt;domain&gt;</code>, their Linux user on the server is <code>ws-&lt;login&gt;</code>
-          (on Azure DevOps the login is the e-mail address, and the handle its first part). Inside the workspace git pushes
-          and the provider's CLI opens pull requests as that person. The token never sits in a file git can read: an askpass
-          helper hands it to git from the environment, with the user name the provider expects.</p>
+        <h3>Git accounts</h3>
+        <p>Added in <em>Tools → GitHub</em> (GitLab, Bitbucket, Azure DevOps), with the scopes in
+          <a href="#setup-git">The git hosts</a>: a personal GitHub, the company's Azure DevOps organization, a client's
+          self-managed GitLab, another GitHub for work. Each one keeps its token and the <strong>identity its commits
+          carry</strong>: the name and email the provider gives (or the address it accepts for commits), which you can change,
+          so the company account commits as <code>you@company.com</code> and the personal one with your own address. Studio
+          verifies the token and reads the login; the first account's login also gives your handle, once: your previews are
+          <code>&lt;handle&gt;-&lt;project&gt;.&lt;domain&gt;</code> and your Linux user on the server is
+          <code>ws-&lt;handle&gt;</code>, whatever accounts come and go.</p>
+        <p>A workspace works with <strong>your account on the host of the project's repository</strong>: the one chosen for the
+          project, else the one of its group, else your account on that host. Git pushes and the provider's CLI opens pull
+          requests as that account, and the clone's <code>git config user.name / user.email</code> is its identity. The token
+          never sits in a file git can read: an askpass helper hands it to git from the environment, with the user name the
+          provider expects.</p>
 
-        <h3>Claude</h3>
-        <p>Either a subscription or an API key. With Claude Pro or Max: <em>Sign in with Claude</em> opens a terminal with
-          Claude Code's own <code>claude auth login</code>, running as you in your home on the server
-          (<code>/home/ws-&lt;login&gt;</code>). Open Anthropic's sign-in page, approve, paste the code back: the login stays in
-          your <code>~/.claude</code>, every workspace of yours uses it, and Studio never sees or keeps it. Anthropic does not
-          let a platform collect or forward claude.ai credentials, which is why Studio no longer takes a
-          <code>setup-token</code>; signing in to the unmodified Claude Code where a platform hosts it is what its terms allow.
-          With an Anthropic Console account: paste the API key; Studio keeps it encrypted and the bridge hands it to Claude
-          Code. The login files and the kept key are denied to the agent itself.</p>
-        <p>One or the other: signing in with Claude replaces an API key, and saving an API key signs you out of the
-          subscription on the server.</p>
+        <h3>Claude accounts</h3>
+        <p>Subscriptions and API keys, side by side; one is your <strong>default</strong>. For a Claude Pro, Max or Team plan,
+          <em>Add a Claude account → Subscription</em> opens a terminal with Claude Code's own <code>claude auth login</code>,
+          running as you in your home on the server, in a folder of its own for that account (<code>~/.claude</code> for the
+          first, <code>~/.claude-&lt;slug&gt;</code> for the others; they share your sessions, agents and skills). Open
+          Anthropic's sign-in page, approve with the Claude account of that plan, paste the code back: Studio never sees or
+          keeps the login. Anthropic does not let a platform collect or forward claude.ai credentials, which is why Studio
+          takes no <code>setup-token</code>; signing in to the unmodified Claude Code where a platform hosts it is what its
+          terms allow. With an Anthropic Console account, add the API key: Studio keeps it encrypted and sends it with each
+          message of the projects that use it. The login folders and the kept keys are denied to the agent itself.</p>
+        <p>The account goes with every message: changing it needs no restart, and a conversation resumes where it was on the
+          new account. The status bar of the chat says which account the next message runs on and why.</p>
 
-        <div class="note"><strong>Changing a token</strong> updates every workspace the person already has and restarts its
-          bridge. Removing one stops what depends on it: no git token, no new workspaces; no Claude, no chat.</div>
+        <h3 id="setup-groups">Groups of projects</h3>
+        <p>On <em>Projects</em>, <em>New group</em>: Personal, Open source, Work, Clients… Each person's groups are their own, in
+          the order they give them; a project moves in from its menu. A group picks the <strong>Claude account</strong> its
+          projects run on and the <strong>git account</strong> they push with; a git account applies only to the projects whose
+          repository lives on its host, the others keep the account on theirs. A project may pick its own accounts
+          (<em>Accounts for this project</em>), only for you: the other members work on it with theirs. Every card shows what
+          the project runs on, and why (chosen for the project, from the group, your default, your account on that host).</p>
+
+        <div class="note"><strong>Changing a git account</strong> (its token, or which one a project or group uses) restarts the
+          bridge of the workspaces it moves, and only those; a running conversation picks up where it was. Removing an account
+          stops what depends on it: no account on a project's host, no workspace there; no Claude account, no chat.</div>
       </section>
 
 <!-- Setup: site -->
@@ -3204,64 +3237,245 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </ul>
       </section>
 
+<!-- Tools: git hosting -->
+      <section class="doc-section" id="git">
+        <div class="section-header">
+          <span class="section-label">Tools</span>
+          <h2>Git hosting</h2>
+          <p><em>Tools → GitHub</em> (or GitLab, Bitbucket, Azure DevOps): what waits for you on the git hosts you work
+            with, and the actions to clear it, with your own accounts.</p>
+        </div>
+        <ol>
+          <li><strong>Which hosts.</strong> The installation's provider is in the menu from the start. <em>Administration →
+            Connectors → Git hosting</em> turns the others on (or that one off) for everyone; a host that is off is gone
+            from the menu and keeps everyone's accounts.</li>
+          <li><strong>Your accounts.</strong> On the host's page, <em>My accounts → Add an account</em>: a name
+            (<em>Personal</em>, <em>Work</em>, <em>Client X</em>), the token described below and, if you want, the name
+            and email your commits carry with that account. Left empty, Studio takes them from the provider (your primary
+            or commit email, or the provider's noreply address) and otherwise from your Studio profile. Add as many accounts
+            as you work with, on as many hosts; only you see them. The token you saved in <em>Settings →
+            Connections</em> before this release is already there as your first account.</li>
+          <li><strong>Work.</strong> Pick the account at the top. <em>Overview</em> lists what waits for you: pull requests
+            asking for your review, your open ones, issues assigned to you. The other tabs: pull requests and issues across
+            every repository (whose: waiting for my review, opened by me, assigned to me…; which state), notifications or
+            to-dos, and the repositories, each with its pull requests, issues, branches, pipelines and releases.</li>
+        </ol>
+        <div class="walkthrough-grid">
+          <dl><dt>Pull and merge requests</dt><dd>Read the description and the whole conversation, the changes (diff), comment,
+            approve or request changes, ask for reviewers, merge (merge commit, squash or rebase, deleting the branch),
+            close and reopen, edit title, description and labels.</dd></dl>
+          <dl><dt>Issues and work items</dt><dd>Read with the comments, comment, assign to yourself, edit title, description
+            and labels, close and reopen (Azure DevOps: change the state), create one in any repository.</dd></dl>
+          <dl><dt>Repositories</dt><dd>Create (in your namespace or an organisation, group, workspace or project), clone
+            addresses, archive, delete; branches (create from another, open a pull request from one, delete); pipelines
+            (start one on a branch, read the jobs, retry, cancel); releases (with notes, publish a draft, delete).</dd></dl>
+        </div>
+        <p>Titles open the page on the provider in a new tab. What Studio reads stays fresh for two minutes; whatever you do
+          from the page clears it. Every action is written to Studio's log with who did it and with which account.</p>
+      </section>
+
+      <section class="doc-section" id="git-github">
+        <div class="section-header">
+          <span class="section-label">Git hosting</span>
+          <h2>GitHub</h2>
+          <p>Overview, pull requests, issues, notifications, repositories with branches, Actions runs and releases.</p>
+        </div>
+        <ol>
+          <li><a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com → Settings → Developer
+            settings → Personal access tokens → Tokens (classic)</a> → <em>Generate new token (classic)</em>.</li>
+          <li>Scopes: <code>repo</code>, <code>workflow</code>, <code>read:org</code>, <code>user:email</code> (the commit email)
+            and <code>notifications</code>; administrators add <code>admin:repo_hook</code> (site deploys) and
+            <code>delete_repo</code> (to delete repositories from Studio). The same token clones and pushes in your
+            workspaces (<a href="#setup-git-github">The git hosts</a>).</li>
+          <li>A fine-grained token works too, for the repositories it names (Contents, Issues, Pull requests, Actions:
+            read and write; Metadata: read), but GitHub does not let it read notifications.</li>
+        </ol>
+        <p>Organisations with SAML single sign-on want the token authorised for them: <em>Configure SSO</em> next to it.</p>
+      </section>
+
+      <section class="doc-section" id="git-gitlab">
+        <div class="section-header">
+          <span class="section-label">Git hosting</span>
+          <h2>GitLab</h2>
+          <p>gitlab.com or a self-managed GitLab: overview, merge requests, issues, to-dos, projects with branches, pipelines
+            and releases.</p>
+        </div>
+        <ol>
+          <li>GitLab → <em>Preferences → Access tokens → Add new token</em>, with an expiry date.</li>
+          <li>Scope <code>api</code> (everything on this page). <code>read_api</code> lets you look without acting.</li>
+          <li>In Studio: the token and, for a self-managed GitLab, its address (<code>https://gitlab.example.com</code>).</li>
+        </ol>
+        <p>Merging <em>when the pipeline succeeds</em> sets auto-merge; deleting a project follows the instance's
+          delayed-deletion setting.</p>
+      </section>
+
+      <section class="doc-section" id="git-bitbucket">
+        <div class="section-header">
+          <span class="section-label">Git hosting</span>
+          <h2>Bitbucket</h2>
+          <p>Bitbucket Cloud: overview, your pull requests and those waiting for your review, repositories with pull requests,
+            issues, branches and Pipelines.</p>
+        </div>
+        <ol>
+          <li><a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener">Atlassian
+            account → Security → API tokens</a> → <em>Create API token with scopes</em>, app <em>Bitbucket</em>.</li>
+          <li>Scopes: read and write on repositories, pull requests, issues and pipelines; read on account (the commit email)
+            and workspace membership; delete on repositories only to delete them from Studio.</li>
+        </ol>
+        <p>Bitbucket has no list of the pull requests waiting for your review: Studio looks for them in the 20 repositories
+          updated last. Issues show for the repositories whose issue tracker is on.</p>
+      </section>
+
+      <section class="doc-section" id="git-azure">
+        <div class="section-header">
+          <span class="section-label">Git hosting</span>
+          <h2>Azure DevOps</h2>
+          <p>One organization per account: overview, pull requests and your votes, work items, repositories with branches and
+            pipelines.</p>
+        </div>
+        <ol>
+          <li><code>https://dev.azure.com/&lt;organization&gt;</code> → <em>User settings → Personal access tokens → New
+            Token</em>, for that organization.</li>
+          <li>Scopes: Code (read, write and manage), Work items (read and write), Build (read and execute), Project and team
+            (read).</li>
+          <li>In Studio: the organization's address and the token. Another organization is another account.</li>
+        </ol>
+        <p>Votes are those of Azure DevOps (approve, approve with suggestions, wait for author, reject); <em>Complete</em>
+          merges now or sets auto-complete for when the branch policies pass. Pull requests across the organization are
+          read from its first 20 projects, or from the one picked in the filter.</p>
+      </section>
+
 <!-- Infrastructure -->
       <section class="doc-section" id="infra">
         <div class="section-header">
           <span class="section-label">Infrastructure</span>
           <h2>Connectors</h2>
           <p>The clouds and services your servers run on, driven from Studio through their APIs: AWS, DigitalOcean, Hetzner,
-            Cloudflare, Cipi, Boogle and Hackly. Each holds any number of accounts.</p>
+            Cloudflare, Cipi, Boogle and Hackly. Servers, DNS, firewalls, volumes, databases, apps, deploys, exceptions and
+            security findings, without opening seven consoles.</p>
         </div>
+        <div class="walkthrough-grid">
+          <dl><dt>For administrators</dt><dd>Connectors exist only for administrators. PMs, developers and clients never see
+            the menu, the pages or the accounts, whatever their projects.</dd></dl>
+          <dl><dt>On or off</dt><dd>A connector is off until an administrator turns it on. Only the ones that are on appear in
+            the menu, under <em>Infrastructure</em>, between <em>Studio</em> and <em>Tools</em>.</dd></dl>
+          <dl><dt>Many accounts</dt><dd>Each connector holds any number of accounts: several AWS accounts, a DigitalOcean team
+            per client, a Hetzner project each, one Cipi server each, several Boogle or Hackly instances.</dd></dl>
+          <dl><dt>Credentials</dt><dd>Checked against the provider before they are saved, stored encrypted with
+            <code>APP_KEY</code>, never shown again and never sent to the browser.</dd></dl>
+        </div>
+
+        <h3 id="infra-enable">Turn a connector on</h3>
         <ol>
-          <li><strong>Turn it on.</strong> <em>Administration → Connectors</em>: switch a connector on. Connectors are for the
-            administrators only: PMs, developers and clients never see them. Only connectors that are on appear in the menu, under
-            <em>Infrastructure</em> between <em>Studio</em> and <em>Tools</em>; the others are nowhere to be seen.</li>
-          <li><strong>Add the accounts.</strong> Open the connector and press <em>Accounts</em> (administrators only): a name
-            (<em>Production</em>, <em>Client X</em>) and the credentials described below for each provider. Studio checks
-            them against the provider before saving, stores them encrypted with <code>APP_KEY</code> and never shows a secret
-            again: to change one, type the new one; leave it empty to keep it.</li>
-          <li><strong>Work.</strong> Pick the account at the top, then a tab: each list has its search, filters (the region for
-            AWS, the account for Cloudflare, the status for Boogle and Hackly), a button to create one more and a menu of
-            actions on every row. What Studio reads stays fresh for two minutes; whatever you do from the page clears it.</li>
+          <li><em>Administration → Connectors</em>. Each card says what the connector drives and how many accounts it has.</li>
+          <li>Flip the switch. The connector shows in the menu right away; <em>Open</em> (or <em>Add an account</em> when it has
+            none) takes you to its page.</li>
+          <li>Turning it off removes it from the menu and closes its pages at the next click. Its accounts stay, ready for when
+            it is turned on again; delete them from the connector page if they should go.</li>
         </ol>
-        <div class="note"><strong>Who can do what.</strong> Every administrator can do, on a connector's accounts, everything their
-          credentials allow, after typing their password again as for the SSH terminal. Give every account the narrowest
-          token that does the job. Destructive actions ask first; every
-          action goes to Studio's log (<code>storage/logs</code>) with who, which account and on what.</div>
-        <p>Work a provider runs in the background (a Cipi deploy, a new server) shows its result when it is quick; otherwise
-          the result window offers <em>Check again</em>. Secrets a provider hands over once (a new root password, a generated
-          private key, a database password) are shown once, with a copy button: save them where they belong, for instance in
-          the <a href="#tools-passwords">Password manager</a>.</p>
+
+        <h3 id="infra-accounts">Accounts</h3>
+        <p>On a connector's page, <em>Accounts</em> (top right) lists the accounts with their state (<em>working</em> or
+          <em>failing</em>, what the provider answered, when it was last checked) and opens the form.</p>
+        <ul>
+          <li><strong>Add</strong>: <em>Add an account</em>, a name the team recognises (<em>Production</em>,
+            <em>Client X</em>, <em>eu-server-2</em>), the credentials the provider's page below describes, then <em>Check and
+            save</em>. Studio calls the provider with them first: a wrong or too weak token is refused with the provider's own
+            words and nothing is saved.</li>
+          <li><strong>Check</strong>: the signal button asks the provider again, for instance after changing the token's
+            permissions there.</li>
+          <li><strong>Rotate a token</strong>: create the new one at the provider, <em>Edit</em> the account, paste it, save;
+            then revoke the old one at the provider. Secret fields are empty in the form: left empty, the stored value stays.</li>
+          <li><strong>Remove</strong>: deletes the account from Studio. The token still works at the provider until you revoke
+            it there.</li>
+        </ul>
+        <p>The links in the form lead to the page of this guide for that provider and to the provider's own documentation.</p>
+
+        <h3 id="infra-page">Working on a connector page</h3>
+        <ol>
+          <li><strong>Account</strong>: the menu at the top picks the account; the arrow next to it reads everything again from
+            the provider.</li>
+          <li><strong>Tabs</strong>: one per kind of thing (Droplets, Zones, Apps…). AWS has many, so they come in groups
+            (<em>Account</em>, <em>EC2</em>, <em>Lightsail</em>, <em>Databases</em>, <em>Storage &amp; CDN</em>,
+            <em>Route 53</em>): the first row picks the group, the second the tab.</li>
+          <li><strong>Search and filters</strong>: the search box filters what is on screen; filters ask the provider again:
+            the region for AWS, the Cloudflare account, the status of Boogle exceptions and Hackly findings.</li>
+          <li><strong>Create</strong>: the dark button on the right (<em>New Droplet</em>, <em>Add a zone</em>, <em>New
+            app</em>…) opens a form. Choices such as regions, sizes, images, SSH keys or servers come from the provider for
+            the account and region picked.</li>
+          <li><strong>Row actions</strong>: the <em>…</em> menu at the end of a row holds what can be done on it; only the
+            actions that make sense in its state show (no <em>Start</em> on a running server). Buttons on the row itself open
+            what lives inside it, such as the DNS records of a zone or the aliases of a Cipi app; the arrow at the top left
+            goes back.</li>
+          <li><strong>Confirmations</strong>: anything that stops, deletes or overwrites asks first, in words that say what
+            will happen. Actions with a form ask when the form is sent.</li>
+          <li><strong>Results</strong>: what an action hands back (a new root password, a generated private key, a database
+            password, the nameservers to set, a TXT record to publish, logs, a zone file) opens in a window with
+            <em>Copy</em>. Secrets are shown once: store them, for instance in the
+            <a href="#tools-passwords">Password manager</a>. When the provider is still working in the background (a Cipi
+            deploy, for instance), the window says so and <em>Check again</em> asks once more.</li>
+        </ol>
+        <p>Lists are cached for two minutes per account, so moving between tabs is quick and providers' rate limits are spared;
+          every action from the page, and the refresh arrow, clear the cache of that account. A change made in the provider's
+          own console shows here within two minutes, or at once with the arrow.</p>
+
+        <div class="note"><strong>Safety.</strong> Every administrator can do, on every connector account, everything its
+          credentials allow. The pages ask for your password again, as the SSH terminal does. Give each account the
+          narrowest token that does its job (read only where nobody needs to act), and keep tokens with an expiry where the
+          provider offers one. Every action is written to Studio's log, <code>/opt/studio/shared/storage/logs/laravel.log</code>
+          on the server, as an <code>infrastructure</code> line with the person, the connector, the account, the tab, the
+          action and the row: <code>grep '"infrastructure"' laravel.log</code>.</div>
+
+        <h3 id="infra-troubleshooting">When something does not work</h3>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Studio says</th><th>Why</th><th>What to do</th></tr></thead>
+            <tbody>
+              <tr><td><em>Refused (401): check the credentials</em></td><td>The token is wrong, expired or revoked</td><td>Create a new one and <em>Edit</em> the account</td></tr>
+              <tr><td><em>Not allowed (403): the token lacks a permission</em></td><td>The token works but may not do this</td><td>Add the permission at the provider (see its page below), then <em>Check</em></td></tr>
+              <tr><td><em>Not reachable</em></td><td>The address is wrong, the host is down, or a firewall or IP allowlist stops Studio's server</td><td>Check the address; allow Studio's IP (Cipi: <code>cipi api ip-whitelist add</code>)</td></tr>
+              <tr><td>An AWS code such as <em>UnauthorizedOperation</em> or <em>AccessDenied</em></td><td>The IAM policy lacks that action</td><td>Add it to the policy below</td></tr>
+              <tr><td><em>That is no longer in the list. Refreshed.</em></td><td>The row changed or went away at the provider since the page was drawn</td><td>Look at the refreshed list and try again</td></tr>
+              <tr><td>An empty list where you expect things</td><td>Another account, region or filter</td><td>Check the account at the top and the filters; AWS lists one region at a time</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section class="doc-section" id="infra-aws">
         <div class="section-header">
           <span class="section-label">Infrastructure</span>
           <h2>AWS</h2>
-          <p>One Studio account per AWS account, signed with an IAM access key.</p>
+          <p>One Studio account per AWS account, signed with the access key of an IAM user made for Studio. Studio signs its
+            requests itself (Signature Version 4), no SDK and no CLI on the server.</p>
         </div>
         <div class="walkthrough-grid">
           <dl><dt>EC2</dt><dd>Instances: launch (newest Ubuntu LTS or any AMI, type, key pair, security group, subnet, disk,
-            cloud-init), start, stop, reboot, terminate, change type, image (AMI), console output, termination protection.
-            Key pairs (generate, import), security groups (open and close ports), Elastic IPs, EBS volumes (attach, detach,
-            snapshot, resize), AMIs.</dd></dl>
-          <dl><dt>Lightsail, all of it</dt><dd>Instances (create, power, snapshots, firewall ports, SSH access), instance and
-            disk snapshots (restore to a new instance or disk), static IPs, disks, key pairs, managed databases (power,
-            snapshot, master password, public access), load balancers, container services, buckets (public or private,
-            plan, access keys), DNS zones and records, distributions (CDN), certificates, alarms, the operations log.</dd></dl>
-          <dl><dt>More</dt><dd>RDS (start, stop, reboot, snapshot, class), S3 buckets (create, delete, region), Route 53 zones
-            and records, CloudFront (invalidate), the cost of the month by service (Cost Explorer, $0.01 a request).</dd></dl>
+            cloud-init), start, stop, reboot, terminate, change type, create an image, console output, termination
+            protection. Key pairs (generate, import), security groups (open and close ports), Elastic IPs, EBS volumes
+            (attach, detach, snapshot, resize), AMIs.</dd></dl>
+          <dl><dt>Lightsail, all of it</dt><dd>Instances (create, power, snapshots, firewall ports, SSH access details),
+            instance and disk snapshots (restore to a new instance or disk), static IPs, disks, key pairs, managed databases
+            (power, snapshot, master password, public access), load balancers, container services, buckets (public or
+            private, plan, access keys), DNS zones and records, distributions (CDN), certificates, alarms, the operations
+            log.</dd></dl>
+          <dl><dt>The rest</dt><dd>RDS (start, stop, reboot, snapshot, class), S3 buckets (create, delete, region), Route 53
+            zones and records, CloudFront (invalidate), and on <em>Overview</em> the identity and the cost of the month by
+            service (Cost Explorer charges $0.01 a request, so it is a button).</dd></dl>
         </div>
+
         <h3>The credentials</h3>
         <ol>
-          <li>In the AWS console: <em>IAM → Users → Create user</em>, for instance <code>studio</code>, without console access.</li>
-          <li>Permissions: attach the policy below (as an inline policy, or a customer managed one), or for a look-only account
-            AWS's <code>ReadOnlyAccess</code>.</li>
+          <li>AWS console → <em>IAM → Users → Create user</em>, for instance <code>studio</code>, without access to the
+            console.</li>
+          <li><em>Permissions → Add permissions → Create inline policy → JSON</em>: paste the policy below, name it
+            <code>studio</code>. For an account the team only looks at, attach AWS's <code>ReadOnlyAccess</code> instead.</li>
           <li>The user's <em>Security credentials → Create access key</em>, use case <em>Application running outside AWS</em>.
-            Copy the <strong>Access key ID</strong> (<code>AKIA…</code>) and the <strong>Secret access key</strong>: the
-            secret is shown once.</li>
-          <li>In Studio: both keys and the <strong>default region</strong> (the region filter on each tab switches it). The
-            <strong>session token</strong> is only for temporary credentials (STS, SSO), which expire.</li>
+            Copy the <strong>Access key ID</strong> (<code>AKIA…</code>) and the <strong>Secret access key</strong>: AWS
+            shows the secret once.</li>
+          <li>In Studio: both keys and the <strong>Default region</strong>, the one most of your servers are in (each tab's
+            region filter switches to another). The <strong>Session token</strong> is only for temporary credentials (STS,
+            IAM Identity Center), which expire within hours: prefer the IAM user.</li>
         </ol>
 <pre><code>{
   "Version": "2012-10-17",
@@ -3279,110 +3493,187 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
     "Resource": "*"
   }]
 }</code></pre>
-        <p>Drop what the team does not use: without <code>rds:*</code> the RDS tab says so and the rest keeps working.
-          Lightsail creates a service-linked role the first time you make a database or a container service; if AWS refuses
-          it, add <code>iam:CreateServiceLinkedRole</code>.</p>
+        <p>Keep only what the team uses: without the <code>rds:</code> lines the RDS tab shows AWS's refusal and everything
+          else works. The first Lightsail database or container service needs a service-linked role; if AWS refuses it, add
+          <code>"iam:CreateServiceLinkedRole"</code>. To rotate, create a second access key on the same user (AWS allows
+          two), edit the account in Studio, then deactivate and delete the old key.</p>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>A new EC2 server with a fixed IP</strong>: <em>EC2 → Key pairs → Import a public key</em> (once);
+            <em>Security groups → New security group</em>, then <em>Open a port</em> for 22, 80 and 443; <em>EC2 instances →
+            Launch an instance</em> with that key and group; <em>Elastic IPs → Allocate an IP</em>, then
+            <em>Associate</em> with the instance.</li>
+          <li><strong>A Lightsail server with its domain</strong>: <em>Lightsail → Instances → New instance</em>; <em>Static
+            IPs → Allocate a static IP → Attach</em>; <em>DNS zones → New DNS zone</em>, set the nameservers it shows at the
+            registrar, then <em>Records → New record</em> (A, the static IP).</li>
+          <li><strong>Before a risky change</strong>: <em>Snapshot</em> in the instance's menu (Lightsail), or <em>Create an
+            image (AMI)</em> (EC2); restore from <em>Instance snapshots → New instance from it</em>.</li>
+          <li><strong>After a deploy</strong>: <em>Storage &amp; CDN → CloudFront → Invalidate</em> with <code>/*</code>, or
+            <em>Lightsail → Distributions → Reset the cache</em>.</li>
+        </ul>
       </section>
 
       <section class="doc-section" id="infra-digitalocean">
         <div class="section-header">
           <span class="section-label">Infrastructure</span>
           <h2>DigitalOcean</h2>
-          <p>One Studio account per team, with a personal access token.</p>
+          <p>One Studio account per team, with a personal access token of that team.</p>
         </div>
         <p>Droplets (create with region, size, image, SSH keys, backups, IPv6, monitoring, tags, cloud-init; power on, shut
           down, reboot, power cycle, power off, snapshot, resize, rename, rebuild, backups, root password reset, destroy),
           domains and DNS records, SSH keys, firewalls (create, apply to Droplets), volumes (attach, detach, resize),
           snapshots, reserved IPs, load balancers, managed databases (connection details, backups, databases inside), App
-          Platform (deploy, deployments, spec), Kubernetes (kubeconfig, node pools), the balance of the month.</p>
+          Platform (deploy, deployments, spec), Kubernetes (kubeconfig, node pools), the usage and balance of the month.</p>
+
+        <h3>The credentials</h3>
         <ol>
-          <li><a href="https://cloud.digitalocean.com/account/api/tokens" target="_blank" rel="noopener">cloud.digitalocean.com → API → Tokens</a>,
-            in the team to drive (switch team at the top left first), <em>Generate New Token</em>.</li>
-          <li>An expiration you are happy with and <strong>Full Access</strong>, or <em>Custom Scopes</em> with read and write
-            on: droplet, domain, ssh_key, firewall, block_storage, snapshot, reserved_ip, load_balancer, database, app,
-            kubernetes, plus read on account, billing, regions, sizes and image.</li>
-          <li>Copy the token (<code>dop_v1_…</code>, shown once) into Studio's <strong>Personal access token</strong>.</li>
+          <li><a href="https://cloud.digitalocean.com/account/api/tokens" target="_blank" rel="noopener">cloud.digitalocean.com → API → Tokens</a>:
+            switch to the team to drive first (top left), then <em>Generate New Token</em>.</li>
+          <li>A name (<code>studio</code>), an expiration, and <strong>Full Access</strong>; or <em>Custom Scopes</em> with
+            read and write on droplet, domain, ssh_key, firewall, block_storage, snapshot, reserved_ip, load_balancer,
+            database, app and kubernetes, plus read on account, billing, regions, sizes and image.</li>
+          <li>Copy the token (<code>dop_v1_…</code>, shown once) into <strong>Personal access token</strong>. One account per
+            team; when the token expires, generate a new one and edit the account.</li>
         </ol>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>A new server</strong>: <em>SSH keys → Add a key</em> (once); <em>Droplets → New Droplet</em> with
+            region, size, image and the key; <em>Firewalls → New firewall</em> with <code>22, 80, 443</code> and the
+            Droplet.</li>
+          <li><strong>Its domain</strong>: <em>Domains → Add a domain</em> (with the Droplet's IP for the apex), set the
+            nameservers <code>ns1–ns3.digitalocean.com</code> at the registrar, then <em>DNS records → New record</em> for
+            <code>www</code>.</li>
+          <li><strong>Bigger</strong>: <em>Shut down</em>, <em>Resize</em> (tick the disk only if you will never go back),
+            <em>Power on</em>.</li>
+        </ul>
       </section>
 
       <section class="doc-section" id="infra-hetzner">
         <div class="section-header">
           <span class="section-label">Infrastructure</span>
           <h2>Hetzner</h2>
-          <p>Hetzner Cloud: a token belongs to one project, so one Studio account per project.</p>
+          <p>Hetzner Cloud. A token belongs to one project, so each project is a Studio account of its own.</p>
         </div>
-        <p>Servers (create with type, location, image, SSH keys, firewalls, IPv4/IPv6, backups, cloud-init, with the root
-          password shown once when no key is given; power on, shut down, reboot, reset, power off, snapshot, change type,
-          rename, rescue mode, root password reset, rebuild, backups, protection, delete), SSH keys, firewalls (ports and
-          the servers they apply to), volumes, floating and primary IPs, networks, load balancers, snapshots and backups,
-          managed certificates, DNS zones and record sets.</p>
+        <p>Servers (create with type, location, image, SSH keys, firewalls, IPv4/IPv6, backups, cloud-init; power on, shut
+          down, reboot, reset, power off, snapshot, change type, rename, rescue mode, root password reset, rebuild, backups,
+          protection, delete), SSH keys, firewalls (inbound ports and the servers they apply to), volumes, floating and
+          primary IPs, networks, load balancers, snapshots and backups, managed certificates, DNS zones and record sets.</p>
+
+        <h3>The credentials</h3>
         <ol>
           <li><a href="https://console.hetzner.com/" target="_blank" rel="noopener">console.hetzner.com</a> → the project →
             <em>Security → API tokens → Generate API token</em>.</li>
-          <li>A description and <strong>Read &amp; Write</strong> (<em>Read</em> lets Studio list but not act).</li>
-          <li>Copy the token (shown once) into Studio's <strong>API token</strong>. Repeat for every project, each as its own
-            account.</li>
+          <li>A description (<code>studio</code>) and <strong>Read &amp; Write</strong>; <em>Read</em> lists but cannot act.</li>
+          <li>Copy the token (shown once) into <strong>API token</strong>. Name the Studio account after the project.</li>
         </ol>
-        <p>DNS zones are those of the project in Hetzner's Console (the DNS that moved into the Cloud API); zones still on the
-          old dns.hetzner.com are not seen until moved.</p>
+        <p>DNS zones are the project's zones in Hetzner Console (DNS inside the Cloud API). Zones still on the old
+          dns.hetzner.com do not show until they are moved to the Console.</p>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>A new server</strong>: <em>SSH keys → Add a key</em>; <em>Firewalls → New firewall</em> with
+            <code>22, 80, 443</code>; <em>Servers → New server</em> with type, location, image, the key and the firewall.
+            Without a key Hetzner sets a root password, which Studio shows once.</li>
+          <li><strong>Locked out of a server</strong>: <em>Rescue mode</em> (Studio shows the rescue root password), then
+            <em>Reboot</em>; fix it over SSH; <em>Leave rescue mode</em> and reboot again.</li>
+          <li><strong>Open one more port</strong>: <em>Firewalls → Inbound ports</em> and edit the list; it replaces the rules
+            of that firewall.</li>
+        </ul>
       </section>
 
       <section class="doc-section" id="infra-cloudflare">
         <div class="section-header">
           <span class="section-label">Infrastructure</span>
           <h2>Cloudflare</h2>
-          <p>One Studio account per API token; a token may reach several Cloudflare accounts.</p>
+          <p>One Studio account per API token. A token can reach several Cloudflare accounts: the account tabs have a filter
+            to pick one.</p>
         </div>
         <p>Zones (add, with the nameservers to set; purge everything or some URLs; SSL/TLS mode, Always use HTTPS, minimum TLS,
-          security level and <em>I'm under attack</em>, development mode, Brotli; pause, activation check, delete), DNS records
-          (create, edit, proxy on and off, delete, export as BIND), Workers, Pages (deploy, deployments), R2 buckets and
-          tunnels (create, install command, public hostnames).</p>
+          security level and <em>I'm under attack</em>, development mode, Brotli; current settings; pause, activation check,
+          delete), DNS records (create, edit, proxy on and off, delete, export as BIND), Workers, Pages (deploy, recent
+          deployments), R2 buckets and tunnels (create, the command that runs them, public hostnames).</p>
+
+        <h3>The credentials</h3>
         <ol>
           <li><a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com → My Profile → API Tokens</a>
-            → <em>Create Token → Custom token</em>. Not the Global API Key.</li>
-          <li>Permissions, keeping only what you need:
+            → <em>Create Token → Create Custom Token</em>. Not the Global API Key, which Studio does not accept.</li>
+          <li>Permissions, keeping only the rows you need:
             <div class="table-card">
               <table>
                 <thead><tr><th>Scope</th><th>Permission</th><th>For</th></tr></thead>
                 <tbody>
                   <tr><td>Zone</td><td>Zone: Edit · Zone Settings: Edit · DNS: Edit · Cache Purge: Purge</td><td>Zones, settings, records, purge</td></tr>
-                  <tr><td>Account</td><td>Account Settings: Read</td><td>Listing the accounts</td></tr>
-                  <tr><td>Account</td><td>Workers Scripts: Edit · Cloudflare Pages: Edit · Workers R2 Storage: Edit · Cloudflare Tunnel: Edit</td><td>The account tabs</td></tr>
+                  <tr><td>Account</td><td>Account Settings: Read</td><td>Listing the accounts (needed)</td></tr>
+                  <tr><td>Account</td><td>Workers Scripts: Edit · Cloudflare Pages: Edit · Workers R2 Storage: Edit · Cloudflare Tunnel: Edit</td><td>The Workers, Pages, R2 and Tunnels tabs</td></tr>
                 </tbody>
               </table>
             </div>
           </li>
-          <li>Zone resources: <em>All zones from an account</em> (or the zones to drive); account resources: the account(s).</li>
-          <li>Copy the token (shown once) into Studio's <strong>API token</strong>.</li>
+          <li><em>Account Resources</em>: the account(s) to drive; <em>Zone Resources</em>: <em>All zones from an account</em>,
+            or only some zones. An expiry (<em>TTL</em>) is a good idea.</li>
+          <li>Copy the token (shown once) into <strong>API token</strong>.</li>
         </ol>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>Move a domain to Cloudflare</strong>: <em>Zones → Add a zone</em> (the existing records are imported);
+            set the two nameservers Studio shows at the registrar; <em>Check activation</em> until the zone is active; then
+            <em>Settings</em> → SSL/TLS <em>Full (strict)</em> and <em>Always use HTTPS</em>.</li>
+          <li><strong>Under attack</strong>: the zone's <em>Settings</em> → Security level <em>I'm under attack</em>; back to
+            <em>Medium</em> when it is over.</li>
+          <li><strong>After a deploy</strong>: <em>Purge everything</em>, or <em>Purge URLs</em> for a few files.</li>
+        </ul>
+        <p><em>Deploy</em> on Pages builds the production branch again, for projects connected to git; projects uploaded by
+          hand deploy from where they are built.</p>
       </section>
 
       <section class="doc-section" id="infra-cipi">
         <div class="section-header">
           <span class="section-label">Infrastructure</span>
           <h2>Cipi</h2>
-          <p>Servers run with <a href="https://cipi.sh/" target="_blank" rel="noopener">Cipi</a>, one Studio account per
-            server, through the Cipi API, the same the Cipi GUI uses for its fleet.</p>
+          <p>Servers run with <a href="https://cipi.sh/" target="_blank" rel="noopener">Cipi</a>: one Studio account per
+            server, through the Cipi API, the same the Cipi GUI uses to manage a fleet.</p>
         </div>
-        <p>The server's status and disk; apps (create Laravel, custom or Octane apps; deploy, roll back, unlock, deploy
-          history, aliases, SSL with HTTP or Cloudflare DNS-01 and wildcards, force HTTPS, www redirect, Artisan, whitelisted
-          commands, logs, <code>.env</code> read and set, edit domain/PHP/repository/branch, password protection, health
-          check, limits, fix permissions, suspend, delete), databases (create, backup, new password), services (restart),
-          the cipi user's SSH keys, PHP versions (install).</p>
+        <p>The server's status, services, PHP and disk by app; apps (create Laravel, custom or Octane apps; deploy, roll back,
+          unlock, deploy history, aliases, SSL over HTTP or Cloudflare DNS-01 with wildcards, force HTTPS, www redirect,
+          Artisan, whitelisted commands, logs, <code>.env</code> read and set, edit domain, PHP, repository and branch,
+          password protection, health check, limits, fix permissions, suspend, delete), databases (create, backup, new
+          password), services (restart), the cipi user's SSH keys, PHP versions (install).</p>
+
+        <h3>The credentials</h3>
         <ol>
-          <li>On the server, as root, install the API on a host of its own if it is not there yet:
-            <code>cipi api api.server.example.com</code>, then <code>cipi api ssl</code> for its certificate (point the host's
-            DNS to the server first).</li>
-          <li>Create a token: <code>cipi api token create</code>, choosing the abilities when asked
-            (<code>php artisan cipi:token-abilities</code> lists them). For full control: apps-view,
-            apps-create, apps-edit, apps-delete, apps-suspend, apps-basicauth, apps-env, apps-artisan, apps-run,
-            deploy-manage, aliases-view, aliases-create, aliases-delete, ssl-manage, www-manage, dbs-view, dbs-create,
-            dbs-manage, services-view, services-manage, ssh-view, ssh-manage, php-view, php-manage, health-view,
-            status-view, disk-view. Fewer abilities: the matching tabs and actions answer 403.</li>
-          <li>If the API's IP whitelist is on, allow Studio's server: <code>cipi api ip-whitelist add &lt;Studio's IP&gt;</code>.</li>
-          <li>In Studio: the <strong>API address</strong> (<code>https://api.server.example.com</code>) and the
-            <strong>API token</strong>. One account per server.</li>
+          <li>Point a host of the server to it in DNS, for instance <code>api.server1.example.com</code>.</li>
+          <li>On the server, as root: <code>cipi api api.server1.example.com</code>, then <code>cipi api ssl</code> for its
+            certificate.</li>
+          <li><code>cipi api token create</code>, choosing the abilities when asked (<code>php artisan cipi:token-abilities</code>
+            lists them). For everything Studio does: apps-view, apps-create, apps-edit, apps-delete, apps-suspend,
+            apps-basicauth, apps-env, apps-artisan, apps-run, deploy-manage, aliases-view, aliases-create, aliases-delete,
+            ssl-manage, www-manage, dbs-view, dbs-create, dbs-manage, services-view, services-manage, ssh-view, ssh-manage,
+            php-view, php-manage, health-view, status-view, disk-view. With fewer, the matching tabs and actions answer
+            403.</li>
+          <li>If the API's IP allowlist is in use, add Studio's server: <code>cipi api ip-whitelist add &lt;Studio's IP&gt;</code>.</li>
+          <li>In Studio: the <strong>API address</strong> (<code>https://api.server1.example.com</code>) and the
+            <strong>API token</strong>. Name the account after the server. Revoke an old token with
+            <code>cipi api token list</code> and <code>cipi api token revoke &lt;id&gt;</code>.</li>
         </ol>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>A new Laravel app</strong>: <em>Apps → New app</em> with user, domain, repository (SSH address), branch,
+            PHP and database. The result window holds the app's SSH and database passwords, the deploy key and the webhook:
+            save them, add the deploy key to the repository, the webhook to the git provider. Then <em>Deploy</em>, then
+            <em>Install SSL</em>.</li>
+          <li><strong>One more domain</strong>: the app's <em>Aliases → Add an alias</em>, then <em>Install SSL</em> again so
+            the certificate covers it; <em>www redirect</em> chooses between www and the bare domain.</li>
+          <li><strong>Something broke after a deploy</strong>: <em>Logs</em> (Laravel, nginx, PHP-FPM, workers, deploy), then
+            <em>Roll back</em>; <em>Unlock the deploy</em> only when a deploy is stuck.</li>
+          <li><strong>A setting</strong>: <em>Set .env keys</em> (<code>KEY=value</code> per line), then deploy or run
+            <em>Artisan</em> <code>config:cache</code>.</li>
+        </ul>
+        <p>Most changes run as jobs on the server: Studio waits a few seconds and shows the result; for longer ones (a first
+          deploy, an SSL certificate) the window offers <em>Check again</em>.</p>
       </section>
 
       <section class="doc-section" id="infra-boogle">
@@ -3392,15 +3683,25 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <p><a href="https://boogle.web.ap.it/" target="_blank" rel="noopener">Boogle</a>, the exception tracker and uptime
             monitor: one Studio account per instance.</p>
         </div>
-        <p>Exceptions and outages of every project or of one (filter by status and project; details; mark as open, read,
-          fixed or done, with a note), projects (create, edit, delete, installation keys for the app), groups and their
-          issue prefixes.</p>
+        <p>Exceptions and outages of every project or of one (filters by status and project; details; mark as open, read,
+          fixed or done, with an optional note), projects (create, edit, delete, the installation keys for the app), groups
+          and their issue prefixes.</p>
+
+        <h3>The credentials</h3>
         <ol>
           <li>On the Boogle panel, signed in as an <strong>administrator</strong>: <em>Profile → API tokens</em>, create a
-            token. The admin API answers only to administrators' tokens.</li>
-          <li>In Studio: the <strong>address</strong> of the instance (<code>https://boogle.example.com</code>) and the
+            token named <code>studio</code>. Boogle's admin API answers only to administrators' tokens.</li>
+          <li>In Studio: the <strong>Address</strong> of the instance (<code>https://boogle.example.com</code>) and the
             <strong>API token</strong>.</li>
         </ol>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>Morning triage</strong>: <em>Exceptions</em> opens on the open ones; <em>Details</em> for the stack,
+            then <em>Mark as Read</em>, or <em>Change status with a note</em> to say who takes it.</li>
+          <li><strong>Watch a new app</strong>: <em>Projects → New project</em> with its address and uptime URL; the result
+            window holds the key, the token and the endpoint the app's Boogle client needs.</li>
+        </ul>
       </section>
 
       <section class="doc-section" id="infra-hackly">
@@ -3410,18 +3711,29 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <p><a href="https://hackly.web.ap.it/" target="_blank" rel="noopener">Hackly</a>, the security scanner: one Studio
             account per instance.</p>
         </div>
-        <p>Posture, compliance and scanners (weekly digest, re-probe), findings (filter by status and severity; details,
-          Markdown, a fix prompt for the agent, triage with a note, read-only share links), targets (add, DNS TXT
+        <p>Posture, compliance and scanners (weekly digest, re-probe), findings (filters by status and severity; details,
+          Markdown, a fix prompt to hand to the agent, triage with a note, read-only share links), targets (add, DNS TXT
           verification, scan with a profile, linked repositories, pause, delete), repositories (add, scan, refresh, links),
           target and repository scans (report, cancel, run again), penetration tests (authorize, check the TXT, start),
           GitHub tokens.</p>
+
+        <h3>The credentials</h3>
         <ol>
-          <li>On Hackly: <em>Profile → API tokens</em>, a token with the <strong>write</strong> ability (<em>read</em> only
-            looks; <code>*</code> also mints tokens, which Studio does not need). From the server instead:
+          <li>On Hackly: <em>Profile → API tokens</em>, a token with the <strong>write</strong> ability. <em>read</em> only
+            looks; <code>*</code> also mints tokens, which Studio does not need. On the Hackly server instead:
             <code>php artisan hackly:token you@example.com --ability=write</code>.</li>
-          <li>In Studio: the <strong>address</strong> of the instance (<code>https://hackly.example.com</code>) and the
+          <li>In Studio: the <strong>Address</strong> of the instance (<code>https://hackly.example.com</code>) and the
             <strong>API token</strong> (<code>hk_…</code>, shown once).</li>
         </ol>
+
+        <h3>Typical tasks</h3>
+        <ul>
+          <li><strong>Scan a new site</strong>: <em>Targets → Add a target</em>; publish the TXT record from the result window
+            (in the Cloudflare, Route 53, Lightsail, DigitalOcean or Hetzner connector, in the same Studio); <em>Check the TXT
+            record</em>; then <em>Scan</em> with a profile.</li>
+          <li><strong>Fix a finding with the agent</strong>: <em>Fix prompt for the agent</em>, <em>Copy</em>, paste it into a
+            conversation of the project; when it ships, <em>Triage</em> as fixed.</li>
+        </ul>
         <div class="note"><strong>Scan only what you may.</strong> Hackly scans targets whose DNS proves ownership; a
           penetration test needs its own fresh authorization. Studio starts them, it does not lift those checks.</div>
       </section>

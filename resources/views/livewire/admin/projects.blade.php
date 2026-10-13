@@ -2,15 +2,15 @@
     <div class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:gap-3">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('A project is a :provider repository with Larapilot. Its deploy branch runs at :host; every member gets a workspace and a preview of their own.', ['provider' => $git->label(), 'host' => '<project>.'.$domain]) }}</flux:text>
+            <flux:text class="mt-1">{{ __('A project is a repository with Larapilot, on any git host that is on. Its deploy branch runs at :host; every member gets a workspace and a preview of their own, and works with their own accounts.', ['host' => '<project>.'.$domain]) }}</flux:text>
         </div>
         <flux:button icon="plus" variant="primary" wire:click="create">{{ __('New project') }}</flux:button>
     </div>
 
     @unless ($deployerHasGit)
         <flux:callout variant="warning" icon="exclamation-triangle">
-            <flux:callout.heading>{{ __('Connect your :provider account first', ['provider' => $git->label()]) }}</flux:callout.heading>
-            <flux:callout.text>{{ __('Project sites are cloned and deployed with the token of the administrator who creates them.') }} <flux:link :href="route('connections.edit')" wire:navigate>{{ __('Settings → Connections') }}</flux:link></flux:callout.text>
+            <flux:callout.heading>{{ __('Add a git account first') }}</flux:callout.heading>
+            <flux:callout.text>{{ __('Project sites are cloned and deployed with the git account of the administrator who creates them, on the host of the repository.') }} <flux:link :href="route('connections.edit')" wire:navigate>{{ __('Settings → Connections') }}</flux:link></flux:callout.text>
         </flux:callout>
     @endunless
 
@@ -76,6 +76,14 @@
             <flux:input wire:model="name" :label="__('Name')" required />
             {{-- full width: its description would push it out of line with a field beside it --}}
             <flux:input wire:model.blur="slug" :label="__('Slug')" :description="__('Hostname label; empty = from the name')" />
+            <flux:select wire:model.live="git_account" :label="__('Git account')" :description="__('Yours, on the host of the repository: it creates or reads the repository, registers the push webhook and deploys the site.')">
+                @if ($gitAccounts->isEmpty())
+                    <flux:select.option value="">{{ __('No git account yet: add one in Tools') }}</flux:select.option>
+                @endif
+                @foreach ($gitAccounts as $account)
+                    <flux:select.option value="{{ $account->uuid }}">{{ $account->name }} · {{ $account->host }}</flux:select.option>
+                @endforeach
+            </flux:select>
             @unless ($editingId)
                 <flux:radio.group wire:model.live="source" :label="__('Repository')" variant="segmented">
                     <flux:radio value="existing" :label="__('Existing on :provider', ['provider' => $git->label()])" />
@@ -84,12 +92,12 @@
             @endunless
 
             @if ($editingId || $source === 'existing')
-                <flux:input wire:model="repo_url" :label="__(':provider repository (HTTPS)', ['provider' => $git->label()])" :placeholder="$git->repositoryExample()" :required="$source === 'existing'" />
+                <flux:input wire:model.blur="repo_url" :label="__(':provider repository (HTTPS)', ['provider' => $git->label()])" :placeholder="$git->repositoryExample()" :required="$source === 'existing'" />
             @else
                 <div class="grid gap-4 sm:grid-cols-[14rem_1fr_auto]">
                     <flux:select wire:model="new_owner" :label="$git->ownerLabel()">
                         @if ($git->hasPersonalNamespace())
-                            <flux:select.option value="">{{ auth()->user()->git_login ?: __('your account') }}</flux:select.option>
+                            <flux:select.option value="">{{ $gitAccounts->firstWhere('uuid', $git_account)?->login ?: __('your account') }}</flux:select.option>
                         @else
                             <flux:select.option value="">{{ __('Choose…') }}</flux:select.option>
                         @endif
@@ -102,7 +110,7 @@
                         <flux:checkbox wire:model="new_private" :label="__('Private')" />
                     </flux:field>
                 </div>
-                <flux:text class="text-xs">{{ __('The repository is created empty on :provider, then the server installs the latest Laravel, Laravel Boost and Larapilot, turns on Larapilot\'s :provider integration, commits and pushes the deploy branch. Your token needs the right to create repositories there: see Settings → Connections.', ['provider' => $git->label()]) }}</flux:text>
+                <flux:text class="text-xs">{{ __('The repository is created empty on :provider, then the server installs the latest Laravel, Laravel Boost and Larapilot, turns on Larapilot\'s :provider integration, commits and pushes the deploy branch. The token of the account chosen needs the right to create repositories there.', ['provider' => $git->label()]) }}</flux:text>
             @endif
             <div class="grid gap-4 sm:grid-cols-3">
                 <flux:input wire:model="default_branch" :label="__('Deploy branch')" />

@@ -24,24 +24,21 @@ test('without arguments it shows the provider of the installation', function () 
         ->assertSuccessful();
 });
 
-test('while there are no projects the provider changes and the old tokens are forgotten', function () {
-    $user = User::factory()->create(['git_token' => 'github_pat_old', 'git_login' => 'maria']);
+test('the default host changes, with projects too, and nobody\'s accounts are forgotten', function () {
+    $user = User::factory()->withGit('github_pat_old')->create();
+    Project::factory()->create();
 
     $this->artisan('studio:git-provider', ['provider' => 'azure', '--url' => 'https://dev.azure.com/acme/'])
         ->expectsOutputToContain('Azure DevOps')
         ->assertSuccessful();
 
     expect(file_get_contents($this->envDir.'/.env'))->toContain("STUDIO_GIT_PROVIDER=azure\n")->toContain("STUDIO_GIT_URL=https://dev.azure.com/acme\n")
-        ->and($user->fresh()->git_token)->toBeNull()
-        ->and($user->fresh()->git_login)->toBeNull();
+        ->and($user->gitAccounts()->sole()->credential('token'))->toBe('github_pat_old');
 });
 
-test('with projects, or without the Azure DevOps organization, nothing changes', function () {
+test('without the Azure DevOps organization, or for an unknown host, nothing changes', function () {
     $this->artisan('studio:git-provider', ['provider' => 'azure'])->expectsOutputToContain('STUDIO_GIT_URL')->assertFailed();
     $this->artisan('studio:git-provider', ['provider' => 'gitea'])->assertFailed();
 
-    Project::factory()->create();
-    $this->artisan('studio:git-provider', ['provider' => 'gitlab'])->expectsOutputToContain('chosen once')->assertFailed();
-
-    expect(file_get_contents($this->envDir.'/.env'))->toContain('STUDIO_GIT_PROVIDER=github')->not->toContain('gitlab');
+    expect(file_get_contents($this->envDir.'/.env'))->toContain('STUDIO_GIT_PROVIDER=github')->not->toContain('azure');
 });

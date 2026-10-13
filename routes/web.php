@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\SystemStatusController;
 use App\Http\Controllers\ConversationImageController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
+use App\Infrastructure\Git\Forges;
 use App\Livewire\Admin\Connectors as AdminConnectors;
 use App\Livewire\Admin\Projects as AdminProjects;
 use App\Livewire\Admin\System as AdminSystem;
@@ -13,6 +14,7 @@ use App\Livewire\Projects\Index as ProjectsIndex;
 use App\Livewire\Ssh\Terminal as SshTerminal;
 use App\Livewire\Studio\Shell;
 use App\Livewire\Tools\Drive;
+use App\Livewire\Tools\Git;
 use App\Livewire\Tools\Vault;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +35,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('passwords', Vault::class)->middleware('password.confirm')->name('vault');
     Route::get('drive', Drive::class)->name('drive');
     Route::get('drive/files/{file}', DriveFileController::class)->name('drive.file');
+    // Git hosts, each person with their own accounts.
+    Route::get('git/{connector}', Git::class)->whereIn('connector', array_keys(Forges::ALL))->name('git');
 
     // Clouds and services driven through their APIs: the password again, as for the SSH terminal.
     Route::get('infrastructure/{connector}', InfrastructureConsole::class)

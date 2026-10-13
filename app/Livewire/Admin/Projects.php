@@ -4,18 +4,21 @@ namespace App\Livewire\Admin;
 
 use App\Enums\SiteStatus;
 use App\Enums\UserRole;
+use App\Git\GitAccount;
 use App\Git\Providers\GitProvider;
 use App\Jobs\ConfigureProjectSite;
 use App\Jobs\DeployProjectSite;
 use App\Jobs\DestroyProjectSite;
 use App\Jobs\ProvisionProjectSite;
 use App\Mcp\McpProbe;
+use App\Models\ConnectorAccount;
 use App\Models\Project;
 use App\Models\ProjectMcpServer;
 use App\Models\User;
 use App\Server\IpMatcher;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
@@ -48,7 +51,13 @@ class Projects extends Component
     /** @var list<string> uuids of the people on the project */
     public array $members = [];
 
-    /** "existing" points at a repository; "new" creates one on the git provider with Laravel, Boost and Larapilot in it. */
+    /**
+     * uuid of the administrator's git account the repository is created or imported with, on
+     * any git host that is on: it registers the push webhook and deploys the site.
+     */
+    public string $git_account = '';
+
+    /** "existing" points at a repository; "new" creates one on the git host with Laravel, Boost and Larapilot in it. */
     public string $source = 'existing';
 
     public string $new_owner = '';
@@ -142,11 +151,64 @@ class Projects extends Component
     {
         $this->resetForm();
 
-        $token = auth()->user()->git_token;
-        $owners = $token ? GitProvider::current()->owners($token) : [];
-        $this->owners = array_map(fn ($value, $label) => ['value' => (string) $value, 'label' => $label], array_keys($owners), array_values($owners));
+        // the account on the installation's own host first, else the oldest
+        $accounts = $this->gitAccounts();
+        $this->git_account = (string) ($accounts->firstWhere('connector', config('studio.git.provider')) ?? $accounts->first())?->uuid;
+        $this->loadOwners();
 
         Flux::modal('project-form')->show();
+    }
+
+    public function updatedGitAccount(): void
+    {
+        $this->new_owner = '';
+        $this->loadOwners();
+    }
+
+    /** An address typed in picks the account on its host, when the one chosen is elsewhere. */
+    public function updatedRepoUrl(): void
+    {
+        if ($this->repo_url === '' || $this->selectedAccount()?->account->matchesRemote($this->repo_url)) {
+            return;
+        }
+
+        if ($match = $this->gitAccounts()->first(fn (ConnectorAccount $a) => $a->matchesRemote($this->repo_url))) {
+            $this->git_account = $match->uuid;
+            $this->loadOwners();
+        }
+    }
+
+    /** Where the chosen account may create repositories: organizations, groups, workspaces or projects. */
+    private function loadOwners(): void
+    {
+        $owners = [];
+
+        if ($account = $this->selectedAccount()) {
+            try {
+                $owners = $account->provider()->owners($account->token());
+            } catch (RuntimeException) {
+                $owners = [];
+            }
+        }
+
+        $this->owners = array_map(fn ($value, $label) => ['value' => (string) $value, 'label' => $label], array_keys($owners), array_values($owners));
+    }
+
+    /**
+     * The administrator's own git accounts, the ones a project may be created or imported with.
+     *
+     * @return Collection<int, ConnectorAccount>
+     */
+    private function gitAccounts(): Collection
+    {
+        return auth()->user()->gitAccounts()->orderBy('id')->get();
+    }
+
+    private function selectedAccount(): ?GitAccount
+    {
+        $account = $this->gitAccounts()->firstWhere('uuid', $this->git_account);
+
+        return $account ? new GitAccount($account) : null;
     }
 
     public function edit(string $project): void
@@ -163,6 +225,8 @@ class Projects extends Component
         $this->php_version = $project->php_version;
         $this->db_engine = $project->db_engine;
         $this->members = array_values(array_map(strval(...), $project->members()->pluck('users.uuid')->all()));
+        $this->git_account = (string) (($project->repositoryAccount?->user_id === auth()->id() ? $project->repositoryAccount : null)
+            ?? $this->gitAccounts()->first(fn (ConnectorAccount $a) => $a->matchesRemote($project->repo_url)))?->uuid;
 
         Flux::modal('project-form')->show();
     }
@@ -177,18 +241,20 @@ class Projects extends Component
             $this->new_name = $this->slug;
         }
 
-        $git = GitProvider::current();
+        $account = $this->selectedAccount();
+        $git = $account?->provider() ?? GitProvider::current();
 
         $validated = $this->validate([
+            'git_account' => ['required', Rule::in($this->gitAccounts()->pluck('uuid')->all())],
             'name' => ['required', 'string', 'max:120'],
             'slug' => ['required', 'string', 'max:'.Project::SLUG_MAX, 'regex:/^[a-z0-9][a-z0-9-]*$/', 'not_in:studio,www,mail', Rule::unique('projects', 'slug')->ignore($this->editingId), function (string $attribute, mixed $value, \Closure $fail): void {
                 if (is_string($value) && ($host = Project::previewHostShadowedBy($value)) !== null) {
                     $fail(__('":slug" would take the host of an existing workspace preview (:host).', ['slug' => $value, 'host' => $host]));
                 }
             }],
-            'repo_url' => [Rule::requiredIf(! $creatingRepository), 'nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) use ($git): void {
-                if (is_string($value) && $value !== '' && $git->repositoryPath($value) === null) {
-                    $fail(__('Use the HTTPS address of a :provider repository, like :example', ['provider' => $git->label(), 'example' => $git->repositoryExample()]));
+            'repo_url' => [Rule::requiredIf(! $creatingRepository), 'nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) use ($git, $account): void {
+                if (is_string($value) && $value !== '' && ($git->repositoryPath($value) === null || ! $account?->account->matchesRemote($value))) {
+                    $fail(__('Use the HTTPS address of a repository on :host, the host of the account chosen, like :example', ['host' => $account?->host() ?? $git->label(), 'example' => $git->repositoryExample()]));
                 }
             }],
             'new_owner' => [Rule::requiredIf($creatingRepository && ! $git->hasPersonalNamespace()), 'nullable', 'string', 'max:200', Rule::in(['', ...array_column($this->owners, 'value')])],
@@ -199,26 +265,20 @@ class Projects extends Component
             'members' => ['array'],
             'members.*' => ['string', Rule::exists('users', 'uuid')],
         ], [
+            'git_account.required' => __('Add your account on the repository\'s git host first (Tools → git hosting).'),
+            'git_account.in' => __('Add your account on the repository\'s git host first (Tools → git hosting).'),
             'new_owner.required' => __('Choose where the repository goes: :what.', ['what' => Str::lower($git->ownerLabel())]),
             'slug.max' => __('The slug becomes a Linux user and a host label: :max characters at most.', ['max' => Project::SLUG_MAX]),
             'default_branch.regex' => __('A branch name: letters, digits, dots, dashes, underscores and slashes.'),
             'default_branch.not_regex' => __('A branch name: letters, digits, dots, dashes, underscores and slashes.'),
         ]);
 
-        $attributes = Arr::except($validated, ['members', 'new_owner', 'new_name']);
+        $attributes = [...Arr::except($validated, ['members', 'new_owner', 'new_name', 'git_account']), 'git_account_id' => $account?->account->id];
         $settings = null;
 
-        if ($creatingRepository) {
-            $token = auth()->user()->git_token;
-
-            if (! $token) {
-                $this->addError('new_name', __('Connect your :provider account in Settings → Connections to create repositories.', ['provider' => $git->label()]));
-
-                return;
-            }
-
+        if ($creatingRepository && $account) {
             try {
-                $repo = $git->createRepository($token, $this->new_owner ?: null, $this->new_name, $this->new_private);
+                $repo = $git->createRepository($account->token(), $this->new_owner ?: null, $this->new_name, $this->new_private);
             } catch (RuntimeException $e) {
                 $this->addError('new_name', $e->getMessage());
 
@@ -503,7 +563,7 @@ class Projects extends Component
 
     private function resetForm(): void
     {
-        $this->reset(['editingId', 'name', 'slug', 'repo_url', 'default_branch', 'db_engine', 'members', 'source', 'new_owner', 'new_name', 'new_private']);
+        $this->reset(['editingId', 'name', 'slug', 'repo_url', 'default_branch', 'db_engine', 'members', 'source', 'new_owner', 'new_name', 'new_private', 'git_account', 'owners']);
         $this->php_version = self::defaultPhp();
         $this->resetValidation();
     }
@@ -518,7 +578,8 @@ class Projects extends Component
             'phpVersions' => (array) config('studio.php_versions'),
             'timezones' => $this->settingsId ? timezone_identifiers_list() : [],
             'deployerHasGit' => auth()->user()->hasGit(),
-            'git' => GitProvider::current(),
+            'gitAccounts' => $this->gitAccounts(),
+            'git' => $this->selectedAccount()?->provider() ?? GitProvider::current(),
         ]);
     }
 }

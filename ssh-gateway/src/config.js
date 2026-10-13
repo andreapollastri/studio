@@ -39,5 +39,6 @@ function originOf(url) {
 }
 
 function loginCommand(helper, sudo) {
-  return (handle, cols, rows) => [...(sudo ? ['sudo', '-n', helper] : [helper]), 'claude-login', handle, String(cols), String(rows)];
+  // dir: the config folder of one of the person's Claude accounts (.claude, .claude-<slug>); the default one goes unsaid
+  return (handle, cols, rows, dir = '.claude') => [...(sudo ? ['sudo', '-n', helper] : [helper]), 'claude-login', handle, String(cols), String(rows), ...(dir === '.claude' ? [] : [dir])];
 }

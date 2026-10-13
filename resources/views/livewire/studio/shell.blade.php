@@ -68,7 +68,7 @@
                 <flux:heading size="lg">{{ __('Connect your accounts first') }}</flux:heading>
                 <flux:text class="max-w-md">
                     @if (in_array('git', $missing, true))
-                        {{ __('Your workspace clones and pushes with your own :provider token.', ['provider' => \App\Git\Providers\GitProvider::current()->label()]) }}
+                        {{ __('Your workspace clones and pushes as you, with your own account on :host and the identity that goes with it.', ['host' => parse_url($project->repo_url, PHP_URL_HOST) ?: $project->repo_url]) }}
                     @endif
                     @if (in_array('claude', $missing, true))
                         {{ __('The chat runs Claude Code on your own subscription or API key.') }}

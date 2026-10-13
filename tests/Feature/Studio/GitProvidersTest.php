@@ -1,12 +1,13 @@
 <?php
 
 use App\Enums\SiteStatus;
+use App\Git\GitAccount;
 use App\Git\Providers\Bitbucket;
 use App\Git\Providers\GitHub;
 use App\Git\Providers\GitProvider;
 use App\Jobs\DeployProjectSite;
 use App\Livewire\Admin\Projects;
-use App\Livewire\Settings\Connections;
+use App\Models\ConnectorAccount;
 use App\Models\Project;
 use App\Models\User;
 use App\Server\ProjectSites;
@@ -61,23 +62,19 @@ test('each provider recognises its own repository addresses and nothing else', f
     ['azure', 'https://dev.azure.com/acme', 'https://dev.azure.com/other/Web/_git/shop', null],
 ]);
 
-test('GitLab: a token is checked on the configured instance and the agent gets glab variables', function () {
+test('GitLab: an account on a self-managed instance gives git and the agent that instance, whatever the installation\'s host', function () {
+    useProvider('github');
+    $user = User::factory()->withGit('glpat-x', 'gitlab', 'git.acme.test', ['login' => 'maria.rossi', 'credentials' => ['url' => 'https://git.acme.test']])->create();
+    $git = new GitAccount($user->gitAccounts()->sole());
+
+    expect($git->provider()->baseUrl())->toBe('https://git.acme.test')
+        ->and($git->workspaceInput())->toMatchArray([
+            'git_token' => 'glpat-x',
+            'git_username' => 'oauth2',
+            'git_env' => ['GITLAB_TOKEN' => 'glpat-x', 'GLAB_TOKEN' => 'glpat-x', 'GITLAB_HOST' => 'https://git.acme.test'],
+        ]);
+
     useProvider('gitlab', 'https://git.acme.test');
-    $user = User::factory()->create(['handle' => null]);
-    Http::fake(['https://git.acme.test/api/v4/user' => Http::response(['username' => 'maria.rossi', 'name' => 'Maria Rossi'])]);
-
-    Livewire::actingAs($user)
-        ->test(Connections::class)
-        ->assertSee('glpat-')
-        ->set('git_token', 'glpat-0123456789abcdefghij')
-        ->call('saveGit')
-        ->assertHasNoErrors();
-
-    expect($user->fresh()->git_login)->toBe('maria.rossi')
-        ->and($user->fresh()->handle)->toBe('maria-rossi');
-
-    Http::assertSent(fn (Request $request) => $request->hasHeader('PRIVATE-TOKEN', 'glpat-0123456789abcdefghij'));
-
     expect(GitProvider::current()->agentEnvironment('glpat-x'))->toBe(['GITLAB_TOKEN' => 'glpat-x', 'GLAB_TOKEN' => 'glpat-x', 'GITLAB_HOST' => 'https://git.acme.test'])
         ->and(useProvider('gitlab')->agentEnvironment('glpat-x'))->not->toHaveKey('GITLAB_HOST')
         ->and(GitProvider::current()->gitUsername())->toBe('oauth2');
@@ -86,7 +83,7 @@ test('GitLab: a token is checked on the configured instance and the agent gets g
 test('GitLab: a new repository goes to the chosen group, the webhook carries the secret and the branch', function () {
     Queue::fake();
     useProvider('gitlab');
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_login' => 'andrea', 'git_token' => 'glpat-admin-000000000000']);
+    $admin = User::factory()->admin()->withGit('glpat-admin-000000000000', 'gitlab', 'gitlab.com', ['login' => 'andrea'])->create(['handle' => 'andrea']);
 
     Http::fake([
         'https://gitlab.com/api/v4/groups*' => Http::response([['id' => 42, 'full_path' => 'acme/web']]),
@@ -117,7 +114,7 @@ test('GitLab: a new repository goes to the chosen group, the webhook carries the
 test('GitLab: a push hook with the secret token deploys, a wrong token is refused', function () {
     Queue::fake();
     useProvider('gitlab');
-    $project = Project::factory()->create(['slug' => 'shop', 'default_branch' => 'develop', 'webhook_secret' => 'hook-secret', 'site_status' => SiteStatus::Ready]);
+    $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://gitlab.com/acme/shop.git', 'default_branch' => 'develop', 'webhook_secret' => 'hook-secret', 'site_status' => SiteStatus::Ready]);
 
     deliver($project, ['ref' => 'refs/heads/develop'], ['X-Gitlab-Event' => 'Push Hook', 'X-Gitlab-Token' => 'hook-secret'])->assertStatus(202);
     deliver($project, ['ref' => 'refs/heads/main'], ['X-Gitlab-Event' => 'Push Hook', 'X-Gitlab-Token' => 'hook-secret'])->assertJson(['ignored' => true]);
@@ -130,7 +127,7 @@ test('GitLab: a push hook with the secret token deploys, a wrong token is refuse
 test('Bitbucket: workspaces and their projects are the owners; the repository lands in the chosen project', function () {
     Queue::fake();
     useProvider('bitbucket');
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_login' => 'andrea', 'git_token' => 'ATATT-admin-0000000000']);
+    $admin = User::factory()->admin()->withGit('ATATT-admin-0000000000', 'bitbucket', 'bitbucket.org', ['login' => 'andrea'])->create(['handle' => 'andrea']);
 
     Http::fake([
         'https://api.bitbucket.org/2.0/user/workspaces*' => Http::response(['values' => [['administrator' => true, 'workspace' => ['slug' => 'acme', 'name' => 'Acme']]]]),
@@ -168,7 +165,7 @@ test('Bitbucket: the webhook is signed with the secret and a push to the branch 
     expect(GitProvider::current()->createPushWebhook('ATATT', 'acme/shop', 'https://studio.test/api/git/webhook/shop', 's3cret', 'develop'))->toBe('{hook-1}');
     Http::assertSent(fn (Request $request) => $request['secret'] === 's3cret' && $request['events'] === ['repo:push']);
 
-    $project = Project::factory()->create(['slug' => 'shop', 'default_branch' => 'develop', 'webhook_secret' => 'hook-secret', 'site_status' => SiteStatus::Ready]);
+    $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://bitbucket.org/acme/shop.git', 'default_branch' => 'develop', 'webhook_secret' => 'hook-secret', 'site_status' => SiteStatus::Ready]);
     $push = fn (string $branch) => ['push' => ['changes' => [['new' => ['type' => 'branch', 'name' => $branch]]]]];
     $signed = function (array $payload, string $secret = 'hook-secret') use ($project) {
         $body = json_encode($payload);
@@ -183,10 +180,10 @@ test('Bitbucket: the webhook is signed with the secret and a push to the branch 
     Queue::assertPushed(DeployProjectSite::class, 1);
 });
 
-test('Azure DevOps: the token is checked against the organization and repositories live in its projects', function () {
+test('Azure DevOps: an account of the organization creates repositories in its projects', function () {
     Queue::fake();
     useProvider('azure', 'https://dev.azure.com/acme');
-    $admin = User::factory()->admin()->create(['handle' => null]);
+    $admin = User::factory()->admin()->withGit(str_repeat('a', 52), 'azure', 'dev.azure.com/acme', ['login' => 'andrea@acme.test', 'credentials' => ['url' => 'https://dev.azure.com/acme']])->create(['handle' => 'andrea']);
 
     Http::fake([
         'https://dev.azure.com/acme/_apis/connectionData' => Http::response(['authenticatedUser' => ['providerDisplayName' => 'Andrea', 'properties' => ['Account' => ['$type' => 'System.String', '$value' => 'andrea@acme.test']]]]),
@@ -194,16 +191,6 @@ test('Azure DevOps: the token is checked against the organization and repositori
         'https://dev.azure.com/acme/_apis/projects/Web?*' => Http::response(['name' => 'Web', 'id' => 'p-1']),
         'https://dev.azure.com/acme/_apis/git/repositories?*' => Http::response(['id' => 'r-1', 'name' => 'shop-next', 'remoteUrl' => 'https://acme@dev.azure.com/acme/Web/_git/shop-next', 'webUrl' => 'https://dev.azure.com/acme/Web/_git/shop-next'], 201),
     ]);
-
-    Livewire::actingAs($admin)
-        ->test(Connections::class)
-        ->assertSee('Read, write &amp; manage', false)
-        ->set('git_token', str_repeat('a', 52))
-        ->call('saveGit')
-        ->assertHasNoErrors();
-
-    expect($admin->fresh()->git_login)->toBe('andrea@acme.test')
-        ->and($admin->fresh()->handle)->toBe('andrea');
 
     Livewire::actingAs($admin->fresh())
         ->test(Projects::class)
@@ -239,7 +226,7 @@ test('Azure DevOps: the push service hook sends the secret as a header and git.p
         && $request['publisherInputs']['repository'] === 'r-1'
         && $request['consumerInputs']['httpHeaders'] === 'X-Studio-Token:s3cret');
 
-    $project = Project::factory()->create(['slug' => 'shop', 'default_branch' => 'develop', 'webhook_secret' => 'hook-secret', 'site_status' => SiteStatus::Ready]);
+    $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://dev.azure.com/acme/Web/_git/shop', 'default_branch' => 'develop', 'webhook_secret' => 'hook-secret', 'site_status' => SiteStatus::Ready]);
     $push = fn (string $ref) => ['eventType' => 'git.push', 'resource' => ['refUpdates' => [['name' => $ref]]]];
 
     deliver($project, $push('refs/heads/develop'), ['X-Studio-Token' => 'hook-secret'])->assertStatus(202);
@@ -255,26 +242,32 @@ test('Azure DevOps without an organization explains how to set it', function () 
     expect(fn () => useProvider('azure')->organization())->toThrow(RuntimeException::class, 'STUDIO_GIT_URL');
 });
 
-test('the project form only accepts repositories of the installation\'s provider', function () {
+test('the project form takes a repository on the host of one of the administrator\'s accounts, and picks that account from the address', function () {
     Queue::fake();
     useProvider('gitlab');
-    $admin = User::factory()->admin()->create(['git_token' => 'glpat-admin-000000000000']);
-    Http::fake(['https://gitlab.com/api/v4/groups*' => Http::response([])]);
+    $admin = User::factory()->admin()->withGit('glpat-admin-000000000000', 'gitlab', 'gitlab.com')->create();
+    Http::fake(['https://gitlab.com/api/v4/groups*' => Http::response([]), 'https://api.github.com/*' => Http::response([])]);
 
-    Livewire::actingAs($admin)
+    $form = Livewire::actingAs($admin)
         ->test(Projects::class)
         ->call('create')
         ->assertSee('https://gitlab.com/group/repo')
         ->set('name', 'Shop')
         ->set('repo_url', 'https://github.com/acme/shop')
         ->call('save')
-        ->assertHasErrors(['repo_url'])
-        ->set('repo_url', 'https://gitlab.com/acme/shop.git')
+        ->assertHasErrors(['repo_url']);
+
+    // with a GitHub account too, the address chooses it
+    $github = ConnectorAccount::query()->create(['user_id' => $admin->id, 'connector' => 'github', 'name' => 'Work GitHub', 'login' => 'andrea', 'host' => 'github.com', 'credentials' => ['token' => 'ghp_admin'], 'status' => 'ok']);
+    $form->set('repo_url', 'https://github.com/acme/shop.git')
+        ->assertSet('git_account', $github->uuid)
         ->call('save')
         ->assertHasNoErrors();
+
+    expect(Project::query()->where('slug', 'shop')->value('git_account_id'))->toBe($github->id);
 });
 
-test('site provisioning hands the helper the git user name and the provider of the installation', function () {
+test('site provisioning hands the helper the git user name and the host of the repository', function () {
     config([
         'studio.driver' => 'native',
         'studio.domain' => 'dev.example.test',
@@ -285,7 +278,7 @@ test('site provisioning hands the helper the git user name and the provider of t
     $log = tempnam(sys_get_temp_dir(), 'helper');
     $_ENV['FAKE_STUDIO_ADMIN_LOG'] = $_SERVER['FAKE_STUDIO_ADMIN_LOG'] = $log;
 
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'ATATT-admin']);
+    $admin = User::factory()->admin()->withGit('ATATT-admin', 'bitbucket', 'bitbucket.org', ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://bitbucket.org/acme/shop.git', 'deploy_user_id' => $admin->id]);
     Http::fake([
         'https://api.bitbucket.org/2.0/user' => Http::response(['username' => 'andrea'], 200),

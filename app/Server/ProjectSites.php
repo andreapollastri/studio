@@ -4,7 +4,7 @@ namespace App\Server;
 
 use App\Enums\SiteStatus;
 use App\Enums\WorkspaceStatus;
-use App\Git\Providers\GitProvider;
+use App\Git\GitAccount;
 use App\Models\Project;
 use App\Models\Workspace;
 use App\Workspaces\WorkspaceManager;
@@ -26,8 +26,8 @@ final class ProjectSites
         $project->forceFill(['site_status' => SiteStatus::Provisioning, 'last_error' => null])->save();
 
         try {
-            $token = $this->deployToken($project);
-            $this->assertTokenWorks($token);
+            $git = $this->deployAccount($project);
+            $this->assertTokenWorks($git);
 
             if ($this->isLocal()) {
                 // Development: no server to talk to, pretend the site exists.
@@ -40,9 +40,10 @@ final class ProjectSites
                         'repo_url' => $project->repo_url,
                         'branch' => $project->default_branch,
                         'php_version' => $project->php_version,
-                        ...$this->gitInput($token),
-                        'git_name' => $project->deployUser->name ?? 'Studio',
-                        'git_email' => $project->deployUser->email ?? 'studio@localhost',
+                        ...$this->gitInput($git),
+                        // the first commit carries the identity of the account the repository was created with
+                        'git_name' => $git->name(),
+                        'git_email' => $git->email(),
                     ]);
 
                     $project->forceFill(['settings' => array_merge($project->settings ?? [], ['bootstrap' => false])])->save();
@@ -54,7 +55,7 @@ final class ProjectSites
                     'php_version' => $project->php_version,
                     'db_engine' => $project->db_engine,
                     'site_host' => $project->siteHost(),
-                    ...$this->gitInput($token),
+                    ...$this->gitInput($git),
                     ...$project->serviceInput(),
                 ]);
 
@@ -66,7 +67,7 @@ final class ProjectSites
                 ])->save();
             }
 
-            $this->ensureWebhook($project, $token);
+            $this->ensureWebhook($project, $git);
         } catch (ServerException|RuntimeException $e) {
             $project->forceFill(['site_status' => SiteStatus::Failed, 'last_error' => Str::limit($this->explain($e), 1000)])->save();
         }
@@ -91,13 +92,13 @@ final class ProjectSites
                 return;
             }
 
-            $token = $this->deployToken($project);
-            $this->assertTokenWorks($token);
+            $git = $this->deployAccount($project);
+            $this->assertTokenWorks($git);
 
             $result = $this->admin->run('project-deploy', [$project->slug], [
                 'branch' => $project->default_branch,
                 'php_version' => $project->php_version,
-                ...$this->gitInput($token),
+                ...$this->gitInput($git),
             ]);
 
             $project->forceFill([
@@ -158,15 +159,19 @@ final class ProjectSites
             }
         }
 
-        if ($project->webhook_id && ($repo = $project->repositoryPath()) && ($token = $project->deployUser?->git_token)) {
-            GitProvider::current()->deleteWebhook($token, $repo, $project->webhook_id);
+        if ($project->webhook_id && ($repo = $project->repositoryPath()) && ($git = $project->deployAccount())) {
+            try {
+                $git->provider()->deleteWebhook($git->token(), $repo, $project->webhook_id);
+            } catch (RuntimeException $e) {
+                Log::warning("The push webhook of {$project->slug} could not be removed: {$e->getMessage()}");
+            }
         }
 
         $project->delete();
     }
 
-    /** The push webhook that deploys the site; registered once, with the deploying administrator's token. */
-    private function ensureWebhook(Project $project, string $token): void
+    /** The push webhook that deploys the site; registered once, with the repository account, on its host. */
+    private function ensureWebhook(Project $project, GitAccount $git): void
     {
         if ($project->webhook_id || ! ($repo = $project->repositoryPath())) {
             return;
@@ -175,26 +180,22 @@ final class ProjectSites
         $secret = $project->webhook_secret ?: Str::random(40);
         $project->forceFill(['webhook_secret' => $secret])->save();
 
-        $id = GitProvider::current()->createPushWebhook($token, $repo, route('api.git.webhook', $project), $secret, $project->default_branch);
+        $id = $git->provider()->createPushWebhook($git->token(), $repo, route('api.git.webhook', $project), $secret, $project->default_branch);
 
         $project->forceFill(['webhook_id' => $id])->save();
     }
 
-    private function deployToken(Project $project): string
+    private function deployAccount(Project $project): GitAccount
     {
-        $token = $project->deployUser?->git_token;
-
-        if (! $token) {
-            throw new RuntimeException(__('No administrator with a :provider token is set to deploy this project.', ['provider' => GitProvider::current()->label()]));
-        }
-
-        return $token;
+        return $project->deployAccount() ?? throw new RuntimeException(__('No administrator\'s git account on :host is set to deploy this project: pick one in the project.', [
+            'host' => (string) (parse_url($project->repo_url, PHP_URL_HOST) ?: $project->repo_url),
+        ]));
     }
 
-    /** Fail before the helper runs when GitHub (or the forge) already refuses the token. */
-    private function assertTokenWorks(string $token): void
+    /** Fail before the helper runs when the git host already refuses the token. */
+    private function assertTokenWorks(GitAccount $git): void
     {
-        GitProvider::current()->whoAmI($token);
+        $git->provider()->whoAmI($git->token());
     }
 
     private function explain(ServerException|RuntimeException $e): string
@@ -202,7 +203,7 @@ final class ProjectSites
         $message = $e->getMessage();
 
         if (str_contains($message, 'Invalid username or token') || str_contains($message, 'Password authentication is not supported')) {
-            return __('GitHub refused the deployer\'s token. Paste a new personal access token in Settings → Connections, then deploy again.');
+            return __('The git host refused the deploying account\'s token. Replace it in Tools → git hosting, then deploy again.');
         }
 
         return $message;
@@ -214,11 +215,9 @@ final class ProjectSites
      *
      * @return array<string, string>
      */
-    private function gitInput(string $token): array
+    private function gitInput(GitAccount $git): array
     {
-        $git = GitProvider::current();
-
-        return ['git_token' => $token, 'git_username' => $git->gitUsername(), 'git_provider' => $git->key()];
+        return ['git_token' => $git->token(), 'git_username' => $git->username(), 'git_provider' => $git->provider()->key()];
     }
 
     private function isLocal(): bool

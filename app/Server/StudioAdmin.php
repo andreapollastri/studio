@@ -24,7 +24,8 @@ final class StudioAdmin
     public function run(string $command, array $args = [], array $input = []): array
     {
         foreach ($args as $arg) {
-            if (! preg_match('/^[a-z0-9][a-z0-9._-]{0,63}$/', $arg)) {
+            // names, slugs, sizes; and the folder of one of a person's Claude accounts (.claude, .claude-<slug>)
+            if (! preg_match('/^[a-z0-9][a-z0-9._-]{0,63}$/', $arg) && ! preg_match('/^\.claude(-[a-z0-9]{1,40})?$/', $arg)) {
                 throw new ServerException("Refusing to pass [{$arg}] to the server helper.");
             }
         }

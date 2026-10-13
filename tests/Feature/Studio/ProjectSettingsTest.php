@@ -121,7 +121,7 @@ test('applying the settings runs project-configure for the site and workspace-co
     $_ENV['FAKE_STUDIO_ADMIN_LOG'] = $log;
     $_SERVER['FAKE_STUDIO_ADMIN_LOG'] = $log;
 
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'github_pat_admin']);
+    $admin = User::factory()->admin()->withGit('github_pat_admin', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $maria = User::factory()->create(['handle' => 'maria']);
     $project = Project::factory()->create([
         'slug' => 'shop', 'php_version' => '8.4', 'site_status' => SiteStatus::Ready, 'deploy_user_id' => $admin->id,

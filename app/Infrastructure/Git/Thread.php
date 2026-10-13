@@ -12,7 +12,7 @@ final class Thread
 {
     /**
      * @param  array<string, mixed>  $facts  label => value; empty values are left out
-     * @param  list<array{author?: mixed, at?: mixed, body?: mixed}>  $comments
+     * @param  array<int, array{author?: mixed, at?: mixed, body?: mixed}>  $comments
      */
     public static function text(array $facts, mixed $body, array $comments = []): string
     {

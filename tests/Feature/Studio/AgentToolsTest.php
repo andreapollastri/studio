@@ -1,12 +1,13 @@
 <?php
 
 use App\Bridge\BridgeClient;
-use App\Enums\ClaudeAuthMode;
 use App\Enums\ConversationStatus;
 use App\Livewire\Admin\Projects;
 use App\Livewire\Studio\Chat;
 use App\Livewire\Studio\ConversationList;
 use App\Livewire\Studio\Shell;
+use App\Models\ClaudeAccount;
+use App\Models\ConnectorAccount;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Project;
@@ -216,7 +217,8 @@ test('on a server the sandbox gets its own host, which the gatekeeper and the ce
     $_ENV['FAKE_STUDIO_ADMIN_LOG'] = $_SERVER['FAKE_STUDIO_ADMIN_LOG'] = $log;
 
     [$user, $project, $workspace] = agentMember(['driver' => 'native', 'app_url' => 'https://maria-shop.dev.example.test', 'path' => '/srv/studio/workspaces/maria/shop']);
-    $user->forceFill(['git_token' => 'github_pat_secret', 'claude_auth_mode' => ClaudeAuthMode::Subscription])->save();
+    ConnectorAccount::query()->create(['user_id' => $user->id, 'connector' => 'github', 'name' => 'GitHub', 'login' => 'maria', 'host' => 'github.com', 'credentials' => ['token' => 'github_pat_secret'], 'status' => 'ok']);
+    ClaudeAccount::factory()->for($user)->subscription()->create();
     Http::fake(['http://bridge.test:4455/sandboxes' => Http::response(sandboxCreated('c1'), 201)]);
 
     Livewire::actingAs($user)->test(Shell::class, ['project' => $project])->call('newSandbox');

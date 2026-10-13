@@ -2,8 +2,9 @@
  * "Sign in with Claude" on Settings → Connections: the official
  * `claude auth login` of Claude Code, running as the person in their own home
  * on the server, shown in a terminal. The person opens Anthropic's sign-in
- * page, approves, and pastes the code back; the CLI keeps the login in their
- * ~/.claude. Studio relays the terminal and keeps nothing.
+ * page, approves, and pastes the code back; the CLI keeps the login in the
+ * folder of that Claude account (~/.claude, ~/.claude-<slug>). Studio relays
+ * the terminal and keeps nothing.
  *
  * The CLI hands its sign-in link over with an OSC 52 "copy to clipboard"
  * sequence when the person presses c: caught here, it becomes a button.
@@ -29,8 +30,10 @@ function claudeLogin() {
         link: null,
         code: '',
         exitCode: null,
+        account: null, // uuid of the subscription signing in
 
-        async start() {
+        async start(account = undefined) {
+            if (account !== undefined) this.account = account;
             this.reset();
             this.state = 'connecting';
             this.step = 'ticket';
@@ -47,7 +50,7 @@ function claudeLogin() {
             }, 20000);
 
             try {
-                const info = await this.$wire.claudeLoginTicket();
+                const info = await this.$wire.claudeLoginTicket(this.account);
                 if (run !== runs) return;
                 if (!info?.ticket) {
                     this.state = 'idle';
@@ -105,7 +108,7 @@ function claudeLogin() {
                         } else {
                             this.fail(this.error || 'The sign-in did not complete.');
                         }
-                        this.$wire.refreshClaude();
+                        this.$wire.refreshClaude(this.account);
                     }
                 };
                 ws.onerror = () => {};

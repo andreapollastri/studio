@@ -1,85 +1,70 @@
 <?php
 
-use App\Enums\ClaudeAuthMode;
-use App\Jobs\SyncWorkspaceCredentials;
 use App\Livewire\Settings\Connections;
+use App\Models\ClaudeAccount;
+use App\Models\ConnectorAccount;
 use App\Models\Project;
+use App\Models\ProjectGroup;
 use App\Models\User;
-use App\Models\Workspace;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
-test('a valid GitHub token is verified, stored encrypted and gives the person a handle', function () {
-    $user = User::factory()->create(['handle' => null]);
-    Http::fake(['https://api.github.com/user' => Http::response(['login' => 'Maria-Rossi', 'name' => 'Maria Rossi'])]);
+test('the handle comes from the login of the first git account, once, and never changes with the accounts', function () {
+    $user = User::factory()->withGit(attributes: ['login' => 'Maria-Rossi'])->create(['handle' => null]);
 
-    Livewire::actingAs($user)
-        ->test(Connections::class)
-        ->set('git_token', 'github_pat_11AAAAAAA0123456789abcdef')
-        ->call('saveGit')
-        ->assertHasNoErrors()
-        ->assertSet('git_token', '');
+    expect($user->ensureHandle())->toBe('maria-rossi');
 
-    $user->refresh();
-    expect($user->git_login)->toBe('Maria-Rossi')
-        ->and($user->handle)->toBe('maria-rossi')
-        ->and($user->git_token)->toBe('github_pat_11AAAAAAA0123456789abcdef')
-        ->and($user->getRawOriginal('git_token'))->not->toContain('github_pat_')
-        ->and($user->hasGit())->toBeTrue();
+    ConnectorAccount::query()->where('user_id', $user->id)->delete();
+    expect($user->fresh()->ensureHandle())->toBe('maria-rossi')->and($user->fresh()->hasGit())->toBeFalse();
 });
 
-test('when the GitHub login is already a handle, or spells an existing project host, a free one is picked', function () {
+test('when the login is already a handle, or spells an existing project host, a free one is picked; without a git account the e-mail gives it', function () {
     User::factory()->create(['handle' => 'maria']);
     Project::factory()->create(['slug' => 'maria-2-shop']);
     Project::factory()->create(['slug' => 'shop']);
-    $user = User::factory()->create(['handle' => null]);
-    Http::fake(['https://api.github.com/user' => Http::response(['login' => 'Maria', 'name' => 'Maria Rossi'])]);
-
-    Livewire::actingAs($user)
-        ->test(Connections::class)
-        ->set('git_token', 'github_pat_11AAAAAAA0123456789abcdef')
-        ->call('saveGit')
-        ->assertHasNoErrors();
+    $user = User::factory()->withGit(attributes: ['login' => 'Maria'])->create(['handle' => null]);
 
     // "maria" is taken, "maria-2" would make the previews of "shop" land on the project "maria-2-shop"
-    expect($user->fresh()->handle)->toBe('maria-3');
+    expect($user->ensureHandle())->toBe('maria-3')
+        ->and(User::factory()->create(['handle' => null, 'email' => 'luca.bianchi@agency.test'])->ensureHandle())->toBe('luca-bianchi');
 });
 
-test('an invalid GitHub token is refused with GitHub\'s answer', function () {
+test('an API key is stored encrypted, with its name, and the first account becomes the default', function () {
     $user = User::factory()->create();
-    Http::fake(['https://api.github.com/user' => Http::response(['message' => 'Bad credentials'], 401)]);
 
     Livewire::actingAs($user)
         ->test(Connections::class)
-        ->set('git_token', 'github_pat_definitely_not_valid_000')
-        ->call('saveGit')
-        ->assertHasErrors(['git_token']);
-
-    expect($user->fresh()->git_token)->toBeNull();
-});
-
-test('a Claude credential is stored with its kind and pushed to existing native workspaces', function () {
-    Queue::fake();
-    $user = User::factory()->create();
-    Workspace::factory()->create(['user_id' => $user->id, 'driver' => 'native', 'path' => '/srv/x']);
-
-    Livewire::actingAs($user)
-        ->test(Connections::class)
-        ->set('claude_auth_mode', 'api_key')
-        ->set('claude_token', 'sk-ant-api03-0123456789abcdefghijklmnop')
-        ->call('saveClaude')
+        ->set('new_kind', 'api_key')
+        ->set('new_name', 'Company key')
+        ->set('new_token', 'sk-ant-api03-0123456789abcdefghijklmnop')
+        ->call('addClaude')
         ->assertHasNoErrors();
 
-    expect($user->fresh()->claude_auth_mode)->toBe(ClaudeAuthMode::ApiKey)
-        ->and($user->fresh()->claude_token)->toBe('sk-ant-api03-0123456789abcdefghijklmnop')
+    $account = ClaudeAccount::query()->sole();
+
+    expect($account->token)->toBe('sk-ant-api03-0123456789abcdefghijklmnop')
+        ->and(DB::table('claude_accounts')->value('token'))->not->toContain('sk-ant-')
+        ->and($user->fresh()->claude_account_id)->toBe($account->id)
         ->and($user->fresh()->hasClaude())->toBeTrue();
 
-    Queue::assertPushed(SyncWorkspaceCredentials::class, fn (SyncWorkspaceCredentials $job) => $job->user->is($user));
+    // names are the person's own: no two alike
+    Livewire::actingAs($user)->test(Connections::class)
+        ->set('new_kind', 'api_key')->set('new_name', 'Company key')->set('new_token', 'sk-ant-api03-another0123456789abcdef')
+        ->call('addClaude')->assertHasErrors('new_name');
 });
 
-test('the connections page is where a new person starts', function () {
-    $user = User::factory()->create();
+test('the connections page lists every git account with the identity its commits carry, and every Claude account with where it is used', function () {
+    $user = User::factory()
+        ->withGit(attributes: ['name' => 'Personal', 'git_email' => 'maria@personal.test'])
+        ->withGit('glpat-client', 'gitlab', 'gitlab.client.test', ['name' => 'Client GitLab', 'git_email' => 'mrossi@client.test', 'credentials' => ['url' => 'https://gitlab.client.test']])
+        ->withClaude('subscription')
+        ->create();
+    $team = ClaudeAccount::factory()->for($user)->subscription('.claude-team')->create(['name' => 'Company Team']);
+    ProjectGroup::query()->create(['user_id' => $user->id, 'name' => 'Clients', 'claude_account_id' => $team->id]);
 
-    $this->actingAs($user)->get(route('connections.edit'))->assertOk()->assertSee('Sign in with Claude')->assertDontSee('setup-token')->assertSee('github_pat_');
+    $this->actingAs($user)->get(route('connections.edit'))->assertOk()
+        ->assertSee(['Personal', 'maria@personal.test', 'Client GitLab', 'gitlab.client.test', 'mrossi@client.test'])
+        ->assertSee(['Company Team', 'default of Clients', 'Claude subscription'])
+        ->assertSee('Add a Claude account')
+        ->assertDontSee('setup-token');
 });

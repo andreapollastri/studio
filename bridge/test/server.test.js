@@ -129,3 +129,43 @@ test('the answers to Claude\'s questions travel through the permissions route', 
   await server.shutdown();
   await studio.close();
 });
+
+test('the API key of a turn never comes back in any answer', async () => {
+  const studio = await startCollector();
+  const server = createServer(testConfig(), { spawn: spawnFake });
+  const base = await listen(server);
+  const secret = 'sk-ant-api03-SECRET-never-echoed';
+  const bodies = [];
+  const call = async (path, init = {}) => {
+    const response = await fetch(`${base}${path}`, { headers, ...init });
+    bodies.push(await response.text());
+    return response;
+  };
+
+  const accepted = await call('/conversations/50/turns', {
+    method: 'POST',
+    body: JSON.stringify({ text: 'ciao', auth: 'api_key', account: 'acc-7', api_key: secret, callback: { url: studio.url, token: 'cb' } }),
+  });
+  assert.equal(accepted.status, 202);
+  await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  await call('/conversations/50');
+  await call('/conversations');
+  await call('/info');
+
+  const refused = await call('/conversations/51/turns', {
+    method: 'POST',
+    body: JSON.stringify({ text: 'ciao', auth: 'api_key', api_key: `${secret} with spaces`, callback: { url: studio.url, token: 'cb' } }),
+  });
+  assert.equal(refused.status, 422);
+  const badDir = await call('/conversations/51/turns', {
+    method: 'POST',
+    body: JSON.stringify({ text: 'ciao', auth: 'subscription', claude_dir: '../../root/.claude', callback: { url: studio.url, token: 'cb' } }),
+  });
+  assert.equal(badDir.status, 422);
+
+  for (const body of bodies) assert.ok(!body.includes('SECRET'), `leaked in ${body}`);
+  assert.ok(!JSON.stringify(studio.posts).includes('SECRET'), 'nor in the events');
+
+  await server.shutdown();
+  await studio.close();
+});

@@ -29,6 +29,11 @@
                 @endif
 
                 <flux:sidebar.group :heading="__('Tools')" class="grid">
+                    @foreach (\App\Infrastructure\Git\Forges::enabled() as $forge)
+                        <flux:sidebar.item :icon="$forge->icon()" :href="route('git', $forge->key())" :current="request()->routeIs('git') && request()->route('connector') === $forge->key()" wire:navigate>
+                            {{ $forge->label() }}
+                        </flux:sidebar.item>
+                    @endforeach
                     @can('ssh')
                         <flux:sidebar.item icon="command-line" :href="route('ssh')" :current="request()->routeIs('ssh')" wire:navigate>
                             {{ __('SSH terminal') }}

@@ -18,6 +18,9 @@ final class Column
 
     public ?Closure $using = null;
 
+    /** Dot path of an address in the row, or fn (array $row): ?string: the cell opens it in a new tab. */
+    public string|Closure|null $link = null;
+
     public function __construct(
         public string $name,
         public string $label,
@@ -51,6 +54,29 @@ final class Column
         $this->colors = $colors;
 
         return $this;
+    }
+
+    public function link(string|Closure $link): self
+    {
+        $this->link = $link;
+
+        return $this;
+    }
+
+    /**
+     * Where the cell leads, when it is a web address.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public function href(array $row): ?string
+    {
+        $href = match (true) {
+            $this->link instanceof Closure => ($this->link)($row),
+            is_string($this->link) => data_get($row, $this->link),
+            default => null,
+        };
+
+        return is_string($href) && preg_match('#^https?://#i', $href) ? $href : null;
     }
 
     public function bool(): self

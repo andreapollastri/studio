@@ -4,16 +4,15 @@ namespace App\Console\Commands;
 
 use App\Git\Providers\AzureDevOps;
 use App\Git\Providers\GitProvider;
-use App\Models\Project;
-use App\Models\User;
 use Illuminate\Console\Command;
 use RuntimeException;
 
 /**
- * The git provider is chosen once, in the installer. While Studio has no
- * projects it can still be changed here: projects never move between
- * providers and Studio keeps no history of the previous one, so every
- * person's token is forgotten with it.
+ * The installation's own git host, chosen in the installer: on until an
+ * administrator turns it off, the first one offered for new projects, and the
+ * one whose CLI the server installs for the agents first. Projects and
+ * accounts may be on any host that is on (Administration → Connectors), so
+ * changing it moves nothing and forgets nobody's accounts.
  */
 class GitProviderCommand extends Command
 {
@@ -21,7 +20,7 @@ class GitProviderCommand extends Command
         {provider? : github, gitlab, bitbucket or azure; empty shows the current one}
         {--url= : a self-managed GitLab (https://git.example.com) or the Azure DevOps organization (https://dev.azure.com/acme)}';
 
-    protected $description = 'Show the git provider of this Studio, or change it while there are no projects';
+    protected $description = 'Show the default git host of this Studio, or change it';
 
     public function handle(): int
     {
@@ -50,24 +49,13 @@ class GitProviderCommand extends Command
             return self::FAILURE;
         }
 
-        if (($projects = Project::query()->count()) > 0) {
-            $this->components->error("Studio has {$projects} project(s) on {$current->label()}. The provider is chosen once: delete the projects first, or install another Studio for {$next->label()}.");
-
-            return self::FAILURE;
-        }
-
         $this->writeEnv(['STUDIO_GIT_PROVIDER' => $next->key(), 'STUDIO_GIT_URL' => is_string($url) && $url !== '' ? $next->baseUrl() : '']);
-        $forgotten = User::query()->whereNotNull('git_token')->update(['git_token' => null, 'git_login' => null]);
 
         if ($this->laravel->configurationIsCached()) {
             $this->callSilently('config:cache');
         }
 
-        $this->components->info("The git provider is now {$next->label()} ({$next->baseUrl()}).");
-
-        if ($forgotten > 0) {
-            $this->components->warn("{$forgotten} token(s) of the previous provider were removed: everyone connects again in Settings → Connections.");
-        }
+        $this->components->info("The default git host is now {$next->label()} ({$next->baseUrl()}). Projects and accounts on {$current->label()} stay as they are while it is on.");
 
         if ($next->cli()) {
             $this->line("  On the server, install the agents' {$next->cli()} with:  <comment>sudo studio-update ensure</comment>");

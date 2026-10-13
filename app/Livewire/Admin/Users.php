@@ -131,7 +131,7 @@ class Users extends Component
     public function render(): View
     {
         return view('livewire.admin.users', [
-            'users' => User::query()->withCount('projects')->orderBy('name')->get(),
+            'users' => User::query()->withCount(['projects', 'gitAccounts'])->orderBy('name')->get(),
             'roles' => UserRole::cases(),
             'git' => GitProvider::current(),
         ]);

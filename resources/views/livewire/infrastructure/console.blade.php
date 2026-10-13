@@ -20,7 +20,7 @@
                 <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="refresh" :tooltip="__('Read again from :provider', ['provider' => $definition->label()])" />
             @endif
             @if ($isAdmin)
-                <flux:button size="sm" icon="user-circle" wire:click="manageAccounts">{{ __('Accounts') }}</flux:button>
+                <flux:button size="sm" icon="user-circle" wire:click="manageAccounts">{{ $personal ? __('My accounts') : __('Accounts') }}</flux:button>
             @endif
         </div>
     </div>
@@ -29,7 +29,9 @@
         <flux:callout icon="information-circle" variant="secondary">
             <flux:callout.heading>{{ __('No :provider account yet', ['provider' => $definition->label()]) }}</flux:callout.heading>
             <flux:callout.text>
-                @if ($isAdmin)
+                @if ($personal)
+                    {{ __('Add your accounts, as many as you work with (personal, work, a client\'s): each with its own token and the name and email its commits carry. Only you see and use them.') }}
+                @elseif ($isAdmin)
                     {{ __('Add one or more accounts: Studio stores their credentials encrypted and talks to the API with them.') }}
                 @else
                     {{ __('An administrator adds the accounts Studio uses here.') }}
@@ -158,8 +160,11 @@
                                 <tr wire:key="row-{{ md5($section->key.'|'.$id) }}">
                                     @foreach ($section->columns as $column)
                                         @php($text = $column->text($row))
+                                        @php($href = $column->href($row))
                                         <td class="px-4 py-2 align-middle" data-cell="{{ $loop->first ? 'main' : 'meta' }}" @unless ($loop->first) data-label="{{ $column->label }}" @endunless>
-                                            @if ($text === '')
+                                            @if ($href && $text !== '')
+                                                <a href="{{ $href }}" target="_blank" rel="noopener noreferrer" @class(['underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-500 dark:decoration-zinc-600', 'font-medium' => $loop->first])>{{ \Illuminate\Support\Str::limit($text, 160) }}</a>
+                                            @elseif ($text === '')
                                                 <span class="text-zinc-400">—</span>
                                             @elseif ($column->format === 'badge')
                                                 <flux:badge size="sm" :color="$column->color($row)">{{ $text }}</flux:badge>
@@ -264,9 +269,12 @@
         <flux:modal name="infrastructure-accounts" class="w-full md:w-[40rem]">
             <div class="space-y-5">
                 <div>
-                    <flux:heading size="lg">{{ __(':provider accounts', ['provider' => $definition->label()]) }}</flux:heading>
+                    <flux:heading size="lg">{{ $personal ? __('My :provider accounts', ['provider' => $definition->label()]) : __(':provider accounts', ['provider' => $definition->label()]) }}</flux:heading>
                     <flux:text class="mt-1">
                         {{ __('Credentials are stored encrypted and never shown again; Studio checks them before saving.') }}
+                        @if ($personal)
+                            {{ __('Only you see your accounts; each one commits with its own name and email.') }}
+                        @endif
                         <a href="{{ $definition->guide() }}" target="_blank" rel="noopener" class="underline decoration-zinc-400 underline-offset-4">{{ __('Which credentials, where, with which permissions') }}</a>
                         · <a href="{{ $definition->docs() }}" target="_blank" rel="noopener" class="underline decoration-zinc-400 underline-offset-4">{{ __(':provider\'s documentation', ['provider' => $definition->label()]) }}</a>
                     </flux:text>
@@ -278,6 +286,9 @@
                             <li class="flex flex-wrap items-center gap-3 px-4 py-2" wire:key="account-{{ $item->uuid }}">
                                 <div class="min-w-0 flex-1">
                                     <div class="font-medium">{{ $item->name }}</div>
+                                    @if ($personal && ($item->login || $item->git_email))
+                                        <div class="truncate text-xs text-zinc-500">{{ collect([$item->login ? '@'.$item->login : null, $item->host, $item->git_email ? ($item->git_name ?: '').' <'.$item->git_email.'>' : null])->filter()->implode(' · ') }}</div>
+                                    @endif
                                     <div class="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                                         <flux:badge size="sm" :color="$item->isHealthy() ? 'green' : 'red'">{{ $item->isHealthy() ? __('working') : __('failing') }}</flux:badge>
                                         <span class="truncate">{{ \Illuminate\Support\Str::limit((string) $item->status, 120) }}</span>
@@ -297,12 +308,20 @@
                 @if ($accountEditing)
                     <form wire:submit="saveAccount" class="space-y-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
                         <flux:heading>{{ $accountEditing === 'new' ? __('New account') : __('Edit :name', ['name' => $account_name]) }}</flux:heading>
-                        <flux:input wire:model="account_name" :label="__('Name')" :placeholder="__('Production, Client X…')" required />
+                        <flux:input wire:model="account_name" :label="__('Name')" :placeholder="$personal ? __('Personal, Work, Client X…') : __('Production, Client X…')" required />
                         @foreach ($definition->fields() as $field)
                             <div wire:key="credential-{{ $field->name }}">
                                 @include('livewire.infrastructure.partials.field', ['field' => $accountEditing !== 'new' && $field->secret ? (clone $field)->help(__('Leave empty to keep the stored one.')) : $field, 'model' => 'credentials.'.$field->name])
                             </div>
                         @endforeach
+                        @if ($personal)
+                            @include('livewire.tools.partials.git-token-help', ['forge' => $definition->key(), 'admin' => auth()->user()->isAdmin()])
+                            <div class="grid gap-4 sm:grid-cols-2">
+                                <flux:input wire:model="git_name" :label="__('Commit name')" :placeholder="__('From the provider')" />
+                                <flux:input type="email" wire:model="git_email" :label="__('Commit email')" :placeholder="__('From the provider')" />
+                            </div>
+                            <flux:text class="-mt-2 text-xs">{{ __('What commits made with this account carry. Empty: the name and the primary email the provider gives, or yours.') }}</flux:text>
+                        @endif
                         @error('credentials')
                             <flux:callout variant="danger" icon="exclamation-triangle"><flux:callout.text>{{ $message }}</flux:callout.text></flux:callout>
                         @enderror

@@ -3,7 +3,10 @@
 namespace App\Models;
 
 use App\Enums\SiteStatus;
+use App\Git\GitAccount;
 use App\Git\Providers\GitProvider;
+use App\Infrastructure\Git\Forge;
+use App\Infrastructure\Git\Forges;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -14,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Throwable;
 
 /**
  * @property string $uuid
@@ -26,6 +30,7 @@ use Illuminate\Support\Carbon;
  * @property string $php_version
  * @property string $db_engine
  * @property int|null $deploy_user_id
+ * @property int|null $git_account_id the administrator's git account the repository was created or imported with
  * @property SiteStatus $site_status
  * @property string|null $larapilot_api_token
  * @property string|null $webhook_secret
@@ -35,10 +40,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $last_error
  * @property array<string, mixed>|null $settings
  * @property-read User|null $deployUser
+ * @property-read ConnectorAccount|null $repositoryAccount
  * @property-read Collection<int, ProjectMcpServer> $mcpServers
  */
 #[Fillable([
-    'name', 'slug', 'repo_url', 'default_branch', 'php_version', 'db_engine', 'deploy_user_id',
+    'name', 'slug', 'repo_url', 'default_branch', 'php_version', 'db_engine', 'deploy_user_id', 'git_account_id',
     'site_status', 'larapilot_api_token', 'webhook_secret', 'webhook_id', 'deployed_sha', 'deployed_at', 'last_error', 'settings',
 ])]
 class Project extends Model
@@ -97,6 +103,64 @@ class Project extends Model
     public function deployUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'deploy_user_id');
+    }
+
+    /**
+     * The administrator's git account the repository was created or imported with: it registers
+     * the push webhook and deploys the site, on whichever host the repository lives.
+     *
+     * @return BelongsTo<ConnectorAccount, $this>
+     */
+    public function repositoryAccount(): BelongsTo
+    {
+        return $this->belongsTo(ConnectorAccount::class, 'git_account_id');
+    }
+
+    /**
+     * The account that deploys the site: the repository account, else the deploying
+     * administrator's account on the repository's host.
+     */
+    public function deployAccount(): ?GitAccount
+    {
+        $account = $this->repositoryAccount;
+
+        if ($account === null || ! $account->matchesRemote($this->repo_url)) {
+            $account = $this->deployUser?->gitAccounts()->orderBy('id')->get()->first(fn (ConnectorAccount $a) => $a->matchesRemote($this->repo_url));
+        }
+
+        return $account ? new GitAccount($account) : null;
+    }
+
+    /**
+     * The git host of the repository: the provider of the repository account, else the
+     * installation's own when the address is on it, else the first enabled host that knows it.
+     */
+    public function gitProvider(): ?GitProvider
+    {
+        if ($this->repositoryAccount?->matchesRemote($this->repo_url)) {
+            return (new GitAccount($this->repositoryAccount))->provider();
+        }
+
+        $current = GitProvider::current();
+
+        if ($current->repositoryPath($this->repo_url) !== null) {
+            return $current;
+        }
+
+        // the public hosts (github.com, gitlab.com, bitbucket.org); a self-managed one is known by its accounts
+        foreach (Forges::enabled() as $forge) {
+            try {
+                $host = $forge->host([]);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (Forge::remoteOn($host, $this->repo_url)) {
+                return GitProvider::make($forge->key(), 'https://'.$host);
+            }
+        }
+
+        return null;
     }
 
     public function hasMember(User $user): bool
@@ -325,9 +389,9 @@ class Project extends Model
         return $kind === 'site' ? $access['site'] : $access['previews'];
     }
 
-    /** The repository path on the installation's git provider (`owner/repo`…), or null when the address belongs elsewhere. */
+    /** The repository path on its git host (`owner/repo`…), or null when no enabled host knows the address. */
     public function repositoryPath(): ?string
     {
-        return GitProvider::current()->repositoryPath($this->repo_url);
+        return $this->gitProvider()?->repositoryPath($this->repo_url);
     }
 }

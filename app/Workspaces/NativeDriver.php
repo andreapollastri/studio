@@ -2,12 +2,12 @@
 
 namespace App\Workspaces;
 
-use App\Enums\ClaudeAuthMode;
+use App\Accounts\Accounts;
 use App\Enums\WorkspaceStatus;
-use App\Git\Providers\GitProvider;
 use App\Models\Workspace;
 use App\Server\ServerException;
 use App\Server\StudioAdmin;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
@@ -27,9 +27,11 @@ final class NativeDriver implements WorkspaceDriver
         $workspace->forceFill(['driver' => 'native', 'status' => WorkspaceStatus::Creating, 'last_error' => null])->save();
 
         try {
-            if (! $user->hasGit()) {
-                throw new ServerException(__('Connect your :provider account in Settings before opening a workspace.', ['provider' => GitProvider::current()->label()]));
+            if (! $git = Accounts::gitAccount($user, $project)) {
+                throw new ServerException(self::missingGitAccount($project->repo_url));
             }
+
+            $this->ensureGitCli($git->provider()->key());
 
             $bridgeToken = $workspace->bridge_token ?: Str::random(48);
             $workspace->forceFill(['bridge_token' => $bridgeToken])->save();
@@ -43,8 +45,6 @@ final class NativeDriver implements WorkspaceDriver
                 'preview_host' => $project->previewHostFor($user),
                 'bridge_port' => $workspace->bridgePort(),
                 'bridge_token' => $bridgeToken,
-                'git_name' => $user->name,
-                'git_email' => $user->email,
                 ...$workspace->serviceInput(),
                 ...$this->credentials($workspace),
             ]);
@@ -54,6 +54,7 @@ final class NativeDriver implements WorkspaceDriver
                 'app_url' => (string) ($result['app_url'] ?? 'https://'.$project->previewHostFor($user)),
                 'bridge_url' => (string) ($result['bridge_url'] ?? 'http://127.0.0.1:'.$workspace->bridgePort()),
                 'path' => $result['path'] ?? null,
+                'git_account_id' => Accounts::git($user, $project)?->account->id,
                 'last_seen_at' => now(),
             ])->save();
         } catch (ServerException $e) {
@@ -127,7 +128,10 @@ final class NativeDriver implements WorkspaceDriver
         }
     }
 
-    /** Push the person's current git provider and Claude credentials into a workspace and restart its bridge. */
+    /**
+     * Push the git account the person works on this project with (token, CLI variables, commit
+     * identity) into the workspace and restart its bridge: running turns stop, and resume.
+     */
     public function syncCredentials(Workspace $workspace): void
     {
         if (! $workspace->path) {
@@ -136,6 +140,7 @@ final class NativeDriver implements WorkspaceDriver
 
         try {
             $this->admin->run('workspace-env', [$this->handle($workspace), $workspace->project->slug], $this->credentials($workspace));
+            $workspace->forceFill(['git_account_id' => Accounts::git($workspace->user, $workspace->project)?->account->id])->save();
         } catch (ServerException $e) {
             $workspace->markFailed($e->getMessage());
         }
@@ -154,13 +159,35 @@ final class NativeDriver implements WorkspaceDriver
 
     private function handle(Workspace $workspace): string
     {
-        $handle = $workspace->user->handle;
+        $handle = $workspace->user->ensureHandle();
 
         if (! $handle) {
-            throw new ServerException(__('Connect your :provider account in Settings before opening a workspace.', ['provider' => GitProvider::current()->label()]));
+            throw new ServerException(__('No free name could be found for your home on the server: ask an administrator.'));
         }
 
         return $handle;
+    }
+
+    /**
+     * The CLI the agent opens pull requests with on this host (gh, glab, az): the installer puts
+     * the installation's own in place; another host's is installed the first time a workspace needs it.
+     */
+    private function ensureGitCli(string $provider): void
+    {
+        if ($provider === config('studio.git.provider') || Cache::get('studio:git-cli:'.$provider)) {
+            return;
+        }
+
+        $this->admin->run('git-cli', [$provider]);
+        Cache::forever('studio:git-cli:'.$provider, true);
+    }
+
+    /** What to tell a person who has no account on the host of a project's repository. */
+    public static function missingGitAccount(string $repoUrl): string
+    {
+        $host = (string) (parse_url($repoUrl, PHP_URL_HOST) ?: $repoUrl);
+
+        return __('Add your account on :host (Tools → git hosting) before opening this workspace: git works as you, with your identity.', ['host' => $host]);
     }
 
     /**
@@ -168,18 +195,15 @@ final class NativeDriver implements WorkspaceDriver
      */
     private function credentials(Workspace $workspace): array
     {
-        $user = $workspace->user;
-        $git = GitProvider::current();
+        $git = Accounts::gitAccount($workspace->user, $workspace->project);
 
         return [
-            'git_token' => $user->git_token,
-            'git_username' => $git->gitUsername(),
-            // what the agent's CLI and Larapilot read; the helper clears the variables of any other provider
-            'git_env' => $user->git_token ? $git->agentEnvironment($user->git_token) : (object) [],
-            // The API key when that is the account chosen, kept apart from Claude Code's own
-            // variable (the bridge hands it over to Claude Code). A subscription is the login in
-            // the person's home: nothing of it travels, and no key is left behind.
-            'claude_api_key' => $user->claude_auth_mode === ClaudeAuthMode::ApiKey ? $user->claude_token : null,
+            // the token, the user name git sends with it, what the agent's CLI and Larapilot read
+            // (the helper clears the variables of any other host) and the identity commits carry
+            ...($git?->workspaceInput() ?? ['git_token' => null, 'git_username' => 'x-access-token', 'git_env' => (object) []]),
+            // Claude goes with every turn (the account of the project, see BridgeClient::sendTurn):
+            // no key is left in the workspace.
+            'claude_api_key' => null,
         ];
     }
 }

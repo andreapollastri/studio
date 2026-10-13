@@ -42,9 +42,15 @@ export class LoginSession {
       return this.close();
     }
 
+    const dir = String(this.#target.dir ?? '.claude');
+    if (!/^\.claude(-[a-z0-9]{1,40})?$/.test(dir)) {
+      this.#send({ type: 'error', message: 'This Claude account has no place on the server.' });
+      return this.close();
+    }
+
     const cols = clamp(this.#size.cols, 40, 300);
     const rows = clamp(this.#size.rows, 10, 100);
-    const [bin, ...args] = this.#config.loginCommand(handle, cols, rows);
+    const [bin, ...args] = this.#config.loginCommand(handle, cols, rows, dir);
 
     this.#child = this.#spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { PATH: process.env.PATH ?? '/usr/bin:/bin' } });
     this.#log(`claude login for ${handle} (user ${this.#target.user_id ?? '?'})`);

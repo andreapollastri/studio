@@ -4,59 +4,63 @@ namespace App\Livewire\Settings;
 
 use App\Claude\ClaudeLogin;
 use App\Enums\ClaudeAuthMode;
-use App\Git\Providers\GitProvider;
-use App\Jobs\SyncWorkspaceCredentials;
-use App\Models\Project;
-use App\Models\User;
+use App\Infrastructure\Git\Forges;
+use App\Models\ClaudeAccount;
+use App\Models\ConnectorAccount;
+use App\Models\ProjectGroup;
+use App\Models\ProjectPreference;
 use App\Ssh\Gateway;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
-use RuntimeException;
 
 /**
- * What a person brings to their workspaces: a token for the installation's git
- * provider (GitHub, GitLab, Bitbucket or Azure DevOps), so git and pull requests
- * are theirs, and Claude, so the agent runs on their own plan or key. A Claude
- * subscription is a sign-in to Claude Code in their own home on the server,
- * through Anthropic's own flow (ClaudeLogin): Studio never holds it. Only an
- * API key is stored, encrypted.
+ * What a person brings to their workspaces. Git accounts (personal GitHub,
+ * work Azure DevOps, a client's GitLab…), each with the identity its commits
+ * carry, are added under Tools on each git host and listed here. Claude
+ * accounts are kept here, as many as the person has: API keys, stored
+ * encrypted, and subscriptions, each a sign-in to Claude Code in a folder of
+ * its own in the person's home on the server, through Anthropic's own flow
+ * (ClaudeLogin): Studio never holds them. One is the default; a group of
+ * projects or a single project may use another (Projects).
  */
 #[Layout('layouts::app')]
 #[Title('Connections')]
 class Connections extends Component
 {
-    public string $git_token = '';
+    /** The Claude account being added: an API key or a subscription. */
+    public string $new_kind = 'api_key';
 
-    /**
-     * The Claude account shown in the form: subscription or api_key. A person uses one or
-     * the other; it becomes theirs when they sign in, or save a key.
-     */
-    public string $claude_auth_mode = 'subscription';
+    public string $new_name = '';
 
     /** An Anthropic API key, the only Claude credential Studio keeps. */
-    public string $claude_token = '';
+    public string $new_token = '';
 
-    public function mount(): void
-    {
-        $user = auth()->user();
+    /** uuid of the Claude account being edited */
+    public ?string $editing = null;
 
-        if ($user->claude_auth_mode !== ClaudeAuthMode::None) {
-            $this->claude_auth_mode = $user->claude_auth_mode->value;
-        }
-    }
+    public string $edit_name = '';
+
+    public string $edit_token = '';
 
     /**
      * A one-time ticket for the person's own `claude auth login` in their home
-     * on the server; the page opens it in a terminal through the gateway.
+     * on the server, in the folder of one of their subscriptions; the page opens
+     * it in a terminal through the gateway.
      *
      * @return array{ticket: string, url: string}|null
      */
-    public function claudeLoginTicket(): ?array
+    public function claudeLoginTicket(?string $uuid = null): ?array
     {
-        $user = auth()->user();
+        $account = $this->account($uuid);
+
+        if (! $account->isSubscription()) {
+            return null;
+        }
 
         if (! ClaudeLogin::onServer()) {
             Flux::toast(variant: 'warning', text: __('In development Claude Code uses the sign-in of this computer: run claude auth login in your terminal, then Check.'));
@@ -64,33 +68,20 @@ class Connections extends Component
             return null;
         }
 
-        if (! filled($user->handle)) {
-            Flux::toast(variant: 'warning', text: __('Connect your git provider first: your home on the server is named after it.'));
+        if (! auth()->user()->ensureHandle()) {
+            Flux::toast(variant: 'danger', text: __('No free name could be found for your home on the server: ask an administrator.'));
 
             return null;
         }
 
-        return ['ticket' => Gateway::issueLogin($user), 'url' => Gateway::url()];
+        return ['ticket' => Gateway::issueLogin($account), 'url' => Gateway::url()];
     }
 
-    /**
-     * Ask Claude Code in the person's home whether they are signed in, and keep the answer.
-     * Asked by the person (after the sign-in, or with Check) a subscription becomes their
-     * one account and an API key they had goes; asked quietly on page load, nothing switches.
-     */
-    public function refreshClaude(ClaudeLogin $login, bool $quiet = false): void
+    /** Ask Claude Code whether a subscription is signed in, and keep the answer; quietly, nothing is said. */
+    public function refreshClaude(ClaudeLogin $login, ?string $uuid = null, bool $quiet = false): void
     {
-        $user = auth()->user();
-        $before = [$user->claude_auth_mode, $user->claude_token];
-        $status = $login->refresh($user, adopt: ! $quiet);
-
-        if ([$user->claude_auth_mode, $user->claude_token] !== $before) {
-            $this->afterChange($user);
-        }
-
-        if ($user->claude_auth_mode !== ClaudeAuthMode::None) {
-            $this->claude_auth_mode = $user->claude_auth_mode->value;
-        }
+        $account = $this->account($uuid);
+        $status = $login->refresh($account);
 
         if ($quiet) {
             return;
@@ -98,129 +89,186 @@ class Connections extends Component
 
         match (true) {
             $status['error'] !== null => Flux::toast(variant: 'danger', text: $status['error']),
-            $status['logged_in'] && $status['method'] === 'claude.ai' => Flux::toast(variant: 'success', text: __('Signed in to Claude with your subscription.')),
+            $status['logged_in'] && $status['method'] === 'claude.ai' => Flux::toast(variant: 'success', text: __(':account is signed in with your subscription.', ['account' => $account->name])),
             $status['logged_in'] => Flux::toast(variant: 'warning', text: __('Claude Code is signed in, but not with a Claude subscription (:method).', ['method' => (string) $status['method']])),
             default => Flux::toast(variant: 'warning', text: __('Not signed in to Claude yet.')),
         };
     }
 
-    public function logoutClaude(ClaudeLogin $login): void
+    /** Check every subscription on page load, without a word. */
+    public function refreshSubscriptions(ClaudeLogin $login): void
     {
-        $user = auth()->user();
-        $login->logout($user);
-        $this->afterChange($user);
-
-        Flux::toast(text: __('Signed out of Claude.'));
+        auth()->user()->claudeAccounts()->where('kind', ClaudeAuthMode::Subscription)->get()
+            ->each(fn (ClaudeAccount $account) => $login->refresh($account));
     }
 
-    public function saveGit(): void
+    public function logoutClaude(ClaudeLogin $login, string $uuid): void
     {
-        $this->validate(['git_token' => ['required', 'string', 'min:20', 'max:512']]);
-        $git = GitProvider::current();
+        $account = $this->account($uuid);
+        $login->logout($account);
 
-        try {
-            $who = $git->whoAmI($this->git_token);
-        } catch (RuntimeException $e) {
-            $this->addError('git_token', $e->getMessage());
-
-            return;
-        }
-
-        $user = auth()->user();
-        $handle = $user->handle ?: $this->freeHandle(User::handleFromLogin($who['login']), $user);
-
-        if ($handle === null) {
-            $this->addError('git_token', __('No free handle could be derived from the login :login: ask an administrator.', ['login' => $who['login']]));
-
-            return;
-        }
-
-        $user->forceFill(['git_token' => $this->git_token, 'git_login' => $who['login'], 'handle' => $handle])->save();
-
-        $this->git_token = '';
-        $this->afterChange($user);
-
-        Flux::toast(variant: 'success', text: __(':provider connected as :login.', ['provider' => $git->label(), 'login' => $who['login']]));
-    }
-
-    public function forgetGit(): void
-    {
-        $user = auth()->user();
-        $user->forceFill(['git_token' => null, 'git_login' => null])->save();
-        $this->afterChange($user);
-
-        Flux::toast(text: __(':provider token removed.', ['provider' => GitProvider::current()->label()]));
-    }
-
-    /** An Anthropic API key: billed on the person's Console account, set as ANTHROPIC_API_KEY in their workspaces. */
-    /** An API key becomes the person's one Claude account: a subscription signed in on the server is signed out. */
-    public function saveClaude(ClaudeLogin $login): void
-    {
-        $this->validate([
-            // sk-ant-oat… is a subscription's setup-token: Studio may not hold one
-            'claude_token' => ['required', 'string', 'min:20', 'max:2000', 'starts_with:sk-ant-', 'not_regex:/^sk-ant-oat/'],
-        ], [
-            'claude_token.starts_with' => __('An Anthropic API key starts with sk-ant-. For a Claude subscription use “Sign in with Claude”.'),
-            'claude_token.not_regex' => __('That is a subscription token: use “Sign in with Claude” instead, Studio does not keep subscription tokens.'),
-        ]);
-
-        $user = auth()->user();
-
-        if ($user->claude_signed_in) {
-            $login->logout($user);
-        }
-
-        $user->forceFill(['claude_token' => $this->claude_token, 'claude_auth_mode' => ClaudeAuthMode::ApiKey])->save();
-
-        $this->claude_token = '';
-        $this->claude_auth_mode = 'api_key';
-        $this->afterChange($user);
-
-        Flux::toast(variant: 'success', text: __('API key saved.'));
-    }
-
-    public function forgetClaude(): void
-    {
-        $user = auth()->user();
-        $user->forceFill([
-            'claude_token' => null,
-            'claude_auth_mode' => $user->claude_auth_mode === ClaudeAuthMode::ApiKey ? ClaudeAuthMode::None : $user->claude_auth_mode,
-        ])->save();
-        $this->afterChange($user);
-
-        Flux::toast(text: __('API key removed.'));
+        Flux::toast(text: __('Signed out of :account.', ['account' => $account->name]));
     }
 
     /**
-     * The handle becomes a Linux user and the first half of the preview hosts, so it has
-     * to be unique and must not land on an existing project's host: the login as it is,
-     * or with a short counter.
+     * Add a Claude account: an API key is checked for its shape and kept; a subscription gets
+     * its folder and its uuid goes back to the page, which opens the sign-in for it.
      */
-    private function freeHandle(string $base, User $user): ?string
+    public function addClaude(): ?string
     {
-        foreach (range(1, 9) as $attempt) {
-            $handle = $attempt === 1 ? $base : rtrim(substr($base, 0, User::HANDLE_MAX - 2), '-').'-'.$attempt;
+        $user = auth()->user();
 
-            $taken = User::query()->whereNot('id', $user->id)->where('handle', $handle)->exists()
-                || Project::siteHostShadowedByHandle($handle) !== null;
+        $this->validate([
+            'new_kind' => ['required', Rule::in([ClaudeAuthMode::ApiKey->value, ClaudeAuthMode::Subscription->value])],
+            'new_name' => ['required', 'string', 'max:80', Rule::unique('claude_accounts', 'name')->where('user_id', $user->id)],
+            ...($this->new_kind === ClaudeAuthMode::ApiKey->value ? ['new_token' => $this->keyRules()] : []),
+        ], $this->keyMessages('new_token'));
 
-            if (! $taken) {
-                return $handle;
-            }
+        $subscription = $this->new_kind === ClaudeAuthMode::Subscription->value;
+
+        $account = $user->claudeAccounts()->create([
+            'name' => trim($this->new_name),
+            'kind' => $this->new_kind,
+            'token' => $subscription ? null : $this->new_token,
+            'dir' => $subscription ? ClaudeAccount::freeDir($user) : null,
+        ]);
+
+        // the first one is the default: what every project uses until told otherwise
+        if ($user->claude_account_id === null) {
+            $user->forceFill(['claude_account_id' => $account->id])->save();
         }
 
-        return null;
+        $this->reset('new_name', 'new_token');
+
+        if (! $subscription) {
+            Flux::toast(variant: 'success', text: __('API key :account saved.', ['account' => $account->name]));
+        }
+
+        return $account->uuid;
     }
 
-    private function afterChange(User $user): void
+    public function edit(string $uuid): void
     {
-        if ($user->workspaces()->where('driver', 'native')->exists()) {
-            SyncWorkspaceCredentials::dispatch($user);
+        $account = $this->account($uuid);
+
+        $this->editing = $account->uuid;
+        $this->edit_name = $account->name;
+        $this->edit_token = '';
+        $this->resetValidation();
+    }
+
+    public function saveEdit(): void
+    {
+        $account = $this->account($this->editing);
+
+        $this->validate([
+            'edit_name' => ['required', 'string', 'max:80', Rule::unique('claude_accounts', 'name')->where('user_id', $account->user_id)->ignore($account->id)],
+            ...(! $account->isSubscription() && $this->edit_token !== '' ? ['edit_token' => $this->keyRules()] : []),
+        ], $this->keyMessages('edit_token'));
+
+        $account->name = trim($this->edit_name);
+
+        if (! $account->isSubscription() && $this->edit_token !== '') {
+            $account->token = $this->edit_token;
         }
+
+        $account->save();
+        $this->cancelEdit();
+
+        Flux::toast(variant: 'success', text: __('Saved.'));
+    }
+
+    public function cancelEdit(): void
+    {
+        $this->reset('editing', 'edit_name', 'edit_token');
+        $this->resetValidation();
+    }
+
+    /** The account every project uses unless its group or the project itself says otherwise. */
+    public function makeDefault(string $uuid): void
+    {
+        $account = $this->account($uuid);
+        auth()->user()->forceFill(['claude_account_id' => $account->id])->save();
+
+        Flux::toast(text: __(':account is your default Claude account.', ['account' => $account->name]));
+    }
+
+    /** Remove a Claude account: a subscription is signed out and its folder goes; groups and projects fall back to the default. */
+    public function removeClaude(ClaudeLogin $login, string $uuid): void
+    {
+        $user = auth()->user();
+        $account = $this->account($uuid);
+
+        if ($account->isSubscription()) {
+            $login->forget($account);
+        }
+
+        $account->delete();
+
+        if ($user->claude_account_id === null || $user->claude_account_id === $account->id) {
+            $next = $user->claudeAccounts()->orderBy('id')->get()->first(fn (ClaudeAccount $a) => $a->isUsable()) ?? $user->claudeAccounts()->orderBy('id')->first();
+            $user->forceFill(['claude_account_id' => $next?->id])->save();
+        }
+
+        Flux::toast(text: __(':account removed.', ['account' => $account->name]));
+    }
+
+    private function account(?string $uuid): ClaudeAccount
+    {
+        return auth()->user()->claudeAccounts()->where('uuid', (string) $uuid)->firstOrFail();
+    }
+
+    /** @return list<mixed> */
+    private function keyRules(): array
+    {
+        // sk-ant-oat… is a subscription's setup-token: Studio may not hold one
+        return ['required', 'string', 'min:20', 'max:2000', 'starts_with:sk-ant-', 'not_regex:/^sk-ant-oat/'];
+    }
+
+    /** @return array<string, string> */
+    private function keyMessages(string $field): array
+    {
+        return [
+            $field.'.starts_with' => __('An Anthropic API key starts with sk-ant-. For a Claude subscription add a subscription and sign in with Claude.'),
+            $field.'.not_regex' => __('That is a subscription token: add a subscription and sign in with Claude instead, Studio does not keep subscription tokens.'),
+        ];
+    }
+
+    /**
+     * Where each account is used: the groups that take it by default, and how many projects
+     * the person chose it for.
+     *
+     * @return array<int, array{groups: list<string>, projects: int}>
+     */
+    private function usage(string $column): array
+    {
+        $user = auth()->user();
+        $used = [];
+
+        foreach (ProjectGroup::query()->where('user_id', $user->id)->whereNotNull($column)->get(['name', $column]) as $group) {
+            $used[$group->{$column}]['groups'][] = $group->name;
+        }
+
+        foreach (ProjectPreference::query()->where('user_id', $user->id)->whereNotNull($column)->pluck($column)->countBy() as $id => $total) {
+            $used[$id]['projects'] = $total;
+        }
+
+        return array_map(fn (array $u) => ['groups' => $u['groups'] ?? [], 'projects' => $u['projects'] ?? 0], $used);
     }
 
     public function render(): View
     {
-        return view('livewire.settings.connections', ['user' => auth()->user(), 'git' => GitProvider::current()]);
+        $user = auth()->user();
+        /** @var Collection<int, ConnectorAccount> $gitAccounts */
+        $gitAccounts = $user->gitAccounts()->orderBy('connector')->orderBy('name')->get();
+
+        return view('livewire.settings.connections', [
+            'user' => $user,
+            'claudeAccounts' => $user->claudeAccounts()->orderBy('id')->get(),
+            'gitAccounts' => $gitAccounts,
+            'forges' => Forges::enabled(),
+            'claudeUsage' => $this->usage('claude_account_id'),
+            'gitUsage' => $this->usage('git_account_id'),
+        ]);
     }
 }

@@ -35,16 +35,25 @@ What lives where on the server:
 | `<project>.<domain>` | the deploy branch of a project, redeployed on every push by the git provider's webhook |
 | `<user>-<project>.<domain>` | one person's workspace: their clone, their database, their Claude Code |
 
-**One git provider per Studio**, chosen in the installer: GitHub, GitLab (gitlab.com or self-managed),
-Bitbucket Cloud or Azure DevOps (one organization), the same remote forges Larapilot integrates with.
-Every project is a repository there; Studio never mixes providers and keeps no history of a previous one
-(`php artisan studio:git-provider` changes it only while there are no projects). People sign in with email
-and password (plus two-factor), then connect their own token for the provider and their own Claude in
-*Settings → Connections*: *Sign in with Claude* runs Claude Code's official `claude auth login` in the person's own
-home on the server (`/home/ws-<handle>`, shared by all their workspaces), so a Pro or Max subscription is used the way
-Anthropic allows on hosted platforms and Studio never holds it; or an Anthropic API key. The page explains for each provider how to
-create the token and how organizations, groups, workspaces or projects work. A project is an existing
-repository, or one Studio creates on the spot with the latest Laravel, Laravel Boost and Larapilot.
+**Any git host, everyone's own accounts.** Projects live on GitHub, GitLab (gitlab.com or self-managed),
+Bitbucket Cloud or Azure DevOps, the same remote forges Larapilot integrates with; the installer picks the default
+one (`php artisan studio:git-provider` changes it), *Administration → Connectors* turns the others on. A project is
+an existing repository, or one Studio creates on the spot with the latest Laravel, Laravel Boost and Larapilot, with
+one of the creating administrator's accounts, which also registers the webhook and deploys the site. People sign in
+with email and password (plus two-factor), then bring their own accounts, as many as they work with:
+
+- **Git** (*Tools → GitHub, GitLab…*): a personal GitHub, the company's Azure DevOps, a client's GitLab, each with the
+  name and email its commits carry. A workspace clones, commits and pushes as the account on the host of its
+  repository, with that identity (`git config` in the clone), and the agent's CLI (gh, glab, az) gets that token.
+- **Claude** (*Settings → Connections*): subscriptions and Anthropic API keys side by side. *Sign in with Claude* runs
+  Claude Code's official `claude auth login` in the person's own home on the server, in a folder of its own for each
+  subscription (`~/.claude`, `~/.claude-<slug>`, sharing the sessions, agents and skills), so a Pro, Max or Team plan is
+  used the way Anthropic allows on hosted platforms and Studio never holds it; a key is stored encrypted and goes with
+  each message. One account is the default.
+- **Groups** (*Projects*): each person puts their projects in groups of their own (Personal, Open source, Work,
+  Clients…). A group picks the Claude account and the git account its projects use; a project may pick others. Each
+  card shows what it runs on and why. A Claude change applies to the next message; a git change restarts only the
+  workspaces whose account moves.
 
 **Updates.** `studio-update` (root) installs every new build of its channel by itself, nightly or from
 *Administration → System*: **stable** follows the release tags, **beta** (beta tester mode) the head of `main`;
@@ -70,13 +79,30 @@ chat), subagent cards with `code-reviewer` and `browser-qa`, and conversations i
 (worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* picks the model, the effort and the permission mode
 (ask, ask with edits, autopilot, plan only); the *Terminal* tab runs allowlisted commands in the workspace; the *Files* tab is a file manager with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
-**Infrastructure.** *Administration → Connectors* turns on the clouds and services the team runs its servers on:
+**Infrastructure.** Studio also drives the clouds and services the team runs its servers on, through their APIs:
 AWS (EC2, every kind of Lightsail resource, RDS, S3, Route 53, CloudFront), DigitalOcean, Hetzner Cloud, Cloudflare,
-[Cipi](https://cipi.sh) servers, [Boogle](https://boogle.web.ap.it) and [Hackly](https://hackly.web.ap.it), for the
-administrators only. Enabled connectors show under *Infrastructure* in their menu, the others stay hidden. Each holds any number
-of accounts, added by administrators, checked against the provider and stored encrypted; from there servers, DNS,
-firewalls, volumes, databases, apps, deploys, exceptions and findings are listed and driven through the providers' APIs.
-Which token to create, where and with which permissions: [the docs](https://studio.web.ap.it/#infra).
+[Cipi](https://cipi.sh) servers, [Boogle](https://boogle.web.ap.it) and [Hackly](https://hackly.web.ap.it). It is for
+administrators only: no other role sees the menu, the pages or the accounts.
+
+1. *Administration → Connectors*: switch on the connectors the team uses. Only those show in the menu, under
+   *Infrastructure*; turning one off hides it again and keeps its accounts.
+2. On the connector's page, *Accounts → Add an account*: a name and the credentials (an IAM access key, a team or project
+   token, the address and token of a Cipi server or of a Boogle or Hackly instance). Studio checks them against the
+   provider before saving and stores them encrypted; any number of accounts per connector.
+3. Pick the account at the top and a tab: lists with search and filters (the region for AWS), a button to create, a menu
+   of actions on every row. Secrets the provider hands back once (root passwords, private keys) show once, with *Copy*.
+
+The pages ask for the password again, as the SSH terminal does, and every action is logged with who did it
+(`grep '"infrastructure"' storage/logs/laravel.log`). Which token to create for each provider, where, with which
+permissions, plus step-by-step recipes: [the docs](https://studio.web.ap.it/#infra).
+
+**Git hosting.** *Tools → GitHub* (GitLab, Bitbucket, Azure DevOps) is a dashboard of what waits for you on the git
+hosts: pull requests asking for your review, your own, issues and work items assigned to you, notifications, and every
+repository with its branches, pipelines and releases. Read the conversation and the diff, comment, approve, merge,
+close, create branches, pull requests, issues and releases, start or retry pipelines. Everyone works with their own
+accounts, as many as they need (personal, work, a client's), each with the name and email its commits carry; the
+installation's provider is on from the start, *Administration → Connectors* turns the others on. Tokens and scopes per
+provider: [the docs](https://studio.web.ap.it/#git).
 
 ## Status (1.1)
 
@@ -102,10 +128,12 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | SSH terminal (*Tools → SSH terminal*, admins and developers): saved connections with favourites, several terminals at once (tabs or side by side), Ed25519/RSA keys generated or imported (OpenSSH, PEM, PuTTY, with passphrase), passwords, host keys accepted on first use; a connection tied to a project shows up for its admins and developers, who connect with their own key or password | done, tested (Pest, and `ssh-gateway/` against a real SSH server); the `studio-ssh` unit and its Caddy route not yet run on a live server |
 | Password manager (*Tools → Password manager*): nested personal folders, items encrypted (username, password, notes, TOTP with live codes), password generator; an item is tied to a project for the roles ticked (client, PM, dev) and shared with single people to view or edit, with a table of who sees it and why | done, tested |
 | Drive (*Tools → Drive*): folders and files on Studio's disk, upload by button or drag and drop; a folder tied to a project opens by role to view or to view and edit, down the tree; administrators see everything, clients create nothing; *Copy / Move into the workspace* sends files or whole folders to the person's workspace of that project through the bridge | done, tested (the bridge's `PUT /files/upload` against real directories) |
-| Claude: *Sign in with Claude* (the official `claude auth login` in the person's home on the server, through the SSH gateway), or an API key: one or the other, chosen in Settings | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
+| Claude: several accounts per person, subscriptions (the official `claude auth login` in a folder of their own in the person's home, through the SSH gateway) and API keys; a default, a choice per group of projects and per project, sent with every turn | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
+| Groups of projects per person, with their Claude and git accounts; projects on any enabled git host, each workspace with the git account and commit identity of its repository's host | done, tested |
 | Agent browser (Playwright MCP signed in to the preview with the person's pass), screenshots in the chat, subagents as cards, Studio's `code-reviewer` and `browser-qa` | done, tested (bridge against the fake CLI; Playwright MCP 0.0.83 run for real against a site behind a pass cookie: navigate, screenshot, console); not yet run on a live server |
 | Conversations in a sandbox: worktree on its own branch, database copy, build and preview host; merge, push, remove; the side pane follows it | done, tested (bridge against real git repositories, Studio with stand-ins for the bridge and the helper); `sandbox-create`/`sandbox-delete` shellchecked, not yet run on a live server |
-| Infrastructure connectors (*Administration → Connectors*, menu *Infrastructure*): AWS (EC2, all of Lightsail, RDS, S3, Route 53, CloudFront, cost), DigitalOcean, Hetzner Cloud, Cloudflare, Cipi servers, Boogle, Hackly; multi-account, credentials encrypted and checked on save, enabled per connector and role | done, tested against each API's documented requests and answers (HTTP fakes, AWS SigV4 against the AWS test suite); not yet run against the live services |
+| Infrastructure connectors (*Administration → Connectors*, menu *Infrastructure*): AWS (EC2, all of Lightsail, RDS, S3, Route 53, CloudFront, cost), DigitalOcean, Hetzner Cloud, Cloudflare, Cipi servers, Boogle, Hackly; multi-account, credentials encrypted and checked on save, enabled per connector, administrators only | done, tested against each API's documented requests and answers (HTTP fakes, AWS SigV4 against the AWS test suite); not yet run against the live services |
+| Git hosting dashboards (*Tools*): GitHub, GitLab, Bitbucket Cloud, Azure DevOps; personal accounts, several per person, each with its commit identity | done, tested against each API's documented requests and answers (HTTP fakes); not yet run against the live services |
 | Not started | atomic releases for project sites, notifications, mobile layout |
 
 ## Run it locally (no server)

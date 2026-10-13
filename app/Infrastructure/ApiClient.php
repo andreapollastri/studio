@@ -30,7 +30,14 @@ class ApiClient
      */
     public function get(string $path, array $query = []): array
     {
-        return $this->send('GET', $path, ['query' => $query]);
+        // A query option replaces the one in the address (a "next page" link): keep both.
+        if ($query !== [] && str_contains($path, '?')) {
+            [$path, $inline] = explode('?', $path, 2);
+            parse_str($inline, $parsed);
+            $query = [...$parsed, ...$query];
+        }
+
+        return $this->send('GET', $path, $query === [] ? [] : ['query' => $query]);
     }
 
     /**

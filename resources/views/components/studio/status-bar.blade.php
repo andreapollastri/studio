@@ -2,14 +2,16 @@
 
 @php
     $user = $conversation->user;
-    // what the next message runs on, and what the last one really ran on (Claude Code's own word)
-    $account = $user->claudeAccount();
+    // what the next message runs on (the project's Claude account), and what the last one really ran on (Claude Code's own word)
+    $choice = \App\Accounts\Accounts::claude($user, $conversation->workspace->project);
+    $claude = $choice?->account;
+    $account = $claude?->isUsable() ? $claude->kind->value : null;
     $ran = $conversation->runtime['auth'] ?? null;
     $chosen = \App\Claude\ModelName::label($conversation->model);
     $actual = \App\Claude\ModelName::label($conversation->runtime['model'] ?? null);
     $effort = $conversation->effort;
     $mode = $conversation->permission_mode;
-    $usage = $account === 'subscription' ? $user->claude_usage : null;
+    $usage = $account === 'subscription' ? $claude->usage : null;
     $resets = filled($usage['resets_at'] ?? null) ? \Illuminate\Support\Carbon::parse($usage['resets_at'])->timezone(config('app.timezone')) : null;
     $cost = $conversation->last_result['total_cost_usd'] ?? null;
     // a cost only means something on an API key: on a subscription it is a list-price estimate of nothing you pay
@@ -31,9 +33,9 @@
         'bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-800' => $account === 'api_key',
         'bg-violet-50 text-violet-800 ring-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-800' => $account === 'subscription',
         'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-800' => $account === null,
-    ]) title="{{ $account === 'api_key' ? __('Billed by the token on your Anthropic Console account') : ($account === 'subscription' ? __('Your Claude plan, within its limits') : __('Connect Claude in Settings → Connections')) }}">
+    ]) title="{{ ($account === 'api_key' ? __('Billed by the token on your Anthropic Console account') : ($account === 'subscription' ? __('Your Claude plan, within its limits') : ($claude ? __(':account is not signed in: check it in Settings → Connections', ['account' => $claude->name]) : __('Connect Claude in Settings → Connections')))).($choice ? ' · '.$choice->reason() : '') }}">
         <flux:icon :name="$account === 'api_key' ? 'key' : ($account === 'subscription' ? 'sparkles' : 'exclamation-triangle')" variant="micro" class="size-3" />
-        {{ $account === 'api_key' ? __('API key') : ($account === 'subscription' ? __('Subscription') : __('No Claude account')) }}
+        {{ $claude ? $claude->name : __('No Claude account') }}
     </a>
 
     {{-- within limits and no percentage yet: nothing worth a chip --}}

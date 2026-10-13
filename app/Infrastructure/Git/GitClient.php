@@ -28,7 +28,14 @@ class GitClient extends ApiClient
         $this->fingerprint = hash('sha256', $baseUrl.'|'.json_encode($headers));
     }
 
-    /** Something about the signed-in account that does not change between clicks, kept for an hour. */
+    /**
+     * Something about the signed-in account that does not change between clicks, kept for an hour.
+     *
+     * @template TValue
+     *
+     * @param  Closure(): TValue  $read
+     * @return TValue
+     */
     public function remember(string $key, Closure $read): mixed
     {
         return Cache::remember('git:'.$this->fingerprint.':'.$key, 3600, $read);

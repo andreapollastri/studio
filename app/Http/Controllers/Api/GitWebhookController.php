@@ -2,21 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Git\Providers\GitProvider;
 use App\Http\Controllers\Controller;
 use App\Jobs\DeployProjectSite;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/** A push to the deploy branch, reported by the git provider, deploys the project site. */
+/** A push to the deploy branch, reported by the git host of the project's repository, deploys the project site. */
 class GitWebhookController extends Controller
 {
     public function __invoke(Request $request, Project $project): JsonResponse
     {
-        $git = GitProvider::current();
+        $git = $project->gitProvider();
 
-        if (! $project->webhook_secret || ! $git->verifyWebhook($request, (string) $project->webhook_secret)) {
+        if (! $git || ! $project->webhook_secret || ! $git->verifyWebhook($request, (string) $project->webhook_secret)) {
             return response()->json(['error' => 'Bad signature.'], 403);
         }
 

@@ -48,8 +48,50 @@ server is in `installer/upgrades/<version>.sh`.
   enabled ones show under *Infrastructure* in their menu, and no other role sees them. Administrators add the
   accounts, checked against the provider and stored encrypted; the pages ask for the password
   again, and every action is logged with who did it. AWS requests are signed with Signature
-  Version 4 by Studio itself, no SDK. The docs say for each provider where to create the token and
-  with which permissions.
+  Version 4 by Studio itself, no SDK. The docs (*Infrastructure*) say for each provider which token
+  to create, where and with which permissions, and walk through the usual tasks. Nothing to do by
+  hand on update: the migration runs with it and every connector starts off.
+
+### Git hosting
+- **Tools → GitHub, GitLab, Bitbucket, Azure DevOps**: a dashboard of what waits for you on the
+  git hosts (pull requests asking for your review, your own, issues and work items assigned to
+  you, notifications and to-dos) and every repository with its pull requests, issues, branches,
+  pipelines (Actions, GitLab CI, Bitbucket Pipelines, Azure Pipelines) and releases. Read a pull
+  request with its conversation and its diff, comment, approve or request changes, ask for
+  reviewers, merge (merge commit, squash, rebase; GitLab auto-merge, Azure auto-complete), close
+  and reopen; create repositories, branches, pull requests, issues and releases; start, retry and
+  cancel pipelines. Titles open the provider in a new tab.
+- **Personal accounts**: everyone adds their own, as many as they work with and on any host,
+  each with the name and email its commits carry (from the provider when left empty). Nobody
+  else sees them. The token saved in *Settings → Connections* becomes the first account on the
+  installation's provider, which is on from the start; *Administration → Connectors → Git
+  hosting* turns the others on.
+- Lists that follow a provider's "next page" link no longer read the first page again (Boogle,
+  DigitalOcean, Hackly).
+
+### Accounts and groups
+- **Projects on any git host that is on**: the project form picks one of the administrator's git
+  accounts (the address typed in chooses the one on its host); that account creates or reads the
+  repository, registers the push webhook and deploys the site. Webhooks are verified by the host of
+  each project's repository. `studio:git-provider` now sets the default host and keeps everybody's
+  accounts, with projects too.
+- **The git identity follows the account**: a workspace clones, commits and pushes with the
+  person's account on the host of its repository (a client's GitLab, the company's GitHub, a
+  personal one) and its name and email in the clone's `git config`; the agent's CLI gets that
+  token, and the CLI of a host other than the installation's is installed the first time it is
+  needed.
+- **Several Claude accounts per person**: subscriptions (each signed in with Claude Code's own
+  sign-in in a folder of its own in the person's home, sharing sessions, agents and skills) and
+  API keys, side by side in *Settings → Connections*, one of them the default; the plan's usage is
+  kept per account. The account goes with every message, so a change needs no restart, and an API
+  key is no longer left in the workspace.
+- **Groups of projects**, each person's own (Personal, Open source, Work, Clients…), in the order
+  they give them: a group picks the Claude account and the git account of its projects (a git
+  account only where the repository lives on its host), a project may pick others. Every card says
+  what the project runs on and why; changing a git account restarts only the workspaces it moves.
+- The account a person had in *Settings → Connections* becomes their first Claude account and
+  their default; their git token, their first git account (see Git hosting). Their handle no
+  longer depends on a git login: it is given once, from the first git account or the e-mail.
 
 ### Server
 - The system step installs Playwright MCP (pinned in `requirements.env`) and its Chromium in
@@ -57,6 +99,10 @@ server is in `installer/upgrades/<version>.sh`.
   Ubuntu 24.04+. New helper commands `sandbox-create` and `sandbox-delete`; `workspace-delete`
   removes the workspace's sandboxes. `installer/upgrades/1.2.0.sh` gives every bridge its new
   variables and restarts it.
+- The helper's `claude-status`, `claude-login` and `claude-logout` take the folder of a Claude
+  account; new `claude-forget` (removes one, never following its links) and `git-cli <provider>`;
+  `workspace-env` also re-applies the commit identity. Claude Code's managed settings deny reading
+  `~/.claude-*` too (patched in place on existing servers).
 
 ## 1.1.0
 

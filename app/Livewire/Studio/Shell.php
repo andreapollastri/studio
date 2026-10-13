@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Studio;
 
+use App\Accounts\Accounts;
 use App\Actions\Studio\StartConversation;
 use App\Enums\WorkspaceStatus;
 use App\Jobs\ProvisionWorkspace;
@@ -60,7 +61,8 @@ class Shell extends Component
 
     /**
      * What the person still has to connect before a workspace on this server
-     * can exist: nothing in local development, the git provider and Claude otherwise.
+     * can exist: nothing in local development; otherwise an account on the host of
+     * the project's repository, and a Claude account.
      *
      * @return list<string>
      */
@@ -73,7 +75,7 @@ class Shell extends Component
         }
 
         return array_values(array_filter([
-            $user->hasGit() ? null : 'git',
+            Accounts::gitAccount($user, $this->project) !== null ? null : 'git',
             $user->hasClaude() ? null : 'claude',
         ]));
     }

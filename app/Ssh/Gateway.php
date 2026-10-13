@@ -2,6 +2,7 @@
 
 namespace App\Ssh;
 
+use App\Models\ClaudeAccount;
 use App\Models\SshConnection;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
@@ -44,12 +45,13 @@ final class Gateway
 
     /**
      * A ticket for the person's own `claude auth login`, in their home on this
-     * server: the gateway runs the official CLI on a terminal and relays it.
+     * server, in the folder of one of their subscriptions: the gateway runs the
+     * official CLI on a terminal and relays it.
      */
-    public static function issueLogin(User $user): string
+    public static function issueLogin(ClaudeAccount $account): string
     {
         $ticket = Str::random(48);
-        Cache::put(self::key($ticket), ['kind' => 'claude-login', 'user_id' => $user->id], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
+        Cache::put(self::key($ticket), ['kind' => 'claude-login', 'user_id' => $account->user_id, 'account_id' => $account->id], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
 
         return $ticket;
     }
@@ -75,12 +77,14 @@ final class Gateway
         $user = User::query()->whereKey($issued['user_id'] ?? 0)->first();
 
         if (($issued['kind'] ?? null) === 'claude-login') {
-            if ($user === null || ! $user->canChat() || ! filled($user->handle) || config('studio.driver') !== 'native') {
+            $account = $user?->claudeAccounts()->whereKey($issued['account_id'] ?? 0)->first();
+
+            if ($user === null || $account === null || ! $account->isSubscription() || ! $user->canChat() || ! filled($user->handle) || config('studio.driver') !== 'native') {
                 return null;
             }
-            Log::info('Claude sign-in started', ['user' => $user->email]);
+            Log::info('Claude sign-in started', ['user' => $user->email, 'account' => $account->name]);
 
-            return ['kind' => 'claude-login', 'user_id' => $user->id, 'handle' => $user->handle];
+            return ['kind' => 'claude-login', 'user_id' => $user->id, 'handle' => $user->handle, 'dir' => $account->dir ?? ClaudeAccount::DEFAULT_DIR];
         }
 
         $connection = SshConnection::query()->with('key')->whereKey($issued['connection_id'] ?? 0)->first();

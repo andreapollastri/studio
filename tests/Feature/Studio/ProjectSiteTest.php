@@ -21,7 +21,7 @@ beforeEach(function () {
 });
 
 test('provisioning a project site creates it on the server and registers the push webhook', function () {
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'github_pat_admin']);
+    $admin = User::factory()->admin()->withGit('github_pat_admin', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://github.com/agency/shop.git', 'deploy_user_id' => $admin->id]);
 
     Http::fake([
@@ -46,8 +46,8 @@ test('provisioning a project site creates it on the server and registers the pus
         && str_ends_with($request['config']['url'], '/api/git/webhook/shop'));
 });
 
-test('a refused GitHub token fails the site with a message that says to paste a new one', function () {
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'github_pat_dead']);
+test('a refused token fails the site with a message that says to replace it', function () {
+    $admin = User::factory()->admin()->withGit('github_pat_dead', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://github.com/agency/shop.git', 'deploy_user_id' => $admin->id]);
     Http::fake(fn (Request $request) => str_contains($request->url(), '/user')
         ? Http::response(['message' => 'Bad credentials'], 401)
@@ -65,7 +65,7 @@ test('a project without a deploying administrator fails to provision with a read
     app(ProjectSites::class)->provision($project);
 
     expect($project->fresh()->site_status)->toBe(SiteStatus::Failed)
-        ->and($project->fresh()->last_error)->toContain('GitHub token');
+        ->and($project->fresh()->last_error)->toContain('git account on github.com');
 });
 
 test('a signed push to the deploy branch queues a deploy, anything else is ignored or refused', function () {
@@ -94,7 +94,7 @@ test('a signed push to the deploy branch queues a deploy, anything else is ignor
 });
 
 test('deploying updates the sha from the helper', function () {
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'github_pat_admin']);
+    $admin = User::factory()->admin()->withGit('github_pat_admin', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $project = Project::factory()->online()->create(['deploy_user_id' => $admin->id, 'webhook_id' => '1']);
 
     Http::fake(['https://api.github.com/user' => Http::response(['login' => 'andrea'], 200)]);
@@ -107,7 +107,7 @@ test('deploying updates the sha from the helper', function () {
 });
 
 test('deploying a project whose site never got created provisions it instead of failing on an empty server', function () {
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'github_pat_admin']);
+    $admin = User::factory()->admin()->withGit('github_pat_admin', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $project = Project::factory()->create(['slug' => 'shop', 'repo_url' => 'https://github.com/agency/shop.git', 'deploy_user_id' => $admin->id, 'site_status' => SiteStatus::Failed, 'last_error' => 'project-create failed: composer install failed', 'deployed_at' => null]);
     $log = tempnam(sys_get_temp_dir(), 'studio-admin-');
     $_ENV['FAKE_STUDIO_ADMIN_LOG'] = $_SERVER['FAKE_STUDIO_ADMIN_LOG'] = $log;
@@ -130,7 +130,7 @@ test('deploying a project whose site never got created provisions it instead of 
 });
 
 test('deleting a project takes every workspace and the site off the server, drops the webhook, and only then the row', function () {
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'github_pat_admin']);
+    $admin = User::factory()->admin()->withGit('github_pat_admin', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $maria = User::factory()->create(['handle' => 'maria']);
     $project = Project::factory()->online()->create(['slug' => 'shop', 'repo_url' => 'https://github.com/agency/shop.git', 'deploy_user_id' => $admin->id, 'webhook_id' => '987654']);
     Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $maria->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/shop']);
@@ -195,7 +195,7 @@ test('Caddy may issue certificates for hosts Studio knows, and for a few unknown
 });
 
 test('a project marked for bootstrap gets Laravel pushed before its site is created', function () {
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_token' => 'github_pat_admin']);
+    $admin = User::factory()->admin()->withGit('github_pat_admin', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
     $project = Project::factory()->create(['slug' => 'fresh', 'repo_url' => 'https://github.com/agency/fresh.git', 'deploy_user_id' => $admin->id, 'settings' => ['bootstrap' => true]]);
     $log = tempnam(sys_get_temp_dir(), 'studio-admin-');
     $_ENV['FAKE_STUDIO_ADMIN_LOG'] = $_SERVER['FAKE_STUDIO_ADMIN_LOG'] = $log;

@@ -1,12 +1,25 @@
 <?php
 
 use App\Claude\ModelName;
-use App\Enums\ClaudeAuthMode;
 use App\Livewire\Studio\Chat;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Models\Workspace;
 use Livewire\Livewire;
+
+/** A person with one Claude account, their default: a key, or a subscription with the plan's last word. */
+function claudeUser(string $kind = 'subscription', bool $signedIn = true, ?array $usage = null): User
+{
+    $user = User::factory()->withClaude($kind, $signedIn)->create();
+    $user->claudeAccounts()->update(['usage' => $usage === null ? null : json_encode($usage)]);
+
+    return $user;
+}
+
+function usageOf(User $user): ?array
+{
+    return $user->claudeAccounts()->first()->usage;
+}
 
 function chatFor(User $user, array $conversation = []): Conversation
 {
@@ -16,7 +29,7 @@ function chatFor(User $user, array $conversation = []): Conversation
 }
 
 test('on an API key the bar says so and shows the estimated cost of the last turn', function () {
-    $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::ApiKey, 'claude_token' => 'sk-ant-api03-key']);
+    $user = claudeUser('api_key');
     $conversation = chatFor($user, [
         'model' => null, 'effort' => 'high', 'permission_mode' => 'auto',
         'runtime' => ['model' => 'claude-haiku-4-5-20251001', 'auth' => 'api_key'],
@@ -34,14 +47,11 @@ test('on an API key the bar says so and shows the estimated cost of the last tur
 });
 
 test('on a subscription the bar shows the plan\'s usage, never a cost', function () {
-    $user = User::factory()->create([
-        'claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true,
-        'claude_usage' => ['status' => 'allowed_warning', 'percent' => 82, 'resets_at' => now()->addHours(2)->toIso8601String(), 'at' => now()->toIso8601String()],
-    ]);
+    $user = claudeUser(usage: ['status' => 'allowed_warning', 'percent' => 82, 'resets_at' => now()->addHours(2)->toIso8601String(), 'at' => now()->toIso8601String()]);
     $conversation = chatFor($user, ['model' => 'claude-opus-5-5', 'last_result' => ['total_cost_usd' => 0.0712], 'runtime' => ['auth' => 'subscription']]);
 
     Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])
-        ->assertSee('Subscription')
+        ->assertSee('Claude subscription')
         ->assertSee('5h 82%')
         ->assertSee('resets')
         ->assertSee('Opus 5.5')
@@ -51,25 +61,28 @@ test('on a subscription the bar shows the plan\'s usage, never a cost', function
 });
 
 test('a plan within its limits with no percentage yet shows no usage chip', function () {
-    $user = User::factory()->create([
-        'claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true,
-        'claude_usage' => ['status' => 'allowed', 'resets_at' => now()->addHours(2)->toIso8601String(), 'at' => now()->toIso8601String()],
-    ]);
+    $user = claudeUser(usage: ['status' => 'allowed', 'resets_at' => now()->addHours(2)->toIso8601String(), 'at' => now()->toIso8601String()]);
 
     Livewire::actingAs($user)->test(Chat::class, ['conversation' => chatFor($user)])
-        ->assertSee('Subscription')
+        ->assertSee('Claude subscription')
         ->assertDontSee('within limits')
         ->assertDontSee('resets');
 });
 
-test('without a connected account the bar says so', function () {
-    $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => false]);
-
+test('without a Claude account the bar says so', function () {
+    $user = User::factory()->create();
     Livewire::actingAs($user)->test(Chat::class, ['conversation' => chatFor($user)])->assertSee('No Claude account');
 });
 
+test('a Claude account signed out shows its name, and why it will not run', function () {
+    $user = claudeUser(signedIn: false);
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => chatFor($user)])
+        ->assertSee('Claude subscription')
+        ->assertSee('is not signed in');
+});
+
 test('the bridge\'s init and rate limit events become what the bar shows', function () {
-    $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true]);
+    $user = claudeUser();
     $conversation = chatFor($user);
     $workspace = $conversation->workspace;
 
@@ -82,7 +95,7 @@ test('the bridge\'s init and rate limit events become what the bar shows', funct
     ])->assertOk();
 
     expect($conversation->fresh()->runtime)->toMatchArray(['model' => 'claude-sonnet-5-5', 'auth' => 'subscription'])
-        ->and($user->fresh()->claude_usage)->toMatchArray(['status' => 'allowed', 'percent' => 42]);
+        ->and(usageOf($user))->toMatchArray(['status' => 'allowed', 'percent' => 42]);
 
     $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), [
         'conversation' => (string) $conversation->id,
@@ -101,7 +114,7 @@ test('model ids read the way people say them', function () {
 });
 
 test('after a turn the bridge brings what /usage shows: the five hours and the week, in percent', function () {
-    $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true]);
+    $user = claudeUser();
     $conversation = chatFor($user, ['runtime' => ['auth' => 'subscription']]);
     $workspace = $conversation->workspace;
     $post = fn (array $events) => $this->withToken((string) $workspace->callback_token)
@@ -110,18 +123,18 @@ test('after a turn the bridge brings what /usage shows: the five hours and the w
 
     // during the turn: within limits, no percentage
     $post([['type' => 'status', 'status' => 'rate_limit', 'info' => ['status' => 'allowed', 'rateLimitType' => 'five_hour', 'resetsAt' => now()->addHours(3)->getTimestamp()]]]);
-    expect($user->fresh()->claude_usage['percent'])->toBeNull();
+    expect(usageOf($user)['percent'])->toBeNull();
 
     // after it: the windows
     $post([['type' => 'plan_usage', 'subscription_type' => 'max', 'rate_limits' => [
         'five_hour' => ['utilization' => 23.4, 'resets_at' => now()->addHours(3)->toIso8601String()],
         'seven_day' => ['utilization' => 41, 'resets_at' => now()->addDays(4)->toIso8601String()],
     ]]]);
-    expect($user->fresh()->claude_usage)->toMatchArray(['status' => 'allowed', 'percent' => 23, 'week_percent' => 41, 'plan' => 'max']);
+    expect(usageOf($user))->toMatchArray(['status' => 'allowed', 'percent' => 23, 'week_percent' => 41, 'plan' => 'max']);
 
     // the next turn's event without a percentage does not forget the one of its window
     $post([['type' => 'status', 'status' => 'rate_limit', 'info' => ['status' => 'allowed', 'rateLimitType' => 'five_hour', 'resetsAt' => now()->addHours(3)->getTimestamp()]]]);
-    expect($user->fresh()->claude_usage)->toMatchArray(['percent' => 23, 'week_percent' => 41]);
+    expect(usageOf($user))->toMatchArray(['percent' => 23, 'week_percent' => 41]);
 
     Livewire::actingAs($user->fresh())->test(Chat::class, ['conversation' => $conversation->fresh()])
         ->assertSee('5h 23%')
@@ -130,7 +143,7 @@ test('after a turn the bridge brings what /usage shows: the five hours and the w
 });
 
 test('a weekly warning lands on the week, not on the five hours', function () {
-    $user = User::factory()->create(['claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_signed_in' => true]);
+    $user = claudeUser();
     $conversation = chatFor($user);
 
     $this->withToken((string) $conversation->workspace->callback_token)->postJson(route('api.bridge.events'), [
@@ -138,6 +151,6 @@ test('a weekly warning lands on the week, not on the five hours', function () {
         'events' => [['type' => 'status', 'status' => 'rate_limit', 'info' => ['status' => 'allowed_warning', 'rateLimitType' => 'seven_day', 'utilization' => 0.85, 'resetsAt' => now()->addDays(2)->getTimestamp()]]],
     ])->assertOk();
 
-    expect($user->fresh()->claude_usage)->toMatchArray(['status' => 'allowed_warning', 'week_percent' => 85])
-        ->and($user->fresh()->claude_usage['percent'] ?? null)->toBeNull();
+    expect(usageOf($user))->toMatchArray(['status' => 'allowed_warning', 'week_percent' => 85])
+        ->and(usageOf($user)['percent'] ?? null)->toBeNull();
 });

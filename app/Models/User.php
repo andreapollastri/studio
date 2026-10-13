@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use App\Enums\ClaudeAuthMode;
 use App\Enums\UserRole;
+use App\Infrastructure\Git\Forges;
 use App\Models\Concerns\HasPublicUuid;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -31,13 +32,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string $email
  * @property UserRole $role
  * @property string|null $handle
- * @property string|null $git_token
- * @property string|null $git_login
- * @property ClaudeAuthMode $claude_auth_mode
- * @property string|null $claude_token only an API key: a subscription is the login in the person's home
- * @property Carbon|null $claude_checked_at
- * @property array{status?: string|null, percent?: int|null, resets_at?: string|null, week_percent?: int|null, week_resets_at?: string|null, plan?: string|null, at?: string}|null $claude_usage the CLI's last word on the subscription's limits: the five-hour window, the week
- * @property bool $claude_signed_in signed in to Claude Code in their home with a subscription, as last checked
+ * @property int|null $claude_account_id the person's default Claude account
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
@@ -47,8 +42,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'role', 'handle', 'git_token', 'git_login', 'claude_auth_mode', 'claude_token', 'email_verified_at'])]
-#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token', 'git_token', 'claude_token'])]
+#[Fillable(['name', 'email', 'password', 'role', 'handle', 'claude_account_id', 'email_verified_at'])]
+#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
@@ -59,7 +54,6 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     /** @var array<string, mixed> */
     protected $attributes = [
         'role' => 'dev',
-        'claude_auth_mode' => 'none',
     ];
 
     /** Longest handle: `ws-<handle>` is a Linux user name, `<handle>-<slug>` a host label. */
@@ -86,12 +80,6 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
-            'git_token' => 'encrypted',
-            'claude_token' => 'encrypted',
-            'claude_checked_at' => 'datetime',
-            'claude_signed_in' => 'boolean',
-            'claude_usage' => 'array',
-            'claude_auth_mode' => ClaudeAuthMode::class,
         ];
     }
 
@@ -146,6 +134,40 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(DriveFolder::class);
     }
 
+    /** @return HasMany<ClaudeAccount, $this> */
+    public function claudeAccounts(): HasMany
+    {
+        return $this->hasMany(ClaudeAccount::class);
+    }
+
+    /** @return BelongsTo<ClaudeAccount, $this> */
+    public function defaultClaudeAccount(): BelongsTo
+    {
+        return $this->belongsTo(ClaudeAccount::class, 'claude_account_id');
+    }
+
+    /**
+     * The person's accounts on the git hosts (personal GitHub, work Azure DevOps, a client's GitLab…).
+     *
+     * @return HasMany<ConnectorAccount, $this>
+     */
+    public function gitAccounts(): HasMany
+    {
+        return $this->hasMany(ConnectorAccount::class)->whereIn('connector', array_keys(Forges::ALL));
+    }
+
+    /** @return HasMany<ProjectGroup, $this> */
+    public function projectGroups(): HasMany
+    {
+        return $this->hasMany(ProjectGroup::class)->orderBy('position')->orderBy('name');
+    }
+
+    /** @return HasMany<ProjectPreference, $this> */
+    public function projectPreferences(): HasMany
+    {
+        return $this->hasMany(ProjectPreference::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;
@@ -166,32 +188,58 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->isAdmin() || $project->hasMember($this);
     }
 
-    /** A token for the git provider was saved and verified: the person can clone, push and open pull requests as themselves. */
+    /** At least one account on a git host: the person can clone, push and open pull requests as themselves. */
     public function hasGit(): bool
     {
-        return filled($this->git_token) && filled($this->handle);
+        return $this->gitAccounts()->exists();
     }
 
-    /** A Claude credential was saved: the person's workspace can run Claude Code. */
+    /** A Claude account ready to run Claude Code: a key, or a subscription signed in. */
     public function hasClaude(): bool
     {
-        return $this->claudeAccount() !== null;
+        return $this->claudeAccounts()->get()->contains(fn (ClaudeAccount $account) => $account->isUsable());
     }
 
     /**
-     * The one Claude account this person uses, as chosen in Settings → Connections:
-     * their subscription (signed in to Claude Code in their home; Studio holds nothing
-     * for it) or their API key; null while the chosen one is not connected.
-     *
-     * @return 'subscription'|'api_key'|null
+     * The person's handle, given on first need: their home on the server (ws-<handle>) and the
+     * first half of their preview hosts. From the login of their first git account, else from
+     * their e-mail address; it never changes afterwards, whatever accounts come and go.
      */
-    public function claudeAccount(): ?string
+    public function ensureHandle(): ?string
     {
-        return match ($this->claude_auth_mode) {
-            ClaudeAuthMode::Subscription => $this->claude_signed_in ? ClaudeAuthMode::Subscription->value : null,
-            ClaudeAuthMode::ApiKey => filled($this->claude_token) ? ClaudeAuthMode::ApiKey->value : null,
-            ClaudeAuthMode::None => null,
-        };
+        if (filled($this->handle)) {
+            return $this->handle;
+        }
+
+        $login = (string) ($this->gitAccounts()->orderBy('id')->value('login') ?: Str::before($this->email, '@'));
+        $handle = $this->freeHandle(self::handleFromLogin($login));
+
+        if ($handle !== null) {
+            $this->forceFill(['handle' => $handle])->save();
+        }
+
+        return $handle;
+    }
+
+    /**
+     * The handle becomes a Linux user and the first half of the preview hosts, so it has
+     * to be unique and must not land on an existing project's host: the login as it is,
+     * or with a short counter.
+     */
+    private function freeHandle(string $base): ?string
+    {
+        foreach (range(1, 9) as $attempt) {
+            $handle = $attempt === 1 ? $base : rtrim(substr($base, 0, self::HANDLE_MAX - 2), '-').'-'.$attempt;
+
+            $taken = self::query()->whereNot('id', $this->id)->where('handle', $handle)->exists()
+                || Project::siteHostShadowedByHandle($handle) !== null;
+
+            if (! $taken) {
+                return $handle;
+            }
+        }
+
+        return null;
     }
 
     /**

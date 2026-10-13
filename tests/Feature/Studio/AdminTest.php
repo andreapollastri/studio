@@ -18,7 +18,7 @@ use Livewire\Livewire;
 
 test('an administrator creates a project, becomes its deployer and the site is provisioned', function () {
     Queue::fake();
-    $admin = User::factory()->admin()->create();
+    $admin = User::factory()->admin()->withGit()->create();
     $dev = User::factory()->create();
 
     Livewire::actingAs($admin)
@@ -34,13 +34,15 @@ test('an administrator creates a project, becomes its deployer and the site is p
 
     expect($project->members()->pluck('users.id')->all())->toBe([$dev->id])
         ->and($project->deploy_user_id)->toBe($admin->id)
+        // the account it was imported with deploys it
+        ->and($project->git_account_id)->toBe($admin->gitAccounts()->value('id'))
         ->and($project->site_status)->toBe(SiteStatus::Provisioning)
         ->and($project->siteHost())->toBe('shop-acme.'.config('studio.domain'));
 
     Queue::assertPushed(ProvisionProjectSite::class, fn (ProvisionProjectSite $job) => $job->project->is($project));
 });
 
-test('only GitHub repositories are accepted', function () {
+test('only repositories on the host of one of the administrator\'s git accounts are accepted', function () {
     $admin = User::factory()->admin()->create();
 
     Livewire::actingAs($admin)
@@ -53,7 +55,7 @@ test('only GitHub repositories are accepted', function () {
 });
 
 test('a slug that would not fit a Linux user, or that a preview host already spells, is refused', function () {
-    $admin = User::factory()->admin()->create();
+    $admin = User::factory()->admin()->withGit()->create();
     User::factory()->create(['handle' => 'maria']);
     Project::factory()->create(['slug' => 'shop']);
 
@@ -68,7 +70,7 @@ test('a slug that would not fit a Linux user, or that a preview host already spe
 });
 
 test('a branch name that git could read as an option is refused', function () {
-    $admin = User::factory()->admin()->create();
+    $admin = User::factory()->admin()->withGit()->create();
 
     $form = fn () => Livewire::actingAs($admin)->test(Projects::class)->call('create')->set('name', 'X')->set('repo_url', 'https://github.com/acme/x.git');
 
@@ -102,7 +104,7 @@ test('deleting a project marks it and leaves the work to the queue, once', funct
 });
 
 test('editing a project keeps its site and token', function () {
-    $admin = User::factory()->admin()->create();
+    $admin = User::factory()->admin()->withGit()->create();
     $project = Project::factory()->online()->create(['larapilot_api_token' => 'keep-me']);
 
     Livewire::actingAs($admin)
@@ -230,7 +232,7 @@ test('an administrator cannot delete themselves, and is not offered to', functio
 
 test('an administrator creates a repository on GitHub and the project is marked for bootstrap', function () {
     Queue::fake();
-    $admin = User::factory()->admin()->create(['handle' => 'andrea', 'git_login' => 'andrea', 'git_token' => 'github_pat_admin']);
+    $admin = User::factory()->admin()->withGit('github_pat_admin', attributes: ['login' => 'andrea'])->create(['handle' => 'andrea']);
 
     Http::fake([
         'https://api.github.com/user/orgs*' => Http::response([['login' => 'acme-agency']]),
@@ -258,9 +260,9 @@ test('an administrator creates a repository on GitHub and the project is marked 
     Queue::assertPushed(ProvisionProjectSite::class);
 });
 
-test('creating a repository without a GitHub token is refused', function () {
+test('creating a repository without a git account is refused', function () {
     Queue::fake();
-    $admin = User::factory()->admin()->create(['git_token' => null]);
+    $admin = User::factory()->admin()->create();
     Http::fake();
 
     Livewire::actingAs($admin)
@@ -270,7 +272,7 @@ test('creating a repository without a GitHub token is refused', function () {
         ->set('name', 'Nope')
         ->set('new_name', 'nope')
         ->call('save')
-        ->assertHasErrors(['new_name']);
+        ->assertHasErrors(['git_account']);
 
     expect(Project::query()->count())->toBe(0);
 });

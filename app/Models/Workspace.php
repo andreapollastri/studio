@@ -30,6 +30,7 @@ use Illuminate\Support\Str;
  * @property string|null $callback_token_hash
  * @property string|null $path
  * @property string|null $branch
+ * @property int|null $git_account_id the git account the workspace was last given
  * @property Carbon|null $last_seen_at
  * @property string|null $last_error
  * @property-read Project $project

@@ -176,6 +176,36 @@ test('a claude-login ticket runs the helper\'s sign-in for that person and relay
   await s.closed;
 });
 
+test('a claude-login ticket for another Claude account of the person signs in to its own folder', async (t) => {
+  let launched;
+  const spawn = (bin, args) => {
+    launched = [bin, ...args];
+    return spawnReal(process.execPath, ['-e', 'process.exit(0)']);
+  };
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0', SSH_GATEWAY_HELPER: '/usr/local/sbin/studio-admin' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'claude-login', user_id: 3, handle: 'ada', dir: '.claude-work' }), spawn });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until((m) => m.type === 'exit');
+  assert.deepEqual(launched, ['sudo', '-n', '/usr/local/sbin/studio-admin', 'claude-login', 'ada', '100', '30', '.claude-work']);
+  await s.closed;
+});
+
+test('a claude-login ticket with a folder outside the person\'s Claude ones is refused before anything runs', async (t) => {
+  let ran = false;
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'claude-login', user_id: 3, handle: 'ada', dir: '../.ssh' }), spawn: () => { ran = true; } });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  assert.match((await s.until((m) => m.type === 'error')).message, /no place/);
+  await s.closed;
+  assert.equal(ran, false);
+});
+
 test('a claude-login ticket without a valid home name is refused before anything runs', async (t) => {
   let ran = false;
   const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0' }), origin: '' };

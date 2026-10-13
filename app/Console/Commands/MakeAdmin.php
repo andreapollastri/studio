@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Enums\UserRole;
 use App\Git\Providers\GitProvider;
+use App\Infrastructure\Git\Forges;
+use App\Models\ConnectorAccount;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -53,7 +55,22 @@ class MakeAdmin extends Command
 
             try {
                 $who = $git->whoAmI($token);
-                $user->forceFill(['git_token' => $token, 'git_login' => $who['login'], 'handle' => $user->handle ?: User::handleFromLogin($who['login'])])->save();
+                $credentials = array_filter(['token' => $token, 'url' => in_array($git->key(), ['github', 'bitbucket'], true) ? null : $git->baseUrl()]);
+
+                // their first git account, on the installation's host, with their identity
+                ConnectorAccount::query()->updateOrCreate(
+                    ['user_id' => $user->id, 'connector' => $git->key(), 'name' => $who['login']],
+                    [
+                        'login' => $who['login'],
+                        'host' => Forges::make($git->key())->host($credentials),
+                        'git_name' => $user->name,
+                        'git_email' => $user->email,
+                        'credentials' => $credentials,
+                        'status' => 'ok · '.$who['login'],
+                        'checked_at' => now(),
+                    ],
+                );
+                $user->forceFill(['handle' => $user->handle ?: User::handleFromLogin($who['login'])])->save();
                 $this->components->info("{$git->label()} connected as {$who['login']}.");
             } catch (RuntimeException $e) {
                 $this->components->error($e->getMessage());

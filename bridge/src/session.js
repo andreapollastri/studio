@@ -1,5 +1,5 @@
 import { chmodSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
@@ -44,7 +44,7 @@ export class Session extends EventEmitter {
   #spawn;
   #log;
   #sandboxes;
-  #turn = null; // { permission_mode, model, effort, auth, mcp, browser, sandbox, cwd }
+  #turn = null; // { permission_mode, model, effort, auth, account, apiKey, claudeDir, mcp, browser, sandbox, cwd }
   #stderr = ''; // the tail of what the current process said outside stream-json
   #usageRequest = null; // the request_id of the get_usage still unanswered
   #usageAskedAt = 0;
@@ -92,6 +92,7 @@ export class Session extends EventEmitter {
     if (turn.auth != null && !['subscription', 'api_key'].includes(turn.auth)) {
       throw new BridgeError(422, 'unknown auth');
     }
+    const account = normalizeAccount(turn);
     // One turn at a time: the CLI would queue a second message and Studio would lose
     // track of which answer belongs to what. Interrupt first.
     if (this.#process && this.state !== 'idle') {
@@ -110,6 +111,9 @@ export class Session extends EventEmitter {
       && this.#turn.model === (turn.model || null)
       && this.#turn.effort === (turn.effort || null)
       && this.#turn.auth === (turn.auth ?? undefined)
+      && this.#turn.account === account.account
+      && this.#turn.apiKey === account.apiKey
+      && this.#turn.claudeDir === account.claudeDir
       && this.#turn.mcp === mcp.key
       && (this.#turn.browser?.url ?? null) === (browser?.url ?? null)
       && this.#turn.cwd === sandbox.cwd;
@@ -120,7 +124,7 @@ export class Session extends EventEmitter {
     if (!this.#process || !sameTarget) {
       this.#stopProcess();
       if (turn.session_id && !this.sessionId) this.sessionId = turn.session_id;
-      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, mcp: mcp.key, mcpServers: mcp.servers, browser, sandbox: sandbox.info, cwd: sandbox.cwd };
+      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, ...account, mcp: mcp.key, mcpServers: mcp.servers, browser, sandbox: sandbox.info, cwd: sandbox.cwd };
       this.#poster = new CallbackPoster({
         url: turn.callback.url,
         token: turn.callback.token,
@@ -249,7 +253,7 @@ export class Session extends EventEmitter {
 
     const child = this.#spawn(this.#config.claudeBin, args, {
       cwd: this.#turn.cwd ?? this.#config.workspaceDir,
-      env: claudeEnv(process.env, this.#turn.auth),
+      env: claudeEnv(process.env, this.#turn.auth, { apiKey: this.#turn.apiKey, claudeDir: this.#turn.claudeDir }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -475,13 +479,41 @@ export function normalizeMcpServers(input) {
 }
 
 /**
+ * Which of the person's Claude accounts a turn runs on, besides `auth`:
+ * `account` names it (a change means a new process, resumed), `api_key` is that
+ * account's key (kept in memory only, never logged or sent back), `claude_dir`
+ * the config directory in the home that holds that subscription's login.
+ * Error messages never repeat what was sent.
+ */
+export function normalizeAccount(turn) {
+  const given = (value) => (value === undefined || value === null || value === '' ? null : value);
+  const account = given(turn.account);
+  const apiKey = given(turn.api_key);
+  const claudeDir = given(turn.claude_dir);
+  if (account !== null && (typeof account !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(account))) {
+    throw new BridgeError(422, 'invalid account');
+  }
+  if (apiKey !== null && (typeof apiKey !== 'string' || !apiKey.startsWith('sk-ant-') || apiKey.length > 512 || /\s/.test(apiKey))) {
+    throw new BridgeError(422, 'invalid api_key');
+  }
+  if (claudeDir !== null && (typeof claudeDir !== 'string' || !CLAUDE_DIR.test(claudeDir))) {
+    throw new BridgeError(422, 'invalid claude_dir');
+  }
+  return { account, apiKey, claudeDir };
+}
+
+const CLAUDE_DIR = /^\.claude(-[a-z0-9]{1,40})?$/;
+
+/**
  * The environment of one Claude Code process. With an account chosen by Studio,
- * "subscription" leaves no key around, so the CLI uses the person's own login in
- * their home; "api_key" hands over the key Studio keeps as STUDIO_ANTHROPIC_API_KEY.
+ * no key or token is left over from the bridge's own environment: "subscription"
+ * uses the person's login in their home (in `claudeDir` when Studio names one of
+ * the person's several), "api_key" hands over the key Studio sent with the turn,
+ * or else the one Studio keeps as STUDIO_ANTHROPIC_API_KEY.
  * The agent never sees STUDIO_ANTHROPIC_API_KEY itself. Without a choice (an older
  * Studio, local development) the environment stays as it is.
  */
-export function claudeEnv(base, auth) {
+export function claudeEnv(base, auth, { apiKey = null, claudeDir = null, home = null } = {}) {
   const env = { ...base, CLAUDE_CODE_ENTRYPOINT: 'studio-bridge' };
   const key = env.STUDIO_ANTHROPIC_API_KEY;
   delete env.STUDIO_ANTHROPIC_API_KEY;
@@ -489,6 +521,9 @@ export function claudeEnv(base, auth) {
 
   delete env.ANTHROPIC_API_KEY;
   delete env.CLAUDE_CODE_OAUTH_TOKEN;
-  if (auth === 'api_key' && key) env.ANTHROPIC_API_KEY = key;
+  if (auth === 'api_key' && (apiKey || key)) env.ANTHROPIC_API_KEY = apiKey || key;
+  if (auth === 'subscription' && claudeDir && CLAUDE_DIR.test(claudeDir)) {
+    env.CLAUDE_CONFIG_DIR = join(home ?? base.HOME ?? homedir(), claudeDir);
+  }
   return env;
 }

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { Session, claudeEnv, explainExit, normalizeMcpServers } from '../src/session.js';
 import { startCollector, spawnFake, testConfig, waitFor } from './helpers.js';
 
@@ -257,6 +259,81 @@ test('without a choice from Studio the environment is left as it is, minus the k
   assert.equal(env.STUDIO_ANTHROPIC_API_KEY, undefined);
   assert.equal(claudeEnv({ STUDIO_ANTHROPIC_API_KEY: 'kept' }, 'api_key').ANTHROPIC_API_KEY, 'kept');
   assert.equal(claudeEnv({ CLAUDE_CODE_OAUTH_TOKEN: 'old' }, 'subscription').CLAUDE_CODE_OAUTH_TOKEN, undefined);
+});
+
+test('the API key sent with the turn wins over the kept one', async () => {
+  const studio = await startCollector();
+  const envs = [];
+  const spy = (bin, args, options) => { envs.push(options.env); return spawnFake(bin, args, options); };
+  const session = new Session('20', testConfig(), { spawn: spy });
+  const saved = { ...process.env };
+  process.env.STUDIO_ANTHROPIC_API_KEY = 'sk-ant-api03-kept';
+  process.env.ANTHROPIC_API_KEY = 'left-over';
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'left-over-token';
+  try {
+    session.sendTurn({ text: 'ciao', auth: 'api_key', account: 'acc-1', api_key: 'sk-ant-api03-from-turn', callback: callback(studio) });
+    await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  } finally {
+    process.env = saved;
+  }
+  await session.close();
+
+  assert.equal(envs[0].ANTHROPIC_API_KEY, 'sk-ant-api03-from-turn');
+  assert.equal(envs[0].CLAUDE_CODE_OAUTH_TOKEN, undefined);
+  assert.equal(envs[0].STUDIO_ANTHROPIC_API_KEY, undefined);
+  assert.ok(!JSON.stringify(studio.posts).includes('from-turn'), 'the key never reaches the events');
+  assert.ok(!JSON.stringify(session.snapshot()).includes('from-turn'));
+  await studio.close();
+});
+
+test('claude_dir picks the subscription\'s config directory in the home; a bad one is refused', () => {
+  const env = claudeEnv({ HOME: '/home/ws-maria', ANTHROPIC_API_KEY: 'x', CLAUDE_CODE_OAUTH_TOKEN: 'y' }, 'subscription', { claudeDir: '.claude-work' });
+  assert.equal(env.CLAUDE_CONFIG_DIR, '/home/ws-maria/.claude-work');
+  assert.equal(env.ANTHROPIC_API_KEY, undefined);
+  assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+  assert.equal(claudeEnv({ HOME: '/home/ws-maria' }, 'subscription', { claudeDir: '.claude' }).CLAUDE_CONFIG_DIR, '/home/ws-maria/.claude');
+  // absent: whatever the process has
+  assert.equal(claudeEnv({ HOME: '/home/ws-maria', CLAUDE_CONFIG_DIR: '/elsewhere' }, 'subscription').CLAUDE_CONFIG_DIR, '/elsewhere');
+  // the key's own account: the dir does not apply
+  assert.equal(claudeEnv({ HOME: '/h' }, 'api_key', { claudeDir: '.claude-work', apiKey: 'sk-ant-k' }).CLAUDE_CONFIG_DIR, undefined);
+
+  const session = new Session('21', testConfig(), { spawn: spawnFake });
+  const cb = { url: 'http://127.0.0.1:1/x', token: 'cb' };
+  for (const claude_dir of ['../etc', '.claude-', '.claude-Work', '.claude/x', '.claudex', '.claude-' + 'a'.repeat(41), 7]) {
+    assert.throws(() => session.sendTurn({ text: 'x', auth: 'subscription', claude_dir, callback: cb }), (e) => e.status === 422 && /claude_dir/.test(e.message));
+  }
+  assert.throws(() => session.sendTurn({ text: 'x', account: 'a b', callback: cb }), (e) => e.status === 422 && /account/.test(e.message));
+  assert.throws(() => session.sendTurn({ text: 'x', account: 'a'.repeat(65), callback: cb }), /account/);
+  for (const api_key of ['sk-live-secretvalue', 'sk-ant-' + 'a'.repeat(506), 'sk-ant-se cret']) {
+    assert.throws(() => session.sendTurn({ text: 'x', auth: 'api_key', api_key, callback: cb }), (e) => e.status === 422 && !e.message.includes('secret') && !e.message.includes('aaaa'));
+  }
+  assert.equal(session.snapshot().alive, false, 'nothing started');
+});
+
+test('a subscription turn spawns with its CLAUDE_CONFIG_DIR, and another account resumes the session in a new process', async () => {
+  const studio = await startCollector();
+  const seen = [];
+  const spy = (bin, args, options) => { seen.push({ args, env: options.env }); return spawnFake(bin, args, options); };
+  const session = new Session('22', testConfig(), { spawn: spy });
+
+  session.sendTurn({ text: 'ciao', auth: 'subscription', account: 'default', claude_dir: '.claude', callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  const first = session.sessionId;
+
+  // same account: the same process takes the next turn
+  session.sendTurn({ text: 'ancora', auth: 'subscription', account: 'default', claude_dir: '.claude', callback: callback(studio) });
+  await waitFor(() => studio.events().filter((e) => e.type === 'result').length === 2);
+  assert.equal(seen.length, 1);
+
+  session.sendTurn({ text: 'altro', auth: 'subscription', account: 'work', claude_dir: '.claude-work', callback: callback(studio) });
+  await waitFor(() => studio.events().filter((e) => e.type === 'result').length === 3);
+  await session.close();
+
+  assert.equal(seen.length, 2, 'another account starts a new process');
+  assert.equal(seen[0].env.CLAUDE_CONFIG_DIR, join(process.env.HOME ?? homedir(), '.claude'));
+  assert.equal(seen[1].env.CLAUDE_CONFIG_DIR, join(process.env.HOME ?? homedir(), '.claude-work'));
+  assert.equal(seen[1].args[seen[1].args.indexOf('--resume') + 1], first, 'the conversation carries on');
+  await studio.close();
 });
 
 test('after a turn the CLI is asked what /usage shows, and the plan windows reach Studio', async () => {

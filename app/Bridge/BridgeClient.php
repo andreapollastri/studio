@@ -2,7 +2,7 @@
 
 namespace App\Bridge;
 
-use App\Enums\ClaudeAuthMode;
+use App\Accounts\Accounts;
 use App\Models\Conversation;
 use App\Models\PermissionRequest;
 use App\Models\ProjectMcpServer;
@@ -58,9 +58,9 @@ final class BridgeClient
             'permission_mode' => $conversation->permission_mode,
             'model' => $conversation->model,
             'effort' => $conversation->effort,
-            // always the account chosen in Settings → Connections, for every project and conversation:
-            // even while it looks disconnected, so the CLI never falls back to another login or key
-            'auth' => $conversation->user->claude_auth_mode === ClaudeAuthMode::None ? null : $conversation->user->claude_auth_mode->value,
+            // the Claude account the person works on this project with (the project's, its group's, their
+            // default): even while it looks disconnected, so the CLI never falls back to another login or key
+            ...$this->claudeAccount($conversation),
             'mcp_servers' => $this->mcpServers($conversation),
             'browser' => $this->browser($conversation),
             // a sandboxed conversation runs in its worktree; one whose sandbox is not ready never gets here
@@ -70,6 +70,19 @@ final class BridgeClient
                 'token' => $this->workspace->callback_token,
             ],
         ]));
+    }
+
+    /**
+     * How the turn signs in to Claude: auth, the account (a change restarts the CLI on the same
+     * session), the API key or the folder of the subscription's sign-in in the person's home.
+     *
+     * @return array{auth: string|null, account?: string, api_key?: string|null, claude_dir?: string|null}
+     */
+    private function claudeAccount(Conversation $conversation): array
+    {
+        $choice = Accounts::claude($conversation->user, $conversation->workspace->project);
+
+        return $choice ? $choice->account->forTurn() : ['auth' => null];
     }
 
     /**

@@ -2,9 +2,11 @@
 
 namespace App\Bridge;
 
+use App\Accounts\Accounts;
 use App\Enums\ConversationStatus;
 use App\Enums\PermissionStatus;
 use App\Events\ConversationUpdated;
+use App\Models\ClaudeAccount;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\PermissionRequest;
@@ -92,8 +94,8 @@ final class IngestBridgeEvents
     }
 
     /**
-     * A status for the chat; a rate_limit one is also the CLI's word on the person's
-     * plan (their subscription's limits), kept on them for the status bar.
+     * A status for the chat; a rate_limit one is also the CLI's word on the plan of the
+     * subscription the conversation runs on, kept on that account for the status bar.
      *
      * @param  array<string, mixed>  $event
      */
@@ -117,8 +119,11 @@ final class IngestBridgeEvents
      */
     private function rateLimit(Conversation $conversation, array $info): void
     {
-        $user = $conversation->user;
-        $usage = (array) ($user->claude_usage ?? []);
+        if (! $account = $this->subscriptionOf($conversation)) {
+            return;
+        }
+
+        $usage = (array) ($account->usage ?? []);
         $type = is_string($info['rateLimitType'] ?? null) ? $info['rateLimitType'] : 'five_hour';
         $usage['status'] = is_string($info['status'] ?? null) ? $info['status'] : null;
         $usage['at'] = now()->toIso8601String();
@@ -143,7 +148,15 @@ final class IngestBridgeEvents
             }
         }
 
-        $user->forceFill(['claude_usage' => $usage])->save();
+        $account->forceFill(['usage' => $usage])->save();
+    }
+
+    /** The subscription the conversation runs on: the plan whose limits the CLI speaks of. */
+    private function subscriptionOf(Conversation $conversation): ?ClaudeAccount
+    {
+        $account = Accounts::claude($conversation->user, $conversation->workspace->project)?->account;
+
+        return $account instanceof ClaudeAccount && $account->isSubscription() ? $account : null;
     }
 
     /**
@@ -154,8 +167,11 @@ final class IngestBridgeEvents
      */
     private function planUsage(Conversation $conversation, array $event): void
     {
-        $user = $conversation->user;
-        $usage = (array) ($user->claude_usage ?? []);
+        if (! $account = $this->subscriptionOf($conversation)) {
+            return;
+        }
+
+        $usage = (array) ($account->usage ?? []);
         $limits = is_array($event['rate_limits'] ?? null) ? $event['rate_limits'] : [];
 
         foreach (['five_hour' => '', 'seven_day' => 'week_'] as $window => $prefix) {
@@ -172,7 +188,7 @@ final class IngestBridgeEvents
         $usage['plan'] = is_string($event['subscription_type'] ?? null) ? $event['subscription_type'] : ($usage['plan'] ?? null);
         $usage['at'] = now()->toIso8601String();
 
-        $user->forceFill(['claude_usage' => $usage])->save();
+        $account->forceFill(['usage' => $usage])->save();
     }
 
     /**

@@ -8,10 +8,14 @@ use App\Enums\PermissionStatus;
 use App\Enums\SiteStatus;
 use App\Enums\UserRole;
 use App\Enums\WorkspaceStatus;
+use App\Models\ClaudeAccount;
+use App\Models\ConnectorAccount;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Project;
+use App\Models\ProjectGroup;
 use App\Models\ProjectMcpServer;
+use App\Models\ProjectPreference;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Database\Seeder;
@@ -29,17 +33,31 @@ class DemoSeeder extends Seeder
     public function run(): void
     {
         $andrea = User::query()->updateOrCreate(['email' => 'andrea@agency.test'], [
-            'name' => 'Andrea Pollastri', 'password' => 'password', 'role' => UserRole::Admin, 'handle' => 'andreapollastri', 'git_login' => 'andreapollastri', 'git_token' => 'github_pat_demo_admin', 'claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_token' => 'demo-claude-token', 'email_verified_at' => now(),
+            'name' => 'Andrea Pollastri', 'password' => 'password', 'role' => UserRole::Admin, 'handle' => 'andreapollastri', 'email_verified_at' => now(),
         ]);
         $maria = User::query()->updateOrCreate(['email' => 'maria@agency.test'], [
-            'name' => 'Maria Rossi', 'password' => 'password', 'role' => UserRole::Pm, 'handle' => 'mariarossi', 'git_login' => 'mariarossi', 'git_token' => 'github_pat_demo_maria', 'claude_auth_mode' => ClaudeAuthMode::Subscription, 'claude_token' => 'demo-claude-token', 'email_verified_at' => now(),
+            'name' => 'Maria Rossi', 'password' => 'password', 'role' => UserRole::Pm, 'handle' => 'mariarossi', 'email_verified_at' => now(),
         ]);
         $luca = User::query()->updateOrCreate(['email' => 'luca@agency.test'], [
-            'name' => 'Luca Bianchi', 'password' => 'password', 'role' => UserRole::Dev, 'handle' => 'lucabianchi', 'git_login' => 'lucabianchi', 'git_token' => 'github_pat_demo_luca', 'claude_auth_mode' => ClaudeAuthMode::ApiKey, 'claude_token' => 'sk-ant-demo', 'email_verified_at' => now(),
+            'name' => 'Luca Bianchi', 'password' => 'password', 'role' => UserRole::Dev, 'handle' => 'lucabianchi', 'email_verified_at' => now(),
         ]);
         $giulia = User::query()->updateOrCreate(['email' => 'giulia@client.test'], [
             'name' => 'Giulia Conti', 'password' => 'password', 'role' => UserRole::Client, 'handle' => 'giuliaconti', 'email_verified_at' => now(),
         ]);
+
+        // their accounts: a GitHub account each, Andrea also the agency's Azure DevOps; Claude subscriptions and a key
+        $github = $this->gitAccount($andrea, 'github', 'andreapollastri', 'github.com');
+        $this->gitAccount($andrea, 'azure', 'andrea@agency.test', 'dev.azure.com/agency', 'Agency DevOps', 'https://dev.azure.com/agency');
+        $this->gitAccount($maria, 'github', 'mariarossi', 'github.com');
+        $this->gitAccount($luca, 'github', 'lucabianchi', 'github.com');
+
+        $personal = $this->claudeAccount($andrea, 'Personal Max', ClaudeAuthMode::Subscription, dir: '.claude');
+        $team = $this->claudeAccount($andrea, 'Agency Team', ClaudeAuthMode::Subscription, dir: '.claude-agency');
+        $this->claudeAccount($maria, 'Claude subscription', ClaudeAuthMode::Subscription, dir: '.claude');
+        $this->claudeAccount($luca, 'API key', ClaudeAuthMode::ApiKey, token: 'sk-ant-demo');
+
+        $work = ProjectGroup::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => 'Clients'], ['color' => 'sky', 'position' => 1, 'claude_account_id' => $team->id]);
+        ProjectGroup::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => 'Personal'], ['color' => 'emerald', 'position' => 2, 'claude_account_id' => $personal->id, 'git_account_id' => $github->id]);
 
         $shop = Project::query()->updateOrCreate(['slug' => 'shop-acme'], [
             'name' => 'Shop Acme',
@@ -79,6 +97,11 @@ class DemoSeeder extends Seeder
         $shop->members()->syncWithoutDetaching([$maria->id, $luca->id, $giulia->id]);
         $portale->members()->syncWithoutDetaching([$maria->id, $luca->id]);
         $loyalty->members()->syncWithoutDetaching([$luca->id]);
+
+        // Andrea's list: the clients' projects in their group, on the agency's Team plan
+        foreach ([$shop, $portale] as $project) {
+            ProjectPreference::query()->updateOrCreate(['user_id' => $andrea->id, 'project_id' => $project->id], ['project_group_id' => $work->id]);
+        }
 
         $running = fn (Project $project, User $user, string $preview) => Workspace::query()->updateOrCreate(
             ['project_id' => $project->id, 'user_id' => $user->id],
@@ -178,5 +201,35 @@ class DemoSeeder extends Seeder
         ]);
 
         $this->command->info('Demo ready: andrea@agency.test (admin), maria@agency.test (PM), luca@agency.test (dev), giulia@client.test (client). Password: password');
+    }
+
+    private function gitAccount(User $user, string $connector, string $login, string $host, ?string $name = null, ?string $url = null): ConnectorAccount
+    {
+        return ConnectorAccount::query()->updateOrCreate(['user_id' => $user->id, 'connector' => $connector, 'name' => $name ?? $login], [
+            'login' => $login,
+            'host' => $host,
+            'git_name' => $user->name,
+            'git_email' => $user->email,
+            'credentials' => array_filter(['token' => 'demo_token_'.$login, 'url' => $url]),
+            'status' => 'ok · '.$login,
+            'checked_at' => now(),
+        ]);
+    }
+
+    private function claudeAccount(User $user, string $name, ClaudeAuthMode $kind, ?string $dir = null, ?string $token = null): ClaudeAccount
+    {
+        $account = ClaudeAccount::query()->updateOrCreate(['user_id' => $user->id, 'name' => $name], [
+            'kind' => $kind,
+            'dir' => $dir,
+            'token' => $token,
+            'signed_in' => $kind === ClaudeAuthMode::Subscription,
+            'checked_at' => now(),
+        ]);
+
+        if ($user->claude_account_id === null) {
+            $user->forceFill(['claude_account_id' => $account->id])->save();
+        }
+
+        return $account;
     }
 }

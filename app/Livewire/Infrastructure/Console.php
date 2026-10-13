@@ -85,7 +85,12 @@ class Console extends Component
         abort_unless(Connectors::allows(auth()->user(), $connector), 403);
 
         $this->connector = $connector;
+        $this->open();
+    }
 
+    /** The first account, and the tab and filters asked for in the address. */
+    protected function open(): void
+    {
         if ($this->currentAccount() === null) {
             $this->account = $this->accounts()->first()?->uuid;
         }
@@ -103,7 +108,53 @@ class Console extends Component
     /** A connector turned off, or a role taken off it, closes the page at the next click. */
     public function hydrate(): void
     {
-        abort_unless(Connectors::allows(auth()->user(), $this->connector), 403);
+        abort_unless($this->allowed(), 403);
+    }
+
+    protected function allowed(): bool
+    {
+        return Connectors::allows(auth()->user(), $this->connector);
+    }
+
+    /** Whether this person adds, checks and removes the accounts: the administrators, for a shared connector. */
+    protected function managesAccounts(): bool
+    {
+        return auth()->user()->isAdmin();
+    }
+
+    /** The account is the person's own (their git token): no account picker, no account management. */
+    protected function personal(): bool
+    {
+        return false;
+    }
+
+    /** Whose the accounts are: nobody's for a shared connector, the person's for their own. */
+    protected function accountOwner(): ?int
+    {
+        return null;
+    }
+
+    /**
+     * More inputs of the account form, besides its name and the connector's fields.
+     *
+     * @return array<string, list<mixed>>
+     */
+    protected function accountRules(): array
+    {
+        return [];
+    }
+
+    /** What else an account keeps once its credentials work, asked with its client. */
+    protected function completeAccount(ConnectorAccount $account, object $client): void {}
+
+    /** An account was saved; $credentialsChanged when it is new or its credentials are. */
+    protected function accountSaved(ConnectorAccount $account, bool $credentialsChanged): void {}
+
+    protected function accountRemoved(ConnectorAccount $account): void {}
+
+    protected function pageTitle(): string
+    {
+        return $this->definition()->label().' · '.__('Infrastructure');
     }
 
     #[Computed]
@@ -116,7 +167,7 @@ class Console extends Component
     #[Computed]
     public function accounts(): Collection
     {
-        return ConnectorAccount::query()->where('connector', $this->connector)->orderBy('name')->get();
+        return ConnectorAccount::query()->where('connector', $this->connector)->whereNull('user_id')->orderBy('name')->get();
     }
 
     public function currentAccount(): ?ConnectorAccount
@@ -523,7 +574,7 @@ class Console extends Component
 
     public function manageAccounts(): void
     {
-        abort_unless(auth()->user()->isAdmin(), 403);
+        abort_unless($this->managesAccounts(), 403);
 
         $this->accountEditing = $this->accounts()->isEmpty() ? 'new' : null;
         $this->fillAccountForm(null);
@@ -532,7 +583,7 @@ class Console extends Component
 
     public function editAccount(?string $uuid = null): void
     {
-        abort_unless(auth()->user()->isAdmin(), 403);
+        abort_unless($this->managesAccounts(), 403);
 
         $account = $uuid !== null ? $this->accounts()->firstWhere('uuid', $uuid) : null;
         $this->accountEditing = $account->uuid ?? 'new';
@@ -545,7 +596,7 @@ class Console extends Component
         $this->resetValidation();
     }
 
-    private function fillAccountForm(?ConnectorAccount $account): void
+    protected function fillAccountForm(?ConnectorAccount $account): void
     {
         $this->account_name = $account->name ?? '';
         $this->credentials = [];
@@ -560,13 +611,14 @@ class Console extends Component
 
     public function saveAccount(): void
     {
-        abort_unless(auth()->user()->isAdmin(), 403);
+        abort_unless($this->managesAccounts(), 403);
 
         $account = $this->accountEditing !== 'new' ? $this->accounts()->firstWhere('uuid', $this->accountEditing) : null;
         $fields = $this->definition()->fields();
 
         $this->validate([
-            'account_name' => ['required', 'string', 'max:80', Rule::unique('connector_accounts', 'name')->where('connector', $this->connector)->ignore($account?->id)],
+            'account_name' => ['required', 'string', 'max:80', Rule::unique('connector_accounts', 'name')->where('connector', $this->connector)->where('user_id', $this->accountOwner())->ignore($account?->id)],
+            ...$this->accountRules(),
             ...collect($fields)->mapWithKeys(fn (Field $field) => ['credentials.'.$field->name => $field->validation(keepsStoredSecret: $account !== null)])->all(),
         ], [], [
             'account_name' => __('name'),
@@ -585,8 +637,12 @@ class Console extends Component
             $credentials[$field->name] = $value;
         }
 
+        $account ??= new ConnectorAccount(['connector' => $this->connector, 'user_id' => $this->accountOwner()]);
+
         try {
-            $status = $this->definition()->verify($this->definition()->client($credentials));
+            $client = $this->definition()->client($credentials);
+            $status = $this->definition()->verify($client);
+            $this->completeAccount($account, $client);
         } catch (ConnectorException $e) {
             $this->addError('credentials', __('The provider refused these credentials: :reason', ['reason' => $e->getMessage()]));
 
@@ -597,8 +653,9 @@ class Console extends Component
             return;
         }
 
-        $account ??= new ConnectorAccount(['connector' => $this->connector]);
+        $tokenChanged = ! $account->exists || $account->credentials !== $credentials;
         $account->fill(['name' => trim($this->account_name), 'credentials' => $credentials, 'status' => $status, 'checked_at' => now()])->save();
+        $this->accountSaved($account, $tokenChanged);
         $account->forget();
 
         unset($this->accounts, $this->listing);
@@ -610,7 +667,7 @@ class Console extends Component
 
     public function testAccount(string $uuid): void
     {
-        abort_unless(auth()->user()->isAdmin(), 403);
+        abort_unless($this->managesAccounts(), 403);
 
         $account = $this->accounts()->firstWhere('uuid', $uuid) ?? abort(404);
 
@@ -628,10 +685,15 @@ class Console extends Component
 
     public function removeAccount(string $uuid): void
     {
-        abort_unless(auth()->user()->isAdmin(), 403);
+        abort_unless($this->managesAccounts(), 403);
 
-        $this->accounts()->firstWhere('uuid', $uuid)?->delete();
+        $removed = $this->accounts()->firstWhere('uuid', $uuid);
+        $removed?->delete();
         unset($this->accounts, $this->listing);
+
+        if ($removed !== null) {
+            $this->accountRemoved($removed);
+        }
 
         if ($this->account === $uuid) {
             $this->account = $this->accounts()->first()?->uuid;
@@ -675,7 +737,8 @@ class Console extends Component
             'formFields' => $formAction->fields ?? [],
             'formLabel' => $formAction->label ?? '',
             'formConfirm' => $formAction?->confirm,
-            'isAdmin' => auth()->user()->isAdmin(),
-        ])->title($definition->label().' · '.__('Infrastructure'));
+            'isAdmin' => $this->managesAccounts(),
+            'personal' => $this->personal(),
+        ])->title($this->pageTitle());
     }
 }

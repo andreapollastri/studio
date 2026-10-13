@@ -36,7 +36,7 @@
                         </td>
                         <td class="px-4 py-2 text-xs" data-cell="meta">
                             <div class="flex flex-wrap gap-1">
-                                <flux:badge size="sm" :color="$user->hasGit() ? 'green' : 'zinc'">{{ $git->label() }}{{ $user->git_login ? ' · '.$user->git_login : '' }}</flux:badge>
+                                <flux:badge size="sm" :color="$user->git_accounts_count > 0 ? 'green' : 'zinc'">{{ trans_choice(':count git account|:count git accounts', $user->git_accounts_count) }}</flux:badge>
                                 <flux:badge size="sm" :color="$user->hasClaude() ? 'green' : 'zinc'">Claude</flux:badge>
                                 @if ($user->two_factor_confirmed_at)<flux:badge size="sm" color="green">2FA</flux:badge>@endif
                             </div>
