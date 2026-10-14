@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsTextInput;
 use App\Models\Conversation;
 use App\Models\Project;
 use App\Models\Workspace;
@@ -20,6 +21,8 @@ use Throwable;
  */
 class MoveDomain extends Command
 {
+    use ReadsTextInput;
+
     protected $signature = 'studio:move-domain
         {from : the domain Studio was on}
         {to : the domain it moves to}
@@ -31,8 +34,8 @@ class MoveDomain extends Command
 
     public function handle(ProjectSites $sites): int
     {
-        $from = strtolower((string) $this->argument('from'));
-        $to = strtolower((string) $this->argument('to'));
+        $from = strtolower($this->textArgument('from') ?? '');
+        $to = strtolower($this->textArgument('to') ?? '');
 
         if (! preg_match(self::DOMAIN, $from) || ! preg_match(self::DOMAIN, $to) || $from === $to) {
             $this->components->error('Two different domains, like dev.example.com and studio.example.org.');

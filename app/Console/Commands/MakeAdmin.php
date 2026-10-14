@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsTextInput;
 use App\Enums\UserRole;
 use App\Git\Providers\GitProvider;
 use App\Infrastructure\Git\Forges;
@@ -21,19 +22,21 @@ use function Laravel\Prompts\text;
  */
 class MakeAdmin extends Command
 {
+    use ReadsTextInput;
+
     protected $signature = 'studio:make-admin {--name=} {--email=} {--password=} {--git-token= : a token for the installation\'s git provider}';
 
     protected $description = 'Create (or promote) an administrator account for Studio';
 
     public function handle(): int
     {
-        $name = $this->option('name') ?: text('Name', required: true);
-        $email = Str::lower($this->option('email') ?: text('Email', required: true, validate: fn (string $v) => filter_var($v, FILTER_VALIDATE_EMAIL) ? null : 'Invalid email'));
+        $name = $this->textOption('name') ?? text('Name', required: true);
+        $email = Str::lower($this->textOption('email') ?? text('Email', required: true, validate: fn (string $v) => filter_var($v, FILTER_VALIDATE_EMAIL) ? null : 'Invalid email'));
 
         $user = User::query()->where('email', $email)->first();
 
         if ($user === null) {
-            $password = $this->option('password') ?: (password('Password (empty = generated)') ?: Str::password(16, symbols: false));
+            $password = $this->textOption('password') ?? (password('Password (empty = generated)') ?: Str::password(16, symbols: false));
 
             $user = User::query()->create([
                 'name' => $name,
@@ -50,7 +53,7 @@ class MakeAdmin extends Command
             $this->components->info("{$user->email} is now an administrator.");
         }
 
-        if ($token = $this->option('git-token')) {
+        if ($token = $this->textOption('git-token')) {
             // the host the installer asked for, with the administrator's token there
             $git = GitProvider::make((string) config('studio.git.provider', 'github'), config('studio.git.url'));
 

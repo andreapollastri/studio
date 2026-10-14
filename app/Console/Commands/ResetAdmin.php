@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsTextInput;
 use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Console\Command;
@@ -24,6 +25,8 @@ use Illuminate\Support\Str;
  */
 class ResetAdmin extends Command
 {
+    use ReadsTextInput;
+
     protected $signature = 'studio:reset-admin
         {--email= : the account to reset; the oldest administrator when omitted, created when unknown}
         {--name= : the name of the account when it has to be created}
@@ -34,7 +37,7 @@ class ResetAdmin extends Command
 
     public function handle(): int
     {
-        $email = Str::lower((string) $this->option('email'));
+        $email = Str::lower($this->textOption('email') ?? '');
 
         $user = $email === ''
             ? User::query()->where('role', UserRole::Admin)->orderBy('id')->first()
@@ -52,12 +55,12 @@ class ResetAdmin extends Command
             return self::FAILURE;
         }
 
-        $password = (string) ($this->option('password') ?: Str::password(20, symbols: false));
+        $password = $this->textOption('password') ?? Str::password(20, symbols: false);
         $created = $user === null;
 
         if ($created) {
             $user = User::query()->create([
-                'name' => $this->option('name') ?: Str::headline(Str::before($email, '@')),
+                'name' => $this->textOption('name') ?? Str::headline(Str::before($email, '@')),
                 'email' => $email,
                 'password' => $password,
                 'role' => UserRole::Admin,
