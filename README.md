@@ -11,6 +11,10 @@ branch, on the client's domain if they want; the repository on any git host; the
 to it; its passwords, files, SSH connections and backups. People read, decide and approve. Nothing to install on a
 laptop but a browser.
 
+<p align="center">
+<img src="docs/img/chat-permission.png" alt="A permission card asking to run npm run build, with Allow and Deny, the preview of the branch on the right" width="100%">
+</p>
+
 **Version 2.0** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
@@ -129,6 +133,135 @@ and releases, start or retry pipelines. Everyone works with their own accounts, 
 as they need (personal, work, a client's), each with the name and email its commits carry. Tokens and scopes per
 provider: [the docs](https://studio.web.ap.it/#git).
 
+## Screenshots
+
+Every image comes from the demo data (see below) and is also in [the docs](https://studio.web.ap.it), with the
+story around it. The one at the top of this page is a PM approving a command before the preview on the right
+shows the result on her own branch.
+
+**A request, from words to a pull request**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/chat-top.png" alt="The chat: a request in plain words, the story written and planned"><br><sub><strong>Ask in plain words.</strong> Claude reads the PRD and the backlog through the Larapilot skills, writes the story, plans it and answers with an estimate.</sub></td>
+<td width="50%"><img src="docs/img/chat-permission.png" alt="A permission card before npm run build, the preview of the branch on the right"><br><sub><strong>Approve what matters.</strong> The PM's preset lets nothing outside its automatic scope run without her; the preview on the right follows her branch.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/chat-changes.png" alt="The Changes tab: branch, modified files and the diff"><br><sub><strong>See the change.</strong> The Changes tab reads the working tree of the workspace: branch, files, diff.</sub></td>
+<td width="50%"><img src="docs/img/chat-plan.png" alt="A Plan only conversation with two subagent cards side by side"><br><sub><strong>Plan only, with subagents.</strong> Two subagents at once, each a card with its status, steps and report; the answer is a plan, nothing was changed.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/chat-tools-open.png" alt="The chat with Details on: every command and its result expanded"><br><sub><strong>Details.</strong> Each tool call is a row; Details expands them all with their results and the agent's reasoning.</sub></td>
+<td width="50%"><img src="docs/img/chat-settings.png" alt="The Model and mode dialog: model, effort, four permission modes"><br><sub><strong>Model &amp; mode.</strong> Model, effort and the permission mode of this conversation; below, the MCP servers it gets from the project.</sub></td>
+</tr>
+</table>
+
+**Home, projects and roles**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/home.png" alt="Home: conversations waiting for an answer, projects with roles, the GitHub card"><br><sub><strong>Home.</strong> The inbox across every project: conversations that ask something or finished, the projects with your role on each, what waits on each git account.</sub></td>
+<td width="50%"><img src="docs/img/projects.png" alt="The Projects page: a card per project with the role and the workspace state"><br><sub><strong>Projects.</strong> A card per project with your role there and the state of your workspace; opening one creates it the first time.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/projects-roles.png" alt="Luca's projects: developer on some, PM on another"><br><sub><strong>One person, several roles.</strong> Luca develops four projects and is the PM of a fifth; the chat, the presets and the tabs follow the role.</sub></td>
+<td width="50%"><img src="docs/img/client-view.png" alt="A client's view: no chat, the project site in the preview pane"><br><sub><strong>A client's view.</strong> No workspace, no chat: the project site in the preview pane, and what is tied to the project for clients.</sub></td>
+</tr>
+</table>
+
+**The project hub**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/project-repository.png" alt="The Repository tab: the pull requests of the repository, read with the person's own account"><br><sub><strong>Repository.</strong> Pull requests, issues, branches, pipelines and releases, read with your own account on the git host.</sub></td>
+<td width="50%"><img src="docs/img/project-overview.png" alt="The Infrastructure tab overview: cards for every attached resource, MCP servers, terminal and backups"><br><sub><strong>Infrastructure, overview.</strong> Everything the project runs on at a glance, with what needs attention.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/project-infrastructure.png" alt="A developer on the Infrastructure tab: only the attached Droplet with the actions handed to his role"><br><sub><strong>What a member sees.</strong> A developer sees what is attached for developers, with the actions handed over, and nothing else of the accounts.</sub></td>
+<td width="50%"><img src="docs/img/project-access.png" alt="The Access tab: passwords, SSH connections and drive folders tied to the project"><br><sub><strong>Access.</strong> Passwords, SSH connections and folders tied to the project for your role; each opens in its own tool.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/project-settings-members.png" alt="Settings, Members and roles: a role select per person"><br><sub><strong>Settings → Members &amp; roles.</strong> One select per person: not on the project, or their role on it.</sub></td>
+<td width="50%"><img src="docs/img/project-settings-server.png" alt="Settings, Server: addresses, scheduler, queues, Horizon, Reverb, Pulse"><br><sub><strong>Settings → Server.</strong> What runs next to the app, on the site and on every preview.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/project-settings-access.png" alt="Settings, Who opens the hosts: address lists for the site and the previews"><br><sub><strong>Settings → Who opens the hosts.</strong> The Studio login and the project, unless made public; address lists per site, previews and branch.</sub></td>
+<td width="50%"><img src="docs/img/project-settings-mcp.png" alt="Settings, MCP servers: two servers with URL, roles and last test"><br><sub><strong>Settings → MCP servers.</strong> Each with its URL, who gets it, its header and the answer of the last test.</sub></td>
+</tr>
+</table>
+
+**The workspace**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/files.png" alt="The Files tab: the workspace tree and a PHP file open in the editor"><br><sub><strong>Files.</strong> The tree reads one folder at a time; the editor is Monaco, the component VS Code is built on.</sub></td>
+<td width="50%"><img src="docs/img/history.png" alt="The History view: a commit graph with lanes and merges"><br><sub><strong>History.</strong> Every branch in one graph, with lanes and merges, refs as badges; a click opens the commit and its patch.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/terminal.png" alt="The Terminal tab: shortcut buttons, a command field, the output of git status"><br><sub><strong>Terminal.</strong> Shortcuts for the useful commands, a field for the rest; what is not on the allowlist never runs.</sub></td>
+<td width="50%"><img src="docs/img/chat-dark.png" alt="The same conversation in dark mode"><br><sub><strong>Light or dark.</strong> Studio follows the system appearance, or the choice in Settings → Appearance.</sub></td>
+</tr>
+</table>
+
+**Tools**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/git.png" alt="Tools, Git: the account picker, pull requests waiting for review, issues assigned"><br><sub><strong>Git.</strong> One dashboard of what waits for you on every git host you have an account on; the picker moves between them.</sub></td>
+<td width="50%"><img src="docs/img/databases.png" alt="Tools, Databases: connections in coloured groups with engine, environment, tunnel and project"><br><sub><strong>Databases.</strong> Every connection you reach, in groups of your own, favourites first, the environment on each.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/database-data.png" alt="The SQL client: tables on the left, the rows of a table with filters, pages and export"><br><sub><strong>Rows.</strong> Tables and views on the left; rows sorted, filtered and paged, edited in place.</sub></td>
+<td width="50%"><img src="docs/img/database-sql.png" alt="The SQL editor with two statements run, saved queries and history on the side"><br><sub><strong>SQL.</strong> One result per statement; saved queries and history. Structure, new tables, import and export are the other tabs.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/vault.png" alt="The password manager: a shared folder with its items"><br><sub><strong>Password manager.</strong> Nested folders, items encrypted, TOTP with live codes; a folder tied to a project opens by role.</sub></td>
+<td width="50%"><img src="docs/img/vault-folder-sharing.png" alt="Sharing a folder: the project and its roles, single people, who sees it and why"><br><sub><strong>Sharing a folder.</strong> A project with its roles, single people to view or to edit, and who reaches it and through what.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/backups.png" alt="Tools, Backups: backups with source and destination, schedules, retention and last run"><br><sub><strong>Backups.</strong> From → to, when, what is kept and how much, the last run; Run now on each.</sub></td>
+<td width="50%"><img src="docs/img/backups-schedule.png" alt="The Schedule tab: the coming seven days hour by hour and every schedule with its cron"><br><sub><strong>Schedule.</strong> The week ahead at a glance, every schedule with its cron expression and next run.</sub></td>
+</tr>
+</table>
+
+**Administration**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/admin-projects.png" alt="Administration, Projects: each project with name and key, repository, deploy account, site status and team"><br><sub><strong>Projects.</strong> Name and key (two projects called API, told apart by it), repository and stack, the account that deploys, the site's state, members and attached resources.</sub></td>
+<td width="50%"><img src="docs/img/admin-project-new.png" alt="The New project form: name, git account, repository, deploy branch, PHP, database, members and roles"><br><sub><strong>New project.</strong> The git account that deploys it, the repository (or one created on the spot), branch and stack, each person's role on it.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/admin-users.png" alt="Administration, People: name, email, access, git and Claude badges, projects with roles"><br><sub><strong>People.</strong> Access as a dropdown, each project with the person's role there, badges for git and Claude accounts and two-factor.</sub></td>
+<td width="50%"><img src="docs/img/admin-connectors.png" alt="Administration, Connectors: a card per connector with its switch, and the git hosting service accounts"><br><sub><strong>Connectors.</strong> A card and a switch per infrastructure connector; below, the team's service accounts on the git hosts.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/infra-console.png" alt="The DigitalOcean page: the account picker, a list of Droplets, a project badge on one row"><br><sub><strong>A connector page.</strong> The lists of the account picked at the top, with search, create and a menu of actions on every row.</sub></td>
+<td width="50%"><img src="docs/img/infra-attach.png" alt="The Attach to a project dialog: project, name, who sees it, who acts on it, the actions"><br><sub><strong>Attach to a project.</strong> Which roles see the row, which act on it, and which of its actions they may run.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/admin-system.png" alt="Administration, System: installed and newest release, update buttons, nightly switch, channel, last log"><br><sub><strong>System.</strong> The installed build and the newest one, the nightly switch, the channel, the last run with its log, the git hosts.</sub></td>
+<td width="50%"><img src="docs/img/admin-domains.png" alt="Administration, Domains: a verified domain used by a project, one waiting for its DNS"><br><sub><strong>Domains.</strong> The records to create, what the DNS answered, the projects that use each domain.</sub></td>
+</tr>
+</table>
+
+**Your accounts, a Cipi app, a phone**
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/accounts.png" alt="Settings, Accounts, Claude tab: subscriptions and an API key, one marked default"><br><sub><strong>Settings → Accounts → Claude.</strong> Subscriptions and API keys side by side, which one is the default, whether each is signed in.</sub></td>
+<td width="50%"><img src="docs/img/accounts-git.png" alt="Settings, Accounts, Git tab: accounts with host, login and commit identity"><br><sub><strong>Settings → Accounts → Git.</strong> Each account with its host, its login, the name and email its commits carry, the state of its token.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/cipi-hub.png" alt="A Cipi app in its project: releases, deploy history, server load and disk"><br><sub><strong>A Cipi app.</strong> Releases on the server with the live one and Roll back here, the deploy history, the server's load.</sub></td>
+<td width="50%"><img src="docs/img/cipi-anonymizer.png" alt="The Database tab of a Cipi app: an anonymized copy and the anonymization file from the schema"><br><sub><strong>Its database.</strong> An anonymized copy for developers, and the anonymization file from the live schema, edited and written back.</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/img/phone-project.png" alt="The Access tab on a phone: the project's tabs on their own row, scrolling sideways" width="300"><br><sub><strong>On a phone.</strong> The tabs keep their row and scroll sideways.</sub></td>
+<td width="50%"><img src="docs/img/login.png" alt="The login page: email, password, the invite-only notice"><br><sub><strong>Sign in.</strong> Email and password, then two-factor or a passkey; accounts are invite-only.</sub></td>
+</tr>
+</table>
+
 ## Status (2.0)
 
 What changed in each release: [CHANGELOG.md](CHANGELOG.md).
@@ -193,7 +326,7 @@ the chat talks to that bridge, which talks to the `claude` on your machine with 
 php artisan db:seed --class=DemoSeeder   # an agency, five projects with roles per project, a live conversation; password "password"
 ```
 
-The screenshots in `docs/img/` are regenerated from that demo with `tools/screenshots/` (see its README).
+The screenshots in `docs/img/` (the docs and this page) are regenerated from that demo with `tools/screenshots/` (see its README).
 
 ## Checks
 
