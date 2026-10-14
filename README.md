@@ -15,7 +15,7 @@ laptop but a browser.
 <img src="docs/img/chat-permission.png" alt="A permission card asking to run npm run build, with Allow and Deny, the preview of the branch on the right" width="100%">
 </p>
 
-**Version 2.0** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
+**Version 2.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
 (Netlify publishes the `docs/` folder as it is, see `netlify.toml`).
@@ -269,6 +269,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Area | State |
 | --- | --- |
 | Accounts: invite-only, administrators and members, a role per project (PM, developer, client), password with 2FA and passkeys; git, SSH and Claude accounts in Settings → Accounts | done, tested |
+| Hardening (2.1): two-factor required of admins or everyone, long and unleaked passwords, per-address sign-in limits with fail2ban behind them, a security log, security headers on every page, Caddy's admin API on a root-only socket, the internal endpoints on the loopback only; see [Security in the docs](https://studio.web.ap.it/#setup-security) | done, tested |
 | Git hosts: GitHub, GitLab, Bitbucket Cloud, Azure DevOps, all at once: token check, owners, new repositories, push webhooks and their verification, agent environment; service accounts for deploying | done, tested against each API's documented requests and answers (HTTP fakes); not yet run against the live services |
 | Projects with a random key, members with their roles; project site created on save, deployed by webhook or by hand | done, tested with a stand-in helper |
 | Project hub: Workspace, Repository (the person's own account), Infrastructure and Access by role, Settings for administrators; Home inbox across projects and git accounts | done, tested (git hosts and connectors with HTTP fakes) |

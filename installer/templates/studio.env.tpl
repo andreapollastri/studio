@@ -18,6 +18,12 @@ DB_PASSWORD=__DB_PASSWORD__
 SESSION_DRIVER=database
 SESSION_LIFETIME=720
 SESSION_SECURE_COOKIE=true
+SESSION_ENCRYPT=true
+# a cookie name only this host can set (__Host-): a project site on a sibling host cannot plant one
+SESSION_COOKIE=__Host-studio_session
+# the SSH terminal, the password manager, the databases and the infrastructure pages ask the
+# password again after this many seconds
+AUTH_PASSWORD_TIMEOUT=3600
 QUEUE_CONNECTION=database
 CACHE_STORE=database
 FILESYSTEM_DISK=local

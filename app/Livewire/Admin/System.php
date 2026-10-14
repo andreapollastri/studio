@@ -6,8 +6,10 @@ use App\Livewire\Concerns\CreatesSshKeys;
 use App\Models\Project;
 use App\Models\SshKey;
 use App\Server\DashboardVisibility;
+use App\Server\SecurityPolicy;
 use App\Server\ServerException;
 use App\Server\Updates;
+use App\Support\SecurityLog;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
@@ -41,6 +43,9 @@ class System extends Component
     /** Whether studio.<domain> shows its sign-in page to anyone; the switch on the page. */
     public bool $visible = true;
 
+    /** Who must have two-factor authentication set up: off, admins or all (SecurityPolicy). */
+    public string $twoFactor = SecurityPolicy::OFF;
+
     /** The uuid of the system key whose projects the modal edits. */
     public ?string $sharing = null;
 
@@ -56,6 +61,21 @@ class System extends Component
         $this->channel = $updates->channel();
         $this->serverAutomatic = (bool) ($updates->systemState()['auto'] ?? true);
         $this->visible = ! app(DashboardVisibility::class)->hidden();
+        $this->twoFactor = app(SecurityPolicy::class)->twoFactor();
+    }
+
+    public function updatedTwoFactor(string $policy): void
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+
+        $this->twoFactor = app(SecurityPolicy::class)->setTwoFactor($policy);
+        SecurityLog::record('policy.two-factor', ['policy' => $this->twoFactor, 'by' => auth()->user()->email], 'notice');
+
+        Flux::toast(variant: 'success', text: match ($this->twoFactor) {
+            SecurityPolicy::ALL => __('Everyone sets two-factor up at their next page, before anything else.'),
+            SecurityPolicy::ADMINS => __('Administrators set two-factor up at their next page, before anything else.'),
+            default => __('Two-factor authentication is optional again.'),
+        });
     }
 
     public function updatedVisible(bool $on): void
@@ -279,6 +299,8 @@ class System extends Component
             'domain' => (string) config('studio.domain'),
             'hidden' => $visibility->hidden(),
             'doorUrl' => $visibility->hidden() ? $visibility->doorUrl() : null,
+            'twoFactorOptions' => SecurityPolicy::options(),
+            'securityEvents' => SecurityLog::recent(30),
             'shown' => $this->shownKey ? $this->keys()->firstWhere('uuid', $this->shownKey) : null,
             'sharingKey' => $this->sharing ? $this->keys()->firstWhere('uuid', $this->sharing) : null,
             'projects' => $this->sharing ? Project::query()->orderBy('name')->get(['id', 'uuid', 'name']) : collect(),

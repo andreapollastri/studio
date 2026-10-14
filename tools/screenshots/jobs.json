@@ -369,6 +369,13 @@
     "wait": 1500
   },
   {
+    "name": "admin-system-security",
+    "url": "${BASE2}/admin/system",
+    "height": 760,
+    "clipTo": "#security",
+    "wait": 1500
+  },
+  {
     "name": "backups",
     "url": "${BASE}/backups",
     "height": 1100,

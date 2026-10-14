@@ -4,11 +4,14 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Http\Responses\QuietPasswordResetLinkResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse;
+use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse;
 use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -18,7 +21,9 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // "Forgot your password?" says the same whether the address is an account or not.
+        $this->app->bind(FailedPasswordResetLinkRequestResponse::class, QuietPasswordResetLinkResponse::class);
+        $this->app->bind(SuccessfulPasswordResetLinkRequestResponse::class, QuietPasswordResetLinkResponse::class);
     }
 
     /**
@@ -63,10 +68,15 @@ class FortifyServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($request->session()->get('login.id'));
         });
 
+        // Five attempts a minute on one account from one address, and a ceiling per address
+        // whatever the accounts tried; on a server fail2ban then bans the address (security log).
         RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
+            $throttleKey = Str::transliterate(Str::lower((string) $request->input(Fortify::username())).'|'.$request->ip());
 
-            return Limit::perMinute(5)->by($throttleKey);
+            return [
+                Limit::perMinute((int) config('studio.security.login_per_minute', 5))->by($throttleKey),
+                Limit::perMinute((int) config('studio.security.login_per_ip_per_minute', 20))->by('ip|'.$request->ip()),
+            ];
         });
 
         RateLimiter::for('passkeys', function (Request $request) {

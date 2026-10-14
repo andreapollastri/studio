@@ -1823,6 +1823,7 @@
       <a href="#setup-updates">Updates</a>
       <a class="sub" href="#setup-domain">Domain &amp; visibility</a>
       <a class="sub" href="#setup-domains">Clients' domains</a>
+      <a href="#setup-security">Security</a>
 
       <div class="docs-nav-label">Work</div>
       <a href="#work-home">Home &amp; the menu</a>
@@ -3148,7 +3149,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           way back short and recorded.</p>
 
         <h3>Releasing</h3>
-        <p>For whoever maintains Studio: set <code>VERSION</code> (2.0.0 today), add the release to <code>CHANGELOG.md</code>
+        <p>For whoever maintains Studio: set <code>VERSION</code> (2.1.0 today), add the release to <code>CHANGELOG.md</code>
           with what an upgrade from the previous one needs, commit, and push the matching tag (<code>v2.0.0</code>) on a
           commit that passed the tests. Every stable server installs it at its next run; beta servers already run that commit.
           The release workflow refuses a tag whose <code>VERSION</code> says otherwise, and so does the updater. To sign
@@ -3156,6 +3157,82 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           too if beta servers check signatures, and put the allowed signers, in <code>ssh-keygen</code>'s allowed-signers
           format, in <code>/etc/studio/update-signers</code> on each server. What a release needs on the server goes in
           <code>installer/requirements.env</code>, or in an upgrade script (<code>installer/upgrades/README.md</code>).</p>
+      </section>
+
+<!-- Set up: security -->
+      <section class="doc-section" id="setup-security">
+        <div class="section-header">
+          <span class="section-label">Set up</span>
+          <h2>Security</h2>
+          <p>A Studio holds the team's git tokens, cloud credentials, SSH keys and passwords, on a server open to the
+            internet. This is what stands between them and a stranger, what an administrator decides, and what is left
+            to good habits.</p>
+        </div>
+
+        <figure class="shot">
+          <img src="img/admin-system-security.png" alt="Administration → System → Security: the two-factor requirement (optional, administrators, everyone) and the latest lines of the security log, each with its level, address and browser" loading="lazy" width="2880" height="1520" />
+          <figcaption><strong>Administration → System → Security.</strong> Who must have two-factor set up, and the latest of
+            the security log: a confirmed second factor, two refused sign-ins from the same address (fail2ban counts them),
+            an administrator's sign-in.</figcaption>
+        </figure>
+
+        <h3>Accounts</h3>
+        <div class="walkthrough-grid">
+          <dl><dt>Invite-only</dt><dd>Nobody signs up: an administrator creates each account and hands the first password
+            over once. Passwords have twelve characters at least and are refused when they appear in the leaked lists
+            (<em>Have I Been Pwned</em>'s range API: five characters of the hash leave the server, never the password).</dd></dl>
+          <dl><dt>Two-factor, required or not</dt><dd><em>Administration → System → Security</em>: optional, required of the
+            administrators, or of everyone. Whoever must and has not set it up is sent to <em>Settings → Security</em> and
+            nowhere else, and cannot turn it off; <em>Administration → People</em> flags who still has to. Passkeys work
+            next to it. Ask it at least of the administrators: they hold everything.</dd></dl>
+          <dl><dt>Sessions</dt><dd>Twelve hours idle, then the sign-in page again. Changing your password closes your other
+            sessions and kills every other remember-me cookie; a session ends by itself when the password changes
+            elsewhere (an administrator's reset). "Remember me" lasts thirty days. The SSH terminal, the password manager,
+            the databases and the infrastructure pages ask the password again after an hour
+            (<code>AUTH_PASSWORD_TIMEOUT</code>).</dd></dl>
+          <dl><dt>Attempts</dt><dd>Five a minute per account and address, twenty a minute per address whatever the accounts
+            tried; then on a server fail2ban bans the address for an hour after ten refusals in a quarter of an hour.
+            <em>Forgot your password?</em> answers the same whether the address is an account or not.</dd></dl>
+          <dl><dt>The security log</dt><dd><code>storage/logs/security.log</code>: every sign-in, failed attempt, second
+            factor, passkey, password change, door and policy, with the address and browser it came from, one line each.
+            The latest of it in <em>Administration → System → Security</em>; logrotate keeps half a year on a server.</dd></dl>
+          <dl><dt>Hidden dashboard</dt><dd>Nothing says a Studio lives at <code>studio.&lt;domain&gt;</code> until a browser
+            came in through the door link (<a href="#setup-domain">Domain &amp; visibility</a>). A wrong key counts as a
+            refusal for fail2ban too.</dd></dl>
+        </div>
+
+        <h3>The server</h3>
+        <div class="walkthrough-grid">
+          <dl><dt>Firewall</dt><dd>ufw admits SSH, 80 and 443, nothing else. Caddy's plain-http listener for the processes of
+            the server (the <em>ask</em> of the certificates, the login in front of the project hosts, the bridges'
+            events, the SSH gateway's tickets) is on <code>127.0.0.1:8081</code>; those endpoints answer 404 on
+            <code>https://studio.&lt;domain&gt;</code>, from Caddy and from the app itself.</dd></dl>
+          <dl><dt>Caddy's admin API</dt><dd>On a socket in <code>/run/caddy</code> that only root and caddy enter, not on
+            <code>127.0.0.1:2019</code>: a project's PHP or a workspace's agent, which run as users of their own on the
+            same server, cannot reconfigure what serves every host.</dd></dl>
+          <dl><dt>Headers</dt><dd>HSTS, <code>X-Frame-Options: SAMEORIGIN</code> and a <code>Content-Security-Policy</code> on
+            every page of Studio: nobody frames it, scripts and styles come from Studio, previews from any https host.
+            The project hosts get <code>frame-ancestors</code> that let Studio frame them, and nobody else. No
+            <code>Server</code> or <code>X-Powered-By</code> header anywhere.</dd></dl>
+          <dl><dt>Secrets at rest</dt><dd>Tokens, keys, passwords and credentials are encrypted in the database with
+            <code>APP_KEY</code>; the database alone, or its dump, says nothing. <code>/opt/studio/shared/.env</code> holds
+            that key, readable by root and the <code>studio</code> user only; each project and workspace runs as a user of
+            its own with its own <code>.env</code>, mode 600. The only way to root is <code>studio-admin</code>, a fixed list
+            of commands with their arguments checked.</dd></dl>
+          <dl><dt>Updates</dt><dd>Every night: Ubuntu's packages (<code>unattended-upgrades</code> and
+            <code>studio-update system</code>) and Studio's own release (<a href="#setup-updates">Updates</a>). A release
+            can be signed; see <em>Releasing</em>.</dd></dl>
+        </div>
+
+        <h3>What stays with you</h3>
+        <p>Root's SSH: keys only, no password login, the port of your choice (the firewall follows it). Backups of
+          <code>/opt/studio/shared</code> and the database, somewhere else (<a href="#tools-backups">Tools → Backups</a>
+          does that too). An administrator who leaves: delete the account the same day, rotate the tokens it knew
+          (<em>Administration → Connectors</em>, the git host, the clouds), and the door link if the dashboard is hidden.
+          Redis on the server has no password and is shared by the projects: an app's cache and queue are readable by the
+          others; a project that needs isolation gets a Redis of its own. The preview pane shows a project's own code
+          inside Studio, in a sandboxed frame that cannot navigate Studio's page: a preview on a client's domain does
+          not get the sign-in cookie there and opens in a tab instead.</p>
       </section>
 
 <!-- Work: home -->

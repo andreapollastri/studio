@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\Project;
 use App\Models\User;
 use App\Server\DashboardVisibility;
+use App\Server\SecurityPolicy;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Str;
@@ -136,6 +137,7 @@ class Users extends Component
             'users' => User::query()->with(['projects' => fn ($q) => $q->orderBy('name')])->withCount(['projects', 'gitAccounts'])->orderBy('name')->get(),
             'roles' => UserRole::cases(),
             'doorUrl' => $this->generatedPassword && ($visibility = app(DashboardVisibility::class))->hidden() ? $visibility->doorUrl() : null,
+            'twoFactorRequired' => fn (User $user) => app(SecurityPolicy::class)->requiresTwoFactor($user),
         ]);
     }
 }

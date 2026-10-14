@@ -81,6 +81,16 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Sign-ins, failed attempts, two-factor, passkeys, passwords, the door (App\Support\SecurityLog).
+        // One file, whatever LOG_LEVEL says: fail2ban reads it on a server, logrotate turns it over.
+        'security' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/security.log'),
+            'level' => 'info',
+            'permission' => 0640,
+            'replace_placeholders' => true,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

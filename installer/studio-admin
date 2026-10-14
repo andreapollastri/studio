@@ -162,8 +162,9 @@ try_reload_caddy() {
         CADDY_ERR="the Caddy configuration did not validate: $(printf '%s\n' "$err" | grep -v '"level":"\(info\|warn\)"' | tail -n 4 | tr '\n' ' ')"
         return 1
     fi
-    # A stopped Caddy ignores `reload`: start it again.
-    if systemctl is-active --quiet caddy; then
+    # A stopped Caddy ignores `reload`, and one without its admin socket (/run/caddy, see the
+    # Caddyfile) has nothing to reload through: start it again.
+    if systemctl is-active --quiet caddy && [ -S /run/caddy/admin.sock ]; then
         err=$(systemctl reload caddy 2>&1) && return 0
     else
         err=$(systemctl restart caddy 2>&1) && return 0

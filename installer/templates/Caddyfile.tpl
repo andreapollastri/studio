@@ -6,6 +6,10 @@
 # as files in /etc/caddy/sites/ by studio-admin.
 {
     email __ACME_EMAIL__
+    # The admin API on a socket in /run/caddy, a directory only root and caddy enter (the
+    # caddy.service drop-in the installer writes): at its default, 127.0.0.1:2019, any process
+    # of this server (a project's PHP, a workspace's agent) could reconfigure what serves every host.
+    admin unix//run/caddy/admin.sock
     on_demand_tls {
         ask http://127.0.0.1:8081/api/tls/ask
     }
@@ -40,6 +44,11 @@ https:// {
     @studio host studio.__DOMAIN__
     handle @studio {
         root * __STUDIO_DIR__/public
+        # nothing says what serves the pages (PHP's own header is off in the pool)
+        header -Server
+        # Caddy, the bridges and the SSH gateway reach these on 127.0.0.1:8081 only (the app answers 404 too)
+        @internal path /api/tls/ask /api/site-auth /api/bridge/* /api/ssh/redeem
+        respond @internal 404
         @ws path /app/* /apps/*
         reverse_proxy @ws 127.0.0.1:8080
         # The SSH terminal's sockets; a Caddy reload (a site added) does not cut open shells.
@@ -63,6 +72,7 @@ https:// {
     # frame (X-Frame-Options: DENY, frame-ancestors 'none') becomes "refused to connect"
     # there: Studio, and the page itself, may frame it; every other site still may not.
     header @not_studio {
+        -Server
         -X-Frame-Options
         Content-Security-Policy "frame-ancestors[^;]*" "frame-ancestors 'self' https://studio.__DOMAIN__"
         +Content-Security-Policy "frame-ancestors 'self' https://studio.__DOMAIN__"

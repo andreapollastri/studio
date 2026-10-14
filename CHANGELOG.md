@@ -4,6 +4,41 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.1.0
+
+Hardening, for a Studio on the open internet with every token, key and password of the team in it.
+
+### Signing in
+- **Two-factor can be required**: *Administration → System → Security* asks it of the administrators or of
+  everyone. Whoever must and has not set it up is sent to *Settings → Security* and nowhere else (the two-factor
+  components alone answer Livewire), and cannot turn it off; *Administration → People* flags who still has to.
+- **Passwords** of twelve characters at least, refused when they appear in the leaked lists (Have I Been Pwned's
+  range API: five characters of the hash leave the server, never the password). Changing yours closes your other
+  sessions and kills every other remember-me cookie; a session also ends by itself when the password changes
+  elsewhere (an administrator's reset).
+- **Sign-in attempts**: five a minute per account and address as before, and twenty a minute per address whatever
+  the accounts tried. "Remember me" lasts thirty days, not Laravel's four hundred. *Forgot your password?* answers
+  the same whether the address is an account or not.
+- **The security log**, `storage/logs/security.log`: every sign-in, failed attempt, second factor, passkey, password
+  change, door and policy, with the address and browser it came from. The latest of it in *Administration →
+  System → Security*.
+
+### The server
+- **fail2ban** reads the security log and bans an address from the web ports after ten refusals in a quarter of an
+  hour; sshd's jail through the journal. **logrotate** keeps the log half a year.
+- **Caddy's admin API** moves from `127.0.0.1:2019`, where any process of the server could reconfigure what serves
+  every host, to a socket in `/run/caddy` that only root and caddy enter. The update restarts Caddy once for it.
+- **The endpoints for Caddy, the bridges and the SSH gateway** (`/api/tls/ask`, `/api/site-auth`,
+  `/api/bridge/*`, `/api/ssh/redeem`) answer the loopback only: 404 from Caddy on `https://studio.<domain>`, and
+  404 from the app from any other address (`STUDIO_INTERNAL_LOOPBACK_ONLY=false` for a bridge in a container).
+- **Every page** carries `Strict-Transport-Security`, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options`,
+  `Referrer-Policy` and a `Content-Security-Policy` (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri` and
+  `form-action` to Studio; scripts and styles from Studio; previews from any https host). No `Server` or
+  `X-Powered-By` header. The preview pane keeps working: the project hosts' own `frame-ancestors` still let Studio in.
+- **Sessions** encrypted in the database, the session cookie named `__Host-studio_session` (a project site on a
+  sibling host cannot plant one), the password asked again after an hour on the sensitive pages
+  (`AUTH_PASSWORD_TIMEOUT`). The upgrade adds the three to `.env` where missing: everyone signs in again once.
+
 ## 2.0
 
 ### Databases

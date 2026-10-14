@@ -38,7 +38,7 @@
                             <div class="flex flex-wrap gap-1">
                                 <flux:badge size="sm" :color="$user->git_accounts_count > 0 ? 'green' : 'zinc'">{{ trans_choice(':count git account|:count git accounts', $user->git_accounts_count) }}</flux:badge>
                                 <flux:badge size="sm" :color="$user->hasClaude() ? 'green' : 'zinc'">Claude</flux:badge>
-                                @if ($user->two_factor_confirmed_at)<flux:badge size="sm" color="green">2FA</flux:badge>@endif
+                                @if ($user->two_factor_confirmed_at)<flux:badge size="sm" color="green">2FA</flux:badge>@elseif ($twoFactorRequired($user))<flux:badge size="sm" color="red" :tooltip="__('Required: they set it up at their next page')">{{ __('no 2FA') }}</flux:badge>@endif
                             </div>
                         </td>
                         <td class="px-4 py-2 text-end" data-cell="wide" data-label="{{ __('Projects') }}">

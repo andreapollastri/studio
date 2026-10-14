@@ -1,6 +1,8 @@
 <?php
 
 use App\Concerns\PasswordValidationRules;
+use App\Server\SecurityPolicy;
+use App\Support\SecurityLog;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +27,10 @@ new #[Title('Security settings')] class extends Component {
     public bool $twoFactorEnabled;
 
     public bool $requiresConfirmation;
+
+    /** The installation requires two-factor of this account (Administration → System → Security). */
+    #[Locked]
+    public bool $twoFactorRequired = false;
 
     #[Locked]
     public bool $canManagePasskeys;
@@ -54,6 +60,7 @@ new #[Title('Security settings')] class extends Component {
 
             $this->twoFactorEnabled = auth()->user()->hasEnabledTwoFactorAuthentication();
             $this->requiresConfirmation = Features::optionEnabled(Features::twoFactorAuthentication(), 'confirm');
+            $this->twoFactorRequired = app(SecurityPolicy::class)->requiresTwoFactor(auth()->user());
         }
 
         $this->canManagePasskeys = Features::canManagePasskeys();
@@ -83,9 +90,14 @@ new #[Title('Security settings')] class extends Component {
             'password' => $validated['password'],
         ]);
 
+        // Whoever held the old password is out: every other session closes and every other
+        // remember-me cookie dies with its token; this browser stays signed in.
+        Auth::logoutOtherDevices($validated['password']);
+        SecurityLog::record('password.changed', ['user' => Auth::user()->email], 'notice');
+
         $this->reset('current_password', 'password', 'password_confirmation');
 
-        Flux::toast(variant: 'success', text: __('Password updated.'));
+        Flux::toast(variant: 'success', text: __('Password updated. Your other sessions are closed.'));
     }
 
     /**
@@ -160,6 +172,12 @@ new #[Title('Security settings')] class extends Component {
      */
     public function disable(DisableTwoFactorAuthentication $disableTwoFactorAuthentication): void
     {
+        if ($this->twoFactorRequired) {
+            Flux::toast(variant: 'warning', text: __('This Studio requires two-factor authentication of your account.'));
+
+            return;
+        }
+
         $disableTwoFactorAuthentication(auth()->user());
 
         $this->twoFactorEnabled = false;
@@ -219,19 +237,30 @@ new #[Title('Security settings')] class extends Component {
                                 {{ __('You will be prompted for a secure, random pin during login, which you can retrieve from the TOTP-supported application on your phone.') }}
                             </flux:text>
 
-                            <div class="flex justify-start">
-                                <flux:button
-                                    variant="danger"
-                                    wire:click="disable"
-                                >
-                                    {{ __('Disable 2FA') }}
-                                </flux:button>
-                            </div>
+                            @if ($twoFactorRequired)
+                                <flux:text class="text-xs">{{ __('This Studio requires two-factor authentication of your account: an administrator can turn the requirement off.') }}</flux:text>
+                            @else
+                                <div class="flex justify-start">
+                                    <flux:button
+                                        variant="danger"
+                                        wire:click="disable"
+                                    >
+                                        {{ __('Disable 2FA') }}
+                                    </flux:button>
+                                </div>
+                            @endif
 
                             <livewire:pages::settings.two-factor.recovery-codes :$requiresConfirmation />
                         </div>
                     @else
                         <div class="space-y-4">
+                            @if ($twoFactorRequired)
+                                <flux:callout variant="warning" icon="shield-exclamation">
+                                    <flux:callout.heading>{{ __('Required for your account') }}</flux:callout.heading>
+                                    <flux:callout.text>{{ __('This Studio asks for a second factor at every sign-in. Set it up here: the rest of Studio opens once it is confirmed.') }}</flux:callout.text>
+                                </flux:callout>
+                            @endif
+
                             <flux:text variant="subtle">
                                 {{ __('When you enable two-factor authentication, you will be prompted for a secure pin during login. This pin can be retrieved from a TOTP-supported application on your phone.') }}
                             </flux:text>

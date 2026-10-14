@@ -565,8 +565,9 @@ EOF
     for v in /etc/php/*/fpm/pool.d/studio.conf; do [ -f "$v" ] && [ "$v" != "/etc/php/${php}/fpm/pool.d/studio.conf" ] && rm -f "$v"; done
     render_tpl "$rel/installer/templates/fpm-pool.conf.tpl" "/etc/php/${php}/fpm/pool.d/studio.conf" \
         NAME=studio USER=studio GROUP=studio MAX=12 LOG=/var/lib/studio/php.log
-    # The drive takes files up to STUDIO_DRIVE_MAX_UPLOAD_MB (100 MB by default) through Livewire
-    printf 'php_admin_value[upload_max_filesize] = 256M\nphp_admin_value[post_max_size] = 260M\nphp_admin_value[max_execution_time] = 600\n' \
+    # The drive takes files up to STUDIO_DRIVE_MAX_UPLOAD_MB (100 MB by default) through Livewire;
+    # no X-Powered-By header saying which PHP this is.
+    printf 'php_admin_value[upload_max_filesize] = 256M\nphp_admin_value[post_max_size] = 260M\nphp_admin_value[max_execution_time] = 600\nphp_admin_flag[expose_php] = off\n' \
         >> "/etc/php/${php}/fpm/pool.d/studio.conf"
 
     for unit in studio-queue studio-backups studio-databases studio-reverb studio-scheduler; do
@@ -584,6 +585,14 @@ EOF
         systemctl enable --now studio-system-update-auto.timer >/dev/null 2>&1 || sys_warn "the nightly server update timer could not be enabled"
     fi
 
+    # Caddy's admin API on a socket in /run/caddy, which only root and caddy enter (the Caddyfile
+    # says `admin unix//run/caddy/admin.sock`): systemd makes the directory at every start; made
+    # here too, for the Caddy already running. caddy_apply restarts a Caddy that still has no socket.
+    mkdir -p /etc/systemd/system/caddy.service.d
+    cp "$rel/installer/templates/caddy.override.conf" /etc/systemd/system/caddy.service.d/studio.conf
+    systemctl daemon-reload
+    install -d -o caddy -g caddy -m 0700 /run/caddy 2>/dev/null || true
+
     render_tpl "$rel/installer/templates/Caddyfile.tpl" /etc/caddy/Caddyfile.new DOMAIN="$domain" ACME_EMAIL="$acme" STUDIO_DIR="$STUDIO_HOME/current"
     touch /etc/caddy/sites/.keep
     caddy_readable
@@ -594,6 +603,24 @@ EOF
         sys_warn "the new Caddyfile did not validate; the current one stays"
     fi
     env_set "$STUDIO_ETC/studio.env" STUDIO_PHP "$php"
+
+    install_guards "$rel"
+}
+
+# install_guards RELEASE_DIR — fail2ban on Studio's security log (and sshd through the journal),
+# and logrotate for that log. The log exists from the start, owned by studio, or the jail would
+# not start on a fresh server; truncation at rotation keeps every writer on the same file.
+install_guards() {
+    local rel=$1 log="$STUDIO_HOME/shared/storage/logs/security.log"
+    [ -f "$log" ] || install -o studio -g studio -m 0640 /dev/null "$log"
+    render_tpl "$rel/installer/templates/logrotate.conf" /etc/logrotate.d/studio STUDIO_HOME="$STUDIO_HOME"
+    chmod 644 /etc/logrotate.d/studio
+    if [ -d /etc/fail2ban ]; then
+        cp "$rel/installer/templates/fail2ban-filter.conf" /etc/fail2ban/filter.d/studio.conf
+        render_tpl "$rel/installer/templates/fail2ban-jail.conf" /etc/fail2ban/jail.d/studio.conf STUDIO_HOME="$STUDIO_HOME"
+        systemctl enable fail2ban >/dev/null 2>&1 || true
+        systemctl reload-or-restart fail2ban 2>/dev/null || sys_warn "fail2ban did not start: journalctl -u fail2ban"
+    fi
 }
 
 # install_ssh_gateway RELEASE_DIR — the SSH gateway's own dependencies (ssh2, ws), kept in
@@ -616,6 +643,17 @@ caddy_readable() {
     chmod 644 /etc/caddy/Caddyfile /etc/caddy/sites/*.caddy 2>/dev/null || true
 }
 
+# caddy_apply — the Caddyfile into the running Caddy: a reload, through its admin socket; a
+# restart when there is no socket to reload through (a Caddy started before the socket was
+# configured, or one that is down). The restart is the one moment every host is away.
+caddy_apply() {
+    if systemctl is-active --quiet caddy && [ -S /run/caddy/admin.sock ]; then
+        systemctl reload caddy
+    else
+        systemctl restart caddy
+    fi
+}
+
 # Reload what serves Studio after a switch: PHP-FPM forgets the old release's
 # paths and opcache, the workers restart on the new code.
 restart_studio() {
@@ -628,6 +666,6 @@ restart_studio() {
     systemctl restart studio-ssh || sys_warn "the SSH gateway (studio-ssh) did not start"
     systemctl enable --now caddy >/dev/null 2>&1 || true
     caddy_readable
-    # a Caddy that is down (it could not read its files) does not reload: start it
-    systemctl reload-or-restart caddy
+    # a Caddy that is down (it could not read its files), or without its admin socket yet, restarts
+    caddy_apply
 }

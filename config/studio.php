@@ -61,6 +61,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Security
+    |--------------------------------------------------------------------------
+    | Who may reach the endpoints meant for Caddy, the bridges and the SSH
+    | gateway (127.0.0.1:8081); how many sign-in attempts an address gets; the
+    | password rules; the remember-me cookie; the headers of every page. The
+    | security log (storage/logs/security.log, App\Support\SecurityLog) is what
+    | fail2ban reads on a server. Who must set two-factor up is a setting of
+    | Administration → System (App\Server\SecurityPolicy).
+    */
+    'security' => [
+        // off for a development setup whose bridge does not run on this machine (a container)
+        'internal_loopback_only' => (bool) env('STUDIO_INTERNAL_LOOPBACK_ONLY', true),
+        // sign-in attempts a minute: on one account from one address, and from one address whatever the accounts
+        'login_per_minute' => (int) env('STUDIO_LOGIN_PER_MINUTE', 5),
+        'login_per_ip_per_minute' => (int) env('STUDIO_LOGIN_PER_IP_PER_MINUTE', 20),
+        // the shortest password (every password is also refused when it appears in leaked lists)
+        'password_min' => (int) env('STUDIO_PASSWORD_MIN', 12),
+        // how long "remember me" keeps a browser signed in, in minutes (Laravel's own default is 400 days)
+        'remember_minutes' => (int) env('STUDIO_REMEMBER_MINUTES', 30 * 24 * 60),
+        // Strict-Transport-Security, sent over https; empty for none
+        'hsts' => env('STUDIO_HSTS', 'max-age=31536000; includeSubDomains'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Workspace driver
     |--------------------------------------------------------------------------
     | "native" runs workspaces on this server through the privileged helper

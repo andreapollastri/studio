@@ -289,6 +289,59 @@
 
     <flux:separator />
 
+    {{-- Who must set two-factor up, and the latest of the security log --}}
+    <section id="security" class="space-y-4">
+        <flux:heading size="lg">{{ __('Security') }}</flux:heading>
+
+        <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="min-w-0 max-w-2xl">
+                    <flux:heading>{{ __('Two-factor authentication') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">
+                        {{ __('Whoever it is required of sets it up at their next page, before anything else, and cannot turn it off. Administrators hold every token, key and password of this Studio: ask it of them at least. A lost device is reset from Administration → People, as a lost password.') }}
+                    </flux:text>
+                </div>
+                <flux:radio.group wire:model.live="twoFactor" variant="segmented" size="sm">
+                    @foreach ($twoFactorOptions as $value => $label)
+                        <flux:radio value="{{ $value }}" :label="$label" />
+                    @endforeach
+                </flux:radio.group>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-700">
+            <div class="flex flex-wrap items-start justify-between gap-4 p-4">
+                <div class="min-w-0 max-w-2xl">
+                    <flux:heading>{{ __('Sign-ins and changes') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">
+                        {{ __('Every sign-in, failed attempt, second factor, passkey, password and door, with the address it came from: the latest here, all of it in storage/logs/security.log. On a server fail2ban reads it and bans an address after ten refusals in a quarter of an hour; the firewall admits only SSH and the web.') }}
+                    </flux:text>
+                </div>
+            </div>
+            @if ($securityEvents === [])
+                <flux:text class="border-t border-zinc-200 px-4 py-3 text-xs dark:border-zinc-700">{{ __('Nothing recorded yet.') }}</flux:text>
+            @else
+                <div class="max-h-80 overflow-auto border-t border-zinc-200 dark:border-zinc-700">
+                    <table class="w-full text-xs">
+                        <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                            @foreach ($securityEvents as $event)
+                                <tr>
+                                    <td class="whitespace-nowrap px-4 py-1.5 font-mono text-zinc-500">{{ $event['at'] }}</td>
+                                    <td class="px-2 py-1.5">
+                                        <flux:badge size="sm" :color="match ($event['level']) { 'WARNING', 'ERROR' => 'red', 'NOTICE' => 'amber', default => 'zinc' }">{{ strtolower($event['level']) }}</flux:badge>
+                                    </td>
+                                    <td class="break-all px-4 py-1.5 font-mono">{{ $event['message'] }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </div>
+    </section>
+
+    <flux:separator />
+
     {{-- SSH keys of the installation, shared with projects --}}
     <section id="keys" class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
