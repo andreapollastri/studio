@@ -1,5 +1,5 @@
 /**
- * xterm.js for the pages that show a terminal (SSH, Sign in with Claude),
+ * xterm.js for the pages that show a terminal (SSH, the sign-in to Claude Code),
  * loaded on first use so the rest of Studio stays light.
  */
 let xtermPromise = null;

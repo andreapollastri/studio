@@ -307,6 +307,9 @@ elif [ "$STUDIO_REF" = main ]; then
 else
     note "Studio:        ${STUDIO_REF}, the newest release; updated every night to each new release"
 fi
+note "Claude Code:   installed unmodified; each person signs in with their own plan or key, billed to them."
+note "               Running it for a team is covered by Anthropic's Commercial Terms, which you accept as the operator:"
+note "               https://studio.web.ap.it/#setup-claude-terms"
 credentials_banner
 confirm "Saved them? Install now?" || die "aborted"
 
@@ -410,8 +413,8 @@ chmod 644 /var/lib/studio-update/state.json
 
 printf '\n\033[1;32m  Studio %s is installed.\033[0m\n' "$RELEASE_NAME"
 credentials_banner
-note "Next: sign in, turn on two-factor in Settings → Security, add your Claude credential in"
-note "Settings → Connections, then create the first project from Administration → Projects."
+note "Next: sign in, turn on two-factor in Settings → Security, add your own Claude account (a subscription"
+note "signed in to Claude Code, or an API key) in Settings → Accounts, then create the first project from Administration → Projects."
 note "Updates: every night to the newest release (Administration → System, or  sudo studio-update apply),"
 note "         and every package on the server to its newest version an hour before (sudo studio-update system)."
 printf '\n'

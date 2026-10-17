@@ -64,11 +64,12 @@ as they work with, all in *Settings → Accounts*:
   repository, with that identity (`git config` in the clone), and the agent's CLI (gh, glab, az) gets that token.
   *Tools → Git* is one dashboard across all of them; a project's *Repository* tab opens its own repository with it.
 - **SSH keys**: generated (Ed25519, RSA) or imported, for the SSH terminal.
-- **Claude**: subscriptions and Anthropic API keys side by side. *Sign in with Claude* runs
-  Claude Code's official `claude auth login` in the person's own home on the server, in a folder of its own for each
-  subscription (`~/.claude`, `~/.claude-<slug>`, sharing the sessions, agents and skills), so a Pro, Max or Team plan is
-  used the way Anthropic allows on hosted platforms and Studio never holds it; a key is stored encrypted and goes with
-  each message. One account is the default.
+- **Claude**: subscriptions and Anthropic API keys side by side, each person's own. *Sign in to Claude Code* runs
+  Claude Code's official `claude auth login` in a terminal in the person's own home on the server, in a folder of its
+  own for each subscription (`~/.claude`, `~/.claude-<slug>`, sharing the sessions, agents and skills); the person
+  pastes Anthropic's code into that terminal, so a Pro, Max or Team plan is used the way Anthropic allows on hosted
+  platforms and Studio never sees or holds it; a key is stored encrypted and goes with each message. One account is
+  the default. See [Claude Code and Anthropic's terms](#claude-code-and-anthropics-terms).
 - **Groups** (*Projects*): each person puts their projects in groups of their own (Personal, Open source, Work,
   Clients…). A group picks the Claude account and the git account its projects use; a project may pick others. Each
   card shows what it runs on and why. A Claude change applies to the next message; a git change restarts only the
@@ -132,6 +133,29 @@ releases. Read the conversation and the diff, comment, approve, merge, close, cr
 and releases, start or retry pipelines. Everyone works with their own accounts, kept in *Settings → Accounts*, as many
 as they need (personal, work, a client's), each with the name and email its commits carry. Tokens and scopes per
 provider: [the docs](https://studio.web.ap.it/#git).
+
+## Claude Code and Anthropic's terms
+
+Studio runs the unmodified Claude Code that Anthropic publishes, and nothing stands between the person, that binary and
+Anthropic: the way Anthropic's [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) page allows
+Claude Code on a hosted platform. In short:
+
+- **The operator accepts Anthropic's Commercial Terms.** Running Claude Code in a service of yours, for a team, is covered
+  by them; the author of Studio is not a party to it, whoever runs each installation is.
+- **Each person authenticates with their own credentials, billed to them**: a subscription signed in to Claude Code in
+  their own home, or an API key of their own (or their organisation's) Console account. Studio never pays for, resells or
+  brokers Claude on anyone's behalf, holds no subscription and accepts no `setup-token`.
+- **A subscription is personal.** One Pro or Max plan shared by several people through Studio would be brokering and a
+  breach of the consumer terms. For a team, a Claude Team or Enterprise plan (a seat per person) or API keys are the
+  natural choice; Pro and Max limits assume ordinary individual use, and parallel sandboxes, subagents and autopilot
+  spend them fast.
+- **Nothing in Claude Code is modified or restricted**: both sign-in methods stay available, the server updates it from
+  npm, and the login files in `~/.claude*` are read by the CLI alone (denied to the agent, never read, copied or logged by
+  Studio, its bridge or its root helper; Studio only asks `claude auth status`).
+- **Studio is an independent project**, not affiliated with or endorsed by Anthropic. Claude and Claude Code are
+  trademarks of Anthropic, PBC, named here to say what Studio runs.
+
+Not legal advice: for an installation others will use, read Anthropic's page and, in doubt, ask them.
 
 ## Screenshots
 

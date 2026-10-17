@@ -1808,6 +1808,7 @@
       <a href="#setup-people">People</a>
       <a href="#setup-connections">Your accounts</a>
       <a class="sub" href="#setup-accounts-claude">Claude</a>
+      <a class="sub" href="#setup-claude-terms">Anthropic's terms</a>
       <a class="sub" href="#setup-accounts-git">Git</a>
       <a class="sub" href="#setup-ssh-keys">SSH keys</a>
       <a class="sub" href="#setup-groups">Groups of projects</a>
@@ -2040,8 +2041,9 @@
         <p class="install-requirements"><strong>Requires:</strong> Ubuntu 24.04 or 26.04 LTS (with <code>sudo</code> or Ubuntu
           26.04's <code>sudo-rs</code>), amd64 or arm64, 4 GB of
           memory or more · a domain with a wildcard record · a git account per person on the host of their projects · a Claude subscription or an
-          Anthropic API key per person who chats · Laravel projects with Larapilot (Studio installs it, with Laravel Boost, in
-          the repositories it creates).</p>
+          Anthropic API key per person who chats, each person's own · Laravel projects with Larapilot (Studio installs it, with Laravel Boost, in
+          the repositories it creates). Running Claude Code for a team on your server is covered by Anthropic's Commercial
+          Terms, which the operator of the installation accepts: see <a href="#setup-claude-terms">Anthropic's terms</a>.</p>
 
         <h3 id="quickstart-installs">What it installs</h3>
         <p><code>installer/install.sh</code> turns a bare Ubuntu into the whole thing, and the same steps (in
@@ -2312,8 +2314,9 @@
           own are typed as slash commands; see <a href="#work-skills">Skills &amp; Claude's questions</a>.</p>
 
         <div class="note"><strong>One Claude per person.</strong> Every conversation drives the Claude Code signed in with that
-          person's own plan, inside that person's workspace. Studio never holds a shared Anthropic account behind the
-          interface; that is what the terms require and what keeps usage and cost attributable.</div>
+          person's own plan or key, inside that person's workspace, billed to that person. Studio never holds a shared
+          Anthropic account behind the interface, and a subscription is never shared between people: that is what
+          <a href="#setup-claude-terms">Anthropic's terms</a> require and what keeps usage and cost attributable.</div>
       </section>
 
 <!-- Setup: git hosts -->
@@ -2573,14 +2576,42 @@
           <em>Add a Claude account → Subscription</em> opens a terminal with Claude Code's own <code>claude auth login</code>,
           running as you in your home on the server, in a folder of its own for that account (<code>~/.claude</code> for the
           first, <code>~/.claude-&lt;name&gt;</code> for the others; they share your sessions, agents and skills). Open
-          Anthropic's sign-in page, approve with the Claude account of that plan, paste the code back: Studio never sees or
-          keeps the login. Anthropic does not let a platform collect or forward claude.ai credentials, which is why Studio
-          takes no <code>setup-token</code>; signing in to the unmodified Claude Code where a platform hosts it is what its
-          terms allow. With an Anthropic Console account, add the API key: Studio keeps it encrypted and sends it with each
-          message of the projects that use it. The login folders and the kept keys are denied to the agent itself.</p>
+          Anthropic's sign-in page, approve with the Claude account of that plan, and paste the code into the terminal, where
+          Claude Code waits for it: Studio is the terminal and nothing more, it has no field of its own for the code and never
+          sees or keeps the login. Anthropic does not let a platform collect, store or forward claude.ai credentials, which is
+          why Studio takes no <code>setup-token</code>; signing in to the unmodified Claude Code where a platform hosts it is
+          what its terms allow. With an Anthropic Console account, add the API key: Studio keeps it encrypted and sends it with
+          each message of the projects that use it. The login folders and the kept keys are denied to the agent itself.</p>
         <p>The account goes with every message: changing it needs no restart, and a conversation resumes where it was on the
           new account. The status bar of the chat says which account the next message runs on and why; a subscription shows
-          its plan's usage, kept per account.</p>
+          its plan's usage, as Claude Code itself reports it, kept per account.</p>
+
+        <h3 id="setup-claude-terms">Anthropic's terms</h3>
+        <p>Studio runs the unmodified Claude Code that Anthropic publishes, and nothing stands between the person, that
+          binary and Anthropic: the way Anthropic's <a href="https://code.claude.com/docs/en/legal-and-compliance"
+          target="_blank" rel="noopener">Legal and compliance</a> page allows Claude Code on a hosted platform. What that asks
+          of everyone involved:</p>
+        <ul>
+          <li><strong>Whoever runs a Studio for a team accepts Anthropic's Commercial Terms of Service.</strong> Preinstalling
+            or running Claude Code in a product or service of yours, hosted sandboxes included, is covered by them. The
+            author of Studio is not a party to it: the operator of each installation is.</li>
+          <li><strong>Each person authenticates with their own credentials, and their use is billed to them</strong>: a
+            subscription signed in to Claude Code in their own home, or an API key of their own Console account (or one
+            their organisation's Console hands them). Studio never pays for, resells or brokers Claude on anyone's behalf:
+            it holds no subscription, accepts no <code>setup-token</code>, and keeps a key only to hand it to that person's
+            own Claude Code.</li>
+          <li><strong>A subscription is personal.</strong> One Pro or Max plan used by several people through Studio would be
+            both brokering and a breach of Anthropic's consumer terms. For a team, a Claude Team or Enterprise plan (a seat
+            per person) or API keys are the natural choice; the limits of Pro and Max assume ordinary individual use, and
+            parallel sandboxes, subagents and autopilot spend them fast.</li>
+          <li><strong>Nothing in Claude Code is modified or restricted.</strong> Both of its sign-in methods stay available,
+            the server updates it from npm as Anthropic publishes it, and the login in every <code>~/.claude*</code> folder is
+            read by the CLI alone: denied to the agent, never read, copied or logged by Studio, its bridge or its helper.
+            Studio asks the CLI (<code>claude auth status</code>) whether someone is signed in, and that is all it knows.</li>
+          <li><strong>Studio is an independent project</strong>, not affiliated with or endorsed by Anthropic. Claude and
+            Claude Code are trademarks of Anthropic, PBC, named here to say what Studio runs.</li>
+        </ul>
+        <p>This is not legal advice: for an installation others will use, read the page above and, in doubt, ask Anthropic.</p>
 
         <h3 id="setup-accounts-git">Git accounts</h3>
         <figure class="shot">
@@ -4974,8 +5005,9 @@ bridge ──stdio──▶ Playwright MCP  <span class="comment">the agent's br
   </div>
 
   <footer>
-    <p>Studio v2.0 · Open source · MIT · <a href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a> · <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a></p>
+    <p>Studio v2.1 · Open source · MIT · <a href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a> · <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a></p>
     <p>Made by <a href="https://web.ap.it" target="_blank" rel="noopener">Andrea Pollastri</a></p>
+    <p>An independent project, not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic, PBC; Studio runs the Claude Code each person signs in to. <a href="#setup-claude-terms">Anthropic's terms</a>.</p>
   </footer>
 
   <script>

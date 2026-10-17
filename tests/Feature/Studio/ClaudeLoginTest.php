@@ -33,7 +33,7 @@ function signInAs(string $method): void
     $_ENV['FAKE_CLAUDE_METHOD'] = $_SERVER['FAKE_CLAUDE_METHOD'] = $method;
 }
 
-test('"Sign in with Claude" gives a ticket the gateway redeems for the folder of that subscription in the person\'s home, nothing else', function () {
+test('"Sign in to Claude Code" gives a ticket the gateway redeems for the folder of that subscription in the person\'s home, nothing else', function () {
     $user = User::factory()->create(['handle' => 'maria']);
     $first = ClaudeAccount::factory()->for($user)->subscription(signedIn: false)->create();
     $work = ClaudeAccount::factory()->for($user)->subscription('.claude-work', signedIn: false)->create();

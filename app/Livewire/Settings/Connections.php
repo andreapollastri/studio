@@ -231,8 +231,8 @@ class Connections extends Component
     private function keyMessages(string $field): array
     {
         return [
-            $field.'.starts_with' => __('An Anthropic API key starts with sk-ant-. For a Claude subscription add a subscription and sign in with Claude.'),
-            $field.'.not_regex' => __('That is a subscription token: add a subscription and sign in with Claude instead, Studio does not keep subscription tokens.'),
+            $field.'.starts_with' => __('An Anthropic API key starts with sk-ant-. For a Claude subscription add a subscription and sign in to Claude Code.'),
+            $field.'.not_regex' => __('That is a subscription token: add a subscription and sign in to Claude Code instead: Studio does not keep subscription tokens.'),
         ];
     }
 

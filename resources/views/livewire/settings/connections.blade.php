@@ -72,7 +72,7 @@
                                         <div class="flex flex-wrap items-center gap-1">
                                             @if ($account->isSubscription())
                                                 @if ($onServer)
-                                                    <flux:button size="sm" :variant="$account->isUsable() ? 'ghost' : 'primary'" icon="sparkles" x-on:click="start({{ Js::from($account->uuid) }}); $flux.modal('claude-login').show()">{{ $account->isUsable() ? __('Sign in again') : __('Sign in with Claude') }}</flux:button>
+                                                    <flux:button size="sm" :variant="$account->isUsable() ? 'ghost' : 'primary'" icon="command-line" x-on:click="start({{ Js::from($account->uuid) }}); $flux.modal('claude-login').show()">{{ $account->isUsable() ? __('Sign in again') : __('Sign in to Claude Code') }}</flux:button>
                                                 @endif
                                                 <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="refreshClaude({{ Js::from($account->uuid) }})" :aria-label="__('Check')" />
                                             @endif
@@ -112,45 +112,42 @@
                         <flux:text class="text-xs">{{ __('From the Anthropic Console, billed on that Console account. Studio keeps it encrypted and hands it to Claude Code with each message of the projects that use it.') }}</flux:text>
                     @else
                         <flux:text class="text-xs">
-                            {{ __('The official Claude Code sign-in runs in your own home on this server, in a folder of its own for this account: Studio never sees or keeps it. Use a different Claude account for each subscription.') }}
+                            {{ __('The official Claude Code sign-in runs in your own home on this server, in a folder of its own for this account: Studio never sees or keeps it. Your own plan, used by you alone and billed to you: a subscription is never shared with a colleague, and each subscription is a Claude account of its own.') }}
                             @unless ($onServer){{ __('In development Claude Code uses the sign-in of this computer.') }}@endunless
                         </flux:text>
                     @endif
-                    <flux:button type="submit" variant="primary" :icon="$new_kind === 'subscription' ? 'sparkles' : 'plus'">{{ $new_kind === 'subscription' ? __('Add and sign in') : __('Save the key') }}</flux:button>
+                    <flux:button type="submit" variant="primary" :icon="$new_kind === 'subscription' ? 'command-line' : 'plus'">{{ $new_kind === 'subscription' ? __('Add and sign in') : __('Save the key') }}</flux:button>
                 </form>
 
                 <flux:modal name="claude-login" class="md:w-[48rem]" x-on:close="stop()">
                     <div class="space-y-4">
                         <div>
-                            <flux:heading size="lg">{{ __('Sign in with Claude') }}</flux:heading>
-                            <flux:text class="mt-1">{{ __('This is Claude Code’s own sign-in, running in your home on the server. Studio only shows the terminal.') }}</flux:text>
+                            <flux:heading size="lg">{{ __('Sign in to Claude Code') }}</flux:heading>
+                            <flux:text class="mt-1">{{ __('This is Claude Code’s own claude auth login, in a terminal in your home on the server. Studio shows the terminal and takes no part in the sign-in: the code goes to Claude Code, never through Studio.') }}</flux:text>
                         </div>
                         <ol class="list-decimal space-y-1 ps-5 text-sm text-zinc-600 dark:text-zinc-300">
                             <li>{{ __('If Claude Code asks which account, choose your Claude account (Pro, Max or Team), not the Console.') }}</li>
                             <li>{{ __('Open Anthropic’s sign-in page and approve with the Claude account of this subscription: sign out of claude.ai first if another one is signed in there.') }}</li>
-                            <li>{{ __('Copy the code the page shows you and paste it below (or in the terminal).') }}</li>
+                            <li>{{ __('Copy the code the page gives you and paste it in the terminal below (⌘V or Ctrl+V), where Claude Code waits for it.') }}</li>
                         </ol>
 
                         <div class="flex flex-wrap items-center gap-2">
                             <template x-if="link">
-                                <flux:button variant="primary" icon="arrow-top-right-on-square" x-on:click="window.open(link, '_blank', 'noopener')">{{ __('Open the sign-in page') }}</flux:button>
+                                <flux:button variant="primary" icon="arrow-top-right-on-square" x-on:click="window.open(link, '_blank', 'noopener'); focusTerminal()">{{ __('Open the sign-in page') }}</flux:button>
                             </template>
                             <template x-if="! link && state === 'running'">
                                 <flux:button icon="link" x-on:click="askLink()">{{ __('Get the sign-in link') }}</flux:button>
                             </template>
-                            <form class="flex min-w-64 flex-1 gap-2" x-on:submit.prevent="pasteCode()">
-                                <flux:input x-model="code" :placeholder="__('Paste the code here')" class="font-mono" autocomplete="off" x-bind:disabled="state !== 'running'" />
-                                <flux:button type="submit" x-bind:disabled="state !== 'running' || ! code.trim()">{{ __('Send') }}</flux:button>
-                            </form>
+                            <flux:text class="text-xs" x-show="state === 'running'">{{ __('The link is the one Claude Code printed in the terminal; clicking it there works too.') }}</flux:text>
                         </div>
 
-                        <div wire:ignore id="claude-login-terminal" class="h-72 overflow-hidden rounded-lg bg-zinc-950 p-2"></div>
+                        <div wire:ignore id="claude-login-terminal" class="h-72 overflow-hidden rounded-lg bg-zinc-950 p-2" x-on:click="focusTerminal()"></div>
 
                         <div class="flex items-center justify-between gap-3 text-sm">
                             <span x-show="state === 'connecting'" class="flex items-center gap-2 text-zinc-500"><flux:icon.loading class="size-4" /><span x-text="{ ticket: @js(__('Preparing the sign-in…')), terminal: @js(__('Opening the terminal…')), socket: @js(__('Connecting to the server…')), claude: @js(__('Starting Claude Code…')) }[step] ?? @js(__('Starting Claude Code…'))"></span></span>
                             <span x-show="state === 'done'" class="flex items-center gap-2 text-green-600"><flux:icon.check-circle class="size-4" />{{ __('Done: you are signed in.') }}</span>
                             <span x-show="state === 'error'" class="text-red-600" x-text="error"></span>
-                            <span x-show="state === 'running'" class="text-xs text-zinc-500">{{ __('The terminal is live: you can also type in it.') }}</span>
+                            <span x-show="state === 'running'" class="text-xs text-zinc-500">{{ __('The terminal is live: paste the code there, or type as you would in a shell.') }}</span>
                             <div class="ms-auto flex gap-2">
                                 <flux:button size="sm" variant="ghost" x-show="state === 'error'" x-on:click="start()">{{ __('Try again') }}</flux:button>
                                 <flux:modal.close><flux:button size="sm" variant="primary">{{ __('Close') }}</flux:button></flux:modal.close>

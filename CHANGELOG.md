@@ -4,6 +4,22 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.1.1
+
+Claude Code's sign-in, kept to the letter of Anthropic's terms for a platform that hosts it.
+
+- **The code goes into the terminal, not into Studio.** The sign-in dialog no longer has a field of its own for
+  Anthropic's code: the person pastes it into the terminal where `claude auth login` waits for it (⌘V or Ctrl+V), so
+  Studio is the terminal and nothing more, and no part of the exchange passes through a Studio control. The link to
+  Anthropic's page is still offered as a button (the one Claude Code prints; clicking it in the terminal works too).
+- **Plain words, no social-login look**: the button is *Sign in to Claude Code*, with a terminal icon, and the dialog
+  says what runs where. The form says a subscription is the person's own, used by them alone and billed to them.
+- **Docs and README** gain *Anthropic's terms*: the operator of an installation accepts the Commercial Terms, one
+  account per person billed to that person, a subscription is never shared (a Team or Enterprise plan or API keys for a
+  team), nothing in Claude Code is modified or restricted, and Studio is an independent project with no affiliation to
+  Anthropic. The installer's summary says the same in a line.
+- Error messages of the bridge send people to *Settings → Accounts*, where the page now is.
+
 ## 2.1.0
 
 Hardening, for a Studio on the open internet with every token, key and password of the team in it.

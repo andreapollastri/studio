@@ -1,5 +1,5 @@
 [Unit]
-Description=Studio SSH gateway (the SSH terminal page and "Sign in with Claude")
+Description=Studio SSH gateway (the SSH terminal page and the sign-in to Claude Code)
 After=network.target
 
 [Service]
@@ -15,7 +15,7 @@ Environment=SSH_GATEWAY_REDEEM_URL=http://127.0.0.1:8081/api/ssh/redeem
 ExecStart=/usr/bin/node __STUDIO_DIR__/ssh-gateway/bin/gateway.js
 Restart=always
 RestartSec=3
-# No NoNewPrivileges / ProtectSystem / ProtectHome here: "Sign in with Claude" runs
+# No NoNewPrivileges / ProtectSystem / ProtectHome here: the sign-in to Claude Code runs
 # `sudo studio-admin claude-login <handle>`, which needs sudo and writes the person's home.
 # The gateway runs as studio, the same user that already may run the helper.
 PrivateTmp=true

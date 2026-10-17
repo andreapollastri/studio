@@ -1,13 +1,18 @@
 /**
- * "Sign in with Claude" on Settings → Connections: the official
- * `claude auth login` of Claude Code, running as the person in their own home
- * on the server, shown in a terminal. The person opens Anthropic's sign-in
- * page, approves, and pastes the code back; the CLI keeps the login in the
- * folder of that Claude account (~/.claude, ~/.claude-<slug>). Studio relays
- * the terminal and keeps nothing.
+ * "Sign in to Claude Code" on Settings → Accounts: the official
+ * `claude auth login` of the unmodified Claude Code, running as the person in
+ * their own home on the server, shown in a terminal. The person opens
+ * Anthropic's sign-in page, approves, and pastes the code into the terminal,
+ * where the CLI reads it; the CLI keeps the login in the folder of that Claude
+ * account (~/.claude, ~/.claude-<slug>). Studio is the terminal and nothing
+ * more: no field of its own takes the code, nothing of the exchange is kept.
+ * That is what Anthropic's terms ask of a platform hosting Claude Code: the
+ * sign-in completes through Anthropic's own flow, not through the platform.
  *
  * The CLI hands its sign-in link over with an OSC 52 "copy to clipboard"
- * sequence when the person presses c: caught here, it becomes a button.
+ * sequence when the person presses c: a terminal emulator's clipboard duty,
+ * done here as a button that opens the page, since the browser has no
+ * clipboard for a remote terminal to write to.
  */
 import { FONT, loadXterm, THEME } from './xterm';
 
@@ -28,7 +33,6 @@ function claudeLogin() {
         boxId: 'claude-login-terminal',
         error: null,
         link: null,
-        code: '',
         exitCode: null,
         account: null, // uuid of the subscription signing in
 
@@ -146,11 +150,8 @@ function claudeLogin() {
             term?.focus();
         },
 
-        pasteCode() {
-            const code = this.code.trim();
-            if (!code) return;
-            this.send(code + '\r');
-            this.code = '';
+        /** Back from Anthropic's page, the code goes into the terminal, where the CLI waits for it. */
+        focusTerminal() {
             term?.focus();
         },
 
@@ -163,7 +164,7 @@ function claudeLogin() {
             try { ws?.close(1000); } catch {}
             try { term?.dispose(); } catch {}
             ws = null; term = null; fit = null; screen = '';
-            this.error = null; this.link = null; this.code = ''; this.exitCode = null;
+            this.error = null; this.link = null; this.exitCode = null;
         },
 
         /** Closing the modal ends the sign-in on the server too. */

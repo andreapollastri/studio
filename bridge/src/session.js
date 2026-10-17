@@ -413,9 +413,9 @@ const STDERR_TAIL = 4000;
  */
 const EXIT_REASONS = [
   [/not logged in|please run \/login|invalid api key|authentication_error|oauth token (has )?(expired|revoked)|invalid bearer token/i,
-    'Claude is not signed in, or its credentials are no longer valid. Sign in again from Settings › Connections, then resend the message.'],
+    'Claude is not signed in, or its credentials are no longer valid. Sign in again from Settings › Accounts, then resend the message.'],
   [/credit balance is too low/i,
-    'The Anthropic account has run out of credit. Top it up or switch to your Claude plan in Settings › Connections.'],
+    'The Anthropic account has run out of credit. Top it up or switch to your Claude plan in Settings › Accounts.'],
   [/usage limit|limit reached|rate[ _]limit/i,
     'The Claude usage limit has been reached. Try again once it resets.'],
   [/overloaded/i,
