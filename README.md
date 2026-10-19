@@ -178,6 +178,10 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/chat-tools-open.png" alt="The chat with Details on: every command and its result expanded"><br><sub><strong>Details.</strong> Each tool call is a row; Details expands them all with their results and the agent's reasoning.</sub></td>
 <td width="50%"><img src="docs/img/chat-settings.png" alt="The Model and mode dialog: model, effort, four permission modes, what runs without asking"><br><sub><strong>Model &amp; mode.</strong> Model, effort and the permission mode of this conversation; below, what runs without asking and the MCP servers it gets from the project.</sub></td>
 </tr>
+<tr>
+<td width="50%"><img src="docs/img/chat-skills.png" alt="The chat input with /lara typed and the menu of the Larapilot skills above it"><br><sub><strong>"/" lists the skills.</strong> The repository's skills and commands and your own, filtered as you type; Enter starts one, Tab writes it so a request can follow.</sub></td>
+<td width="50%"><img src="docs/img/chat-dark.png" alt="The same conversation in dark mode"><br><sub><strong>Light or dark.</strong> Studio follows the system appearance, or the choice in Settings → Appearance.</sub></td>
+</tr>
 </table>
 
 **Home, projects and roles**
@@ -223,7 +227,7 @@ shows the result on her own branch.
 </tr>
 <tr>
 <td width="50%"><img src="docs/img/terminal.png" alt="The Terminal tab: shortcut buttons over a shell, where an artisan command asked for a password twice and added the user"><br><sub><strong>Terminal.</strong> A shell in the workspace on a real terminal: prompts and passwords work; shortcuts type the useful commands.</sub></td>
-<td width="50%"><img src="docs/img/chat-dark.png" alt="The same conversation in dark mode"><br><sub><strong>Light or dark.</strong> Studio follows the system appearance, or the choice in Settings → Appearance.</sub></td>
+<td width="50%"><img src="docs/img/files-menu.png" alt="The row menu of a folder in the Files tree: new file, new folder, uploads, rename, move, compress, delete"><br><sub><strong>Upload, move, zip.</strong> Files and whole folders upload by dropping them on the tree; rows move by dragging; zips are made and extracted in place.</sub></td>
 </tr>
 </table>
 
@@ -286,7 +290,7 @@ shows the result on her own branch.
 </tr>
 </table>
 
-## Status (2.0)
+## Status (2.3)
 
 What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
@@ -299,7 +303,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Project hub: Workspace, Repository (the person's own account), Infrastructure and Access by role, Settings for administrators; Home inbox across projects and git accounts | done, tested (git hosts and connectors with HTTP fakes) |
 | Infrastructure attached to projects: any row of a connector's list, seen and acted on by the roles chosen, with the actions handed over, logged | done, tested against HTTP fakes |
 | Workspaces on the server through `studio-admin` (`native` driver); `local` driver for development | native tested with a stand-in helper; local tested |
-| Chat: messages, slash commands for skills, permission cards, cards for Claude's questions (AskUserQuestion), streaming text, Reverb with polling fallback | done, tested with a fake bridge |
+| Chat: messages, a "/" menu of the skills and commands, Enter to send, permission cards with *Always allow* and the role's everyday commands allowed, cards for Claude's questions (AskUserQuestion), text streamed in the browser over Reverb with polling only without it, the CLI warmed when the input is focused | done, tested with a fake bridge; streaming and warming checked in a browser against a stand-in CLI |
 | Per conversation: model, effort, mode (ask, ask with edits, autopilot, plan only) | done, tested |
 | Terminal tab: a shell in the workspace on a real terminal (the bridge's `src/terminal.py`), carried by the SSH gateway | done, tested end to end (gateway → bridge → shell) on a local machine; not yet run on a live server |
 | Files tab: workspace tree, Monaco editor (the editor of VS Code), save with conflict check, create/rename/move/delete, uploads of files and folders, download, zip and unzip | done, tested (`bridge/src/files.js` against real directories) |

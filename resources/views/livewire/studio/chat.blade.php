@@ -101,6 +101,7 @@
     @endif
 
     <div
+        id="chat-messages"
         class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 max-xl:overscroll-contain max-md:px-3"
         x-data
         x-init="$el.scrollTop = $el.scrollHeight"

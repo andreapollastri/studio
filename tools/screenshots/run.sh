@@ -46,7 +46,7 @@ SH
 # the updater states the System page reads
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 cat >"$WORK/state.json" <<JSON
-{"channel":"stable","current":"v1.1.0","latest":"v2.0.0","target":"v2.0.0","update_available":true,"auto":true,"checked_at":"$NOW","status":"done","message":"Updated v1.0.0 → v1.1.0.","finished_at":"$NOW","system":{"status":"done","finished_at":"$NOW","upgraded":["caddy","php8.4-fpm","mariadb-server"],"reboot":false}}
+{"channel":"stable","current":"v2.2.0","latest":"v2.3.0","target":"v2.3.0","update_available":true,"auto":true,"checked_at":"$NOW","status":"done","message":"Updated v2.1.2 → v2.2.0.","finished_at":"$NOW","system":{"status":"done","finished_at":"$NOW","upgraded":["caddy","php8.4-fpm","mariadb-server"],"reboot":false}}
 JSON
 cat >"$WORK/state-beta.json" <<JSON
 {"channel":"beta","current":"main-1a2b3c4","latest":"main-5d6e7f8","target":"main-5d6e7f8","update_available":true,"auto":true,"checked_at":"$NOW","status":"done","message":"Updated to main-1a2b3c4.","finished_at":"$NOW"}

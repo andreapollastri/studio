@@ -83,7 +83,7 @@ printf 'vendor/\nnode_modules/\n.env\n' > .gitignore
 G="git -c user.name=demo -c user.email=demo@example.test"
 git add -A && $G commit -q -m "Orders list with search by number"
 # a little history, so the History view has a graph to draw: a release, a fix on a branch, its merge
-GIT_AUTHOR_DATE="2026-09-20T10:00:00+02:00" GIT_COMMITTER_DATE="2026-09-20T10:00:00+02:00" $G commit -q --amend --no-edit
+GIT_COMMITTER_DATE="2026-09-20T10:00:00+02:00" $G commit -q --amend --no-edit --date="2026-09-20T10:00:00+02:00"
 printf 'v1.3.0\n' > VERSION && git add -A && GIT_AUTHOR_DATE="2026-09-24T09:30:00+02:00" GIT_COMMITTER_DATE="2026-09-24T09:30:00+02:00" $G commit -q -m "Release 1.3"
 git tag v1.3.0
 git checkout -q -b fix/returns-badge

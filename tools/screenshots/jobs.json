@@ -53,7 +53,7 @@
   },
   {
     "name": "chat-top",
-    "eval": "document.querySelector('[x-init]').scrollTop = 0",
+    "eval": "document.getElementById('chat-messages').scrollTop = 0",
     "height": 960,
     "wait": 500
   },
@@ -73,7 +73,7 @@
   {
     "name": "chat-tools-open",
     "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
-    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Details\"); if (b) b.click(); return !!b; })()",
+    "eval": "(() => { const b = document.querySelector('button[aria-label=\"Details\"]'); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 1800
   },
