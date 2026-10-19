@@ -85,6 +85,13 @@
     "wait": 1500
   },
   {
+    "name": "chat-skills",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PLAN}",
+    "eval": "(() => { const t = document.querySelector('form[x-data=\"chatComposer\"] textarea'); if (!t) return false; t.focus(); t.value = '/lara'; t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()",
+    "height": 960,
+    "wait": 2500
+  },
+  {
     "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
     "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Terminal\"); if (b) b.click(); return !!b; })()",
     "wait": 3500

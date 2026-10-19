@@ -10,3 +10,4 @@ import './search-picker';
 import './claude-login';
 import './system-watch';
 import './workspace-shell';
+import './chat-composer';

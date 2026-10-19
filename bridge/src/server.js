@@ -1,4 +1,6 @@
 import http from 'node:http';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { pipeline } from 'node:stream/promises';
@@ -106,7 +108,11 @@ export function createServer(config, options = {}) {
       }
 
       if (req.method === 'GET' && path === '/skills') {
-        return json(res, 200, { skills: await listSkills(config.workspaceDir) });
+        // the person's own skills sit in the Claude folder the conversation signs in with (.claude, .claude-<slug>)
+        const asked = url.searchParams.get('claude_dir') ?? '';
+        const home = process.env.HOME || homedir();
+        const claudeDir = /^\.claude(-[a-z0-9]{1,40})?$/.test(asked) ? join(home, asked) : (process.env.CLAUDE_CONFIG_DIR || join(home, '.claude'));
+        return json(res, 200, { skills: await listSkills(dir, { claudeDir }) });
       }
 
       if (path === '/git' || path.startsWith('/git/')) {

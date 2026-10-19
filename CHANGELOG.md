@@ -6,7 +6,7 @@ server is in `installer/upgrades/<version>.sh`.
 
 ## 2.3.0
 
-Fewer "Claude wants to run Bash".
+Fewer "Claude wants to run Bash", and a chat input that knows its skills.
 
 - **Always allow** on a permission card: the command runs, and is not asked again on that project, for that person.
   The rule is the one Claude Code suggests (`composer require …`, any package) or, for a plain command, its runner
@@ -18,6 +18,13 @@ Fewer "Claude wants to run Bash".
   read-only artisan commands (`allowed_tools` in `config/studio.php`). Nothing that leaves the workspace: a push or a
   `migrate:fresh` still asks.
 - A card with no rule to offer (a file edit in *Ask before actions*) says where to let edits run instead.
+
+### The chat input
+- **"/" lists the skills and commands** the conversation can start, filtered as you type: the repository's
+  (`.larapilot/skills`, `.claude/skills`, `.claude/commands`, a folder giving `folder:name`) and the person's own in
+  their Claude folder on the server, with their description and argument hint; in a sandbox, the sandbox's. Enter or
+  a click starts the highlighted one, Tab writes it so a request can follow, Esc closes the list.
+- **Enter sends**, Shift+Enter starts a new line (it was ⌘⏎ / Ctrl+⏎).
 - The update restarts the workspace bridges, which carry the rules (`installer/upgrades/2.3.0.sh`).
 
 ## 2.2.0

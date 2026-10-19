@@ -3489,6 +3489,17 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <code>.larapilot/skills/&lt;name&gt;/SKILL.md</code>, committed with the code, and skills in Claude Code's own
           <code>.claude/skills/</code> count too: <code>/acme-predeploy-gate</code> works the same way. Add one from the chat
           with <code>/larapilot-custom-skill</code>; commit, and every workspace has it at the next start.</p>
+        <figure class="shot">
+          <img src="img/chat-skills.png" alt="The chat input with /lara typed and the menu of the Larapilot skills above it, each with its description" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>"/" lists them.</strong> Typed at the start of the input, a slash opens what this conversation
+            can start, filtered as you type: <kbd>⏎</kbd> or a click starts the highlighted one, <kbd>Tab</kbd> writes it so a
+            request can follow, <kbd>Esc</kbd> closes the list.</figcaption>
+        </figure>
+        <p>The list holds the repository's skills (<code>.larapilot/skills</code>, <code>.claude/skills</code>) and commands
+          (<code>.claude/commands/*.md</code>, a folder giving <code>folder:name</code>), then your own in your Claude folder
+          (<code>~/.claude/skills</code>, <code>~/.claude/commands</code>) on the server; in a sandbox, the sandbox's. Studio
+          reads it through the bridge the first time you type a slash, and again after a minute. Everywhere else in the input,
+          <kbd>⏎</kbd> sends and <kbd>⇧</kbd>+<kbd>⏎</kbd> starts a new line.</p>
 
         <h3>Claude's questions</h3>
         <p>When a skill needs a decision (the effort of a Larapilot setup, how fine the backlog is, the Git mode), Claude asks

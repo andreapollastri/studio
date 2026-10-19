@@ -338,16 +338,39 @@
         </flux:modal>
 
         <div class="border-t border-zinc-200 p-3 dark:border-zinc-700 max-md:p-2">
-            <form wire:submit="send" class="flex items-end gap-2">
-                <div class="min-w-0 flex-1">
+            <form wire:submit="send" class="flex items-end gap-2" x-data="chatComposer">
+                <div class="relative min-w-0 flex-1">
+                    {{-- "/": the skills and commands this conversation can start --}}
+                    <div x-show="open" x-cloak x-ref="menu" x-on:click.outside="open = false" class="absolute inset-x-0 bottom-full z-20 mb-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900" role="listbox" aria-label="{{ __('Skills') }}">
+                        <div class="max-h-72 overflow-auto py-1">
+                            <div x-show="loading" class="px-3 py-2 text-xs text-zinc-500">{{ __('Reading the skills…') }}</div>
+                            <div x-show="! loading && shown.length === 0" class="px-3 py-2 text-xs text-zinc-500">
+                                <span x-text="query === '' ? @js(__('No skills or commands in this workspace yet.')) : @js(__('Nothing starts with')) + ' /' + query"></span>
+                            </div>
+                            <template x-for="(skill, i) in shown" :key="skill.name">
+                                <button type="button" data-skill role="option" :aria-selected="i === index"
+                                    class="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm"
+                                    :class="i === index ? 'bg-zinc-100 dark:bg-zinc-800' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/60'"
+                                    x-on:mouseenter="index = i"
+                                    x-on:mousedown.prevent="run(skill)">
+                                    <span class="shrink-0 font-mono font-medium" x-text="'/' + skill.name"></span>
+                                    <span x-show="skill.argument_hint" class="shrink-0 font-mono text-xs text-zinc-400" x-text="skill.argument_hint"></span>
+                                    <span class="min-w-0 flex-1 truncate text-xs text-zinc-500" x-text="skill.description"></span>
+                                    <span class="shrink-0 text-[10px] text-zinc-400 max-sm:hidden" x-text="skill.source"></span>
+                                </button>
+                            </template>
+                        </div>
+                        <div x-show="shown.length > 0" class="border-t border-zinc-100 px-3 py-1 text-[11px] text-zinc-400 dark:border-zinc-800">{{ __('⏎ start it · Tab write a request after it · Esc close') }}</div>
+                    </div>
                     <flux:textarea
                         wire:model="draft"
+                        x-ref="input"
+                        x-on:input="typed($event)"
+                        x-on:keydown="key($event)"
                         rows="2"
                         resize="none"
-                        :placeholder="! $conversation->workspace->isRunning() ? __('Start the workspace to write') : (! $conversation->acceptsMessages() ? ($conversation->sandboxStatus() === \App\Models\Conversation::SANDBOX_CREATING ? __('The sandbox is being prepared…') : __('This conversation is history: its sandbox is gone')) : ($conversation->isBusy() ? __('Claude is working… your next message can wait here (interrupt to send it now)') : ($conversation->isSandboxed() ? __('Write to Claude in the sandbox… (⌘⏎ to send)') : __('Write to Claude… (⌘⏎ to send)'))))"
+                        :placeholder="! $conversation->workspace->isRunning() ? __('Start the workspace to write') : (! $conversation->acceptsMessages() ? ($conversation->sandboxStatus() === \App\Models\Conversation::SANDBOX_CREATING ? __('The sandbox is being prepared…') : __('This conversation is history: its sandbox is gone')) : ($conversation->isBusy() ? __('Claude is working… your next message can wait here (interrupt to send it now)') : ($conversation->isSandboxed() ? __('Write to Claude in the sandbox… (⏎ to send, ⇧⏎ new line, / for skills)') : __('Write to Claude… (⏎ to send, ⇧⏎ new line, / for skills)'))))"
                         :disabled="! $conversation->workspace->isRunning() || ! $conversation->acceptsMessages()"
-                        x-on:keydown.meta.enter.prevent="$wire.send()"
-                        x-on:keydown.ctrl.enter.prevent="$wire.send()"
                     />
                     <flux:error name="draft" />
                 </div>

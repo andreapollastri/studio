@@ -275,7 +275,36 @@ test('the chat has no shortcut buttons above the input: skills are typed as slas
         ->assertDontSee('New idea')
         ->assertDontSee('larapilot-triage');
 
-    Http::assertNotSent(fn (Request $request) => str_ends_with($request->url(), '/skills'));
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/skills'));
+});
+
+test('"/" lists the conversation\'s skills and commands, read from the bridge once a minute; Enter sends', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create();
+
+    Http::fake(['http://bridge.test:4455/skills*' => Http::response(['skills' => [
+        ['name' => 'larapilot-triage', 'description' => 'Turn a request into a story', 'source' => '.claude/skills'],
+        ['name' => 'deploy-check', 'description' => 'Check a deploy', 'source' => '.claude/commands', 'argument_hint' => '[environment]'],
+        ['description' => 'no name: dropped'],
+    ]])]);
+
+    $chat = Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])
+        ->assertSee('x-data="chatComposer"', false)
+        ->assertSee('⏎ to send, ⇧⏎ new line, / for skills');
+
+    $chat->call('skills')->assertReturned([
+        ['name' => 'larapilot-triage', 'description' => 'Turn a request into a story', 'source' => '.claude/skills'],
+        ['name' => 'deploy-check', 'description' => 'Check a deploy', 'source' => '.claude/commands', 'argument_hint' => '[environment]'],
+    ]);
+    $chat->call('skills');
+
+    Http::assertSentCount(1);
+
+    // a stopped workspace has none, without asking the bridge
+    $workspace->forceFill(['status' => 'stopped'])->save();
+    cache()->forget('studio.skills.'.$conversation->id);
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation->fresh()])->call('skills')->assertReturned([]);
+    Http::assertSentCount(1);
 });
 
 function askedQuestions(Conversation $conversation): PermissionRequest

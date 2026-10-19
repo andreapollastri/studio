@@ -17,6 +17,7 @@ use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use InvalidArgumentException;
@@ -174,6 +175,33 @@ class Chat extends Component
         $this->draft = '';
         $this->streaming = '';
         $this->reload();
+    }
+
+    /**
+     * What "/" offers in the input: the skills and commands this conversation can start, read
+     * through the bridge at most once a minute; none while the workspace is stopped.
+     *
+     * @return list<array{name: string, description: string, source: string, argument_hint?: string}>
+     */
+    public function skills(): array
+    {
+        $this->authorize('update', $this->conversation);
+
+        $conversation = $this->conversation;
+
+        if (! $conversation->workspace->isRunning()) {
+            return [];
+        }
+
+        // a bridge that does not answer leaves nothing in the cache: the next "/" asks again
+        try {
+            return Cache::remember('studio.skills.'.$conversation->id, 60, fn () => (new BridgeClient(
+                $conversation->workspace,
+                $conversation->isSandboxed() ? $conversation->sandboxName() : null,
+            ))->skills($conversation));
+        } catch (BridgeException) {
+            return [];
+        }
     }
 
     public function allow(string $permissionId, DecidePermission $decide): void

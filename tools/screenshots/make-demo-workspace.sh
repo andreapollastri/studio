@@ -38,6 +38,15 @@ class OrderController extends Controller
     }
 }
 PHP
+# Larapilot's skills as the "/" menu of the chat lists them, and a command of the project's
+for s in "inception:Turn a product idea into a PRD and a first backlog" "triage:Turn a request into a story, or a bug into a fix plan" \
+    "plan:Break a story into tasks with acceptance criteria" "implement:Implement a planned story on its own branch, with tests" \
+    "review:Review the branch against the story and the house rules"; do
+    mkdir -p ".claude/skills/larapilot-${s%%:*}"
+    printf -- '---\nname: larapilot-%s\ndescription: "%s"\n---\n' "${s%%:*}" "${s#*:}" > ".claude/skills/larapilot-${s%%:*}/SKILL.md"
+done
+mkdir -p .claude/commands
+printf -- '---\nargument-hint: "[version]"\ndescription: Write the release notes from the merged stories\n---\n' > .claude/commands/release-notes.md
 cat > .larapilot/skills/acme-predeploy-gate/SKILL.md <<'MD'
 ---
 name: acme-predeploy-gate

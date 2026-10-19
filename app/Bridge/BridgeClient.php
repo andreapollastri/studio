@@ -79,6 +79,32 @@ final class BridgeClient
     }
 
     /**
+     * What a slash command can start in this conversation: the repository's skills and commands (the
+     * sandbox's, when it has one), then the person's own in the Claude folder it signs in with.
+     *
+     * @return list<array{name: string, description: string, source: string, argument_hint?: string}>
+     */
+    public function skills(Conversation $conversation): array
+    {
+        $claudeDir = $this->claudeAccount($conversation)['claude_dir'] ?? null;
+        $data = $this->request(fn (PendingRequest $http) => $http->get('/skills', array_filter(['claude_dir' => $claudeDir])));
+        $skills = [];
+
+        foreach ((array) ($data['skills'] ?? []) as $skill) {
+            if (is_array($skill) && is_string($skill['name'] ?? null) && $skill['name'] !== '') {
+                $skills[] = [
+                    'name' => $skill['name'],
+                    'description' => (string) ($skill['description'] ?? ''),
+                    'source' => (string) ($skill['source'] ?? ''),
+                    ...(isset($skill['argument_hint']) ? ['argument_hint' => (string) $skill['argument_hint']] : []),
+                ];
+            }
+        }
+
+        return $skills;
+    }
+
+    /**
      * How the turn signs in to Claude: auth, the account (a change restarts the CLI on the same
      * session), the API key or the folder of the subscription's sign-in in the person's home.
      *

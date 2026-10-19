@@ -2,40 +2,89 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
- * Custom skills the repository ships, so Studio can show them as buttons.
- * Larapilot keeps them in `.larapilot/skills/<name>/SKILL.md`; Claude Code
- * reads the mirror in `.claude/skills`. Both are scanned, names deduplicated.
+ * What a slash command in the chat can start, as Claude Code finds it: the
+ * repository's skills (Larapilot keeps them in `.larapilot/skills/<name>/SKILL.md`,
+ * Claude Code reads the mirror in `.claude/skills`) and commands
+ * (`.claude/commands/**.md`, a folder making `folder:name`), then the person's own
+ * in their Claude folder. The repository's win on the same name.
  */
-export async function listSkills(workspaceDir) {
+export async function listSkills(workspaceDir, { claudeDir = null } = {}) {
   const roots = [
-    { dir: join(workspaceDir, '.larapilot', 'skills'), source: '.larapilot/skills' },
-    { dir: join(workspaceDir, '.claude', 'skills'), source: '.claude/skills' },
+    { dir: join(workspaceDir, '.larapilot', 'skills'), source: '.larapilot/skills', kind: 'skill' },
+    { dir: join(workspaceDir, '.claude', 'skills'), source: '.claude/skills', kind: 'skill' },
+    { dir: join(workspaceDir, '.claude', 'commands'), source: '.claude/commands', kind: 'command' },
+    ...(claudeDir ? [
+      { dir: join(claudeDir, 'skills'), source: '~/.claude/skills', kind: 'skill' },
+      { dir: join(claudeDir, 'commands'), source: '~/.claude/commands', kind: 'command' },
+    ] : []),
   ];
   const seen = new Map();
 
   for (const root of roots) {
-    let entries = [];
-    try {
-      entries = await readdir(root.dir);
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const file = join(root.dir, entry, 'SKILL.md');
-      try {
-        if (!(await stat(file)).isFile()) continue;
-      } catch {
-        continue;
-      }
-      const front = parseFrontMatter(await readFile(file, 'utf8'));
-      const name = (front.name || entry).trim();
-      if (!name || seen.has(name)) continue;
-      seen.set(name, { name, description: (front.description || '').trim(), source: root.source });
+    const found = root.kind === 'skill' ? await skillsIn(root.dir) : await commandsIn(root.dir);
+    for (const { name, markdown } of found) {
+      const front = parseFrontMatter(markdown);
+      const skill = (front.name || name).trim();
+      if (!skill || seen.has(skill)) continue;
+      seen.set(skill, {
+        name: skill,
+        description: (front.description || firstLine(markdown)).trim(),
+        source: root.source,
+        ...(front['argument-hint'] ? { argument_hint: front['argument-hint'] } : {}),
+      });
     }
   }
 
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** <dir>/<name>/SKILL.md */
+async function skillsIn(dir) {
+  const out = [];
+  for (const entry of await entries(dir)) {
+    const file = join(dir, entry, 'SKILL.md');
+    try {
+      if ((await stat(file)).isFile()) out.push({ name: entry, markdown: await readFile(file, 'utf8') });
+    } catch {
+      /* not a skill */
+    }
+  }
+  return out;
+}
+
+/** <dir>/**.md, a subfolder giving folder:name, two levels deep at most */
+async function commandsIn(dir, prefix = '', depth = 0) {
+  const out = [];
+  for (const entry of await entries(dir)) {
+    const path = join(dir, entry);
+    let info;
+    try {
+      info = await stat(path);
+    } catch {
+      continue;
+    }
+    if (info.isDirectory() && depth < 2 && !entry.startsWith('.')) {
+      out.push(...(await commandsIn(path, `${prefix}${entry}:`, depth + 1)));
+    } else if (info.isFile() && entry.endsWith('.md')) {
+      out.push({ name: `${prefix}${entry.slice(0, -3)}`, markdown: await readFile(path, 'utf8') });
+    }
+  }
+  return out;
+}
+
+async function entries(dir) {
+  try {
+    return (await readdir(dir)).sort();
+  } catch {
+    return [];
+  }
+}
+
+/** A command without a description: its first line of text. */
+function firstLine(markdown) {
+  const body = markdown.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '');
+  const line = body.split('\n').map((l) => l.trim()).find((l) => l !== '' && !l.startsWith('#'));
+  return (line ?? '').slice(0, 200);
 }
 
 /** Minimal YAML front matter reader: `key: value` lines between --- fences, quotes stripped. */

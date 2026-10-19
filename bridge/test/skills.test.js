@@ -29,3 +29,21 @@ test('a workspace without skills yields an empty list', async () => {
 test('front matter without fences is empty', () => {
   assert.deepEqual(parseFrontMatter('# just markdown'), {});
 });
+
+test('commands of the repository and the person\'s own skills and commands are listed too; the repository wins', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'studio-skills-'));
+  const home = await mkdtemp(join(tmpdir(), 'studio-claude-'));
+  await mkdir(join(dir, '.claude/commands/release'), { recursive: true });
+  await writeFile(join(dir, '.claude/commands/deploy-check.md'), '---\nargument-hint: "[environment]"\n---\n# Deploy check\n\nCheck that a deploy can go out.\n');
+  await writeFile(join(dir, '.claude/commands/release/notes.md'), 'Write the release notes from the merged PRs.');
+  await mkdir(join(home, 'skills/my-review'), { recursive: true });
+  await writeFile(join(home, 'skills/my-review/SKILL.md'), '---\nname: my-review\ndescription: My own review checklist\n---');
+  await mkdir(join(home, 'commands'), { recursive: true });
+  await writeFile(join(home, 'commands/deploy-check.md'), 'Mine, hidden by the repository\'s');
+
+  assert.deepEqual(await listSkills(dir, { claudeDir: home }), [
+    { name: 'deploy-check', description: 'Check that a deploy can go out.', source: '.claude/commands', argument_hint: '[environment]' },
+    { name: 'my-review', description: 'My own review checklist', source: '~/.claude/skills' },
+    { name: 'release:notes', description: 'Write the release notes from the merged PRs.', source: '.claude/commands' },
+  ]);
+});
