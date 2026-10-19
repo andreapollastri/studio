@@ -344,6 +344,10 @@ export class Session extends EventEmitter {
   }
 
   #onLine(line) {
+    // the CLI is at work on its own (a background task finished and it writes the rest): the idle time
+    // counts from its last word, not from the end of the person's turn
+    if (this.state === 'idle' && this.#idleTimer) this.#armIdleTimer();
+
     if (line.type === 'control_request') {
       this.#onControlRequest(line);
       return;
