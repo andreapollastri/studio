@@ -4,6 +4,22 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.3.4
+
+Long Larapilot runs with subagents in the background, such as an inception reading a legacy codebase.
+
+- **A conversation no longer stays on "Claude is working…" after Claude woke up on its own.** When subagents left
+  running in the background finish, Claude Code resumes the session by itself, writes (which marks the conversation
+  working) and ends that turn with a result the bridge used to drop, so nothing set the conversation free: Send stayed
+  off and messages were refused. That result now ends the turn like any other.
+- **Interrupt frees a conversation the bridge has nothing running for**, so one stuck that way can be used again.
+- **Background work is not cut off.** The bridge released an idle Claude Code after `BRIDGE_IDLE_TTL` even with
+  subagents still at work, and could release it right after they finished, while Claude was writing what came of
+  them. It now waits while a background task runs, and counts the idle time from the CLI's last line.
+- **No crash on a late line.** Output a released process still flushed (the answer to the usage question, for one)
+  could throw in the bridge, or reach the parser of the next process; it is now ignored.
+- The update restarts the workspace bridges (`installer/upgrades/2.3.4.sh`).
+
 ## 2.3.3
 
 - **New projects get Larapilot's skills.** Boost publishes a package's skills and guidelines only when `boost.json`
