@@ -346,8 +346,10 @@
                     <div x-show="open" x-cloak x-ref="menu" x-on:click.outside="open = false" class="absolute inset-x-0 bottom-full z-20 mb-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900" role="listbox" aria-label="{{ __('Skills') }}">
                         <div class="max-h-72 overflow-auto py-1">
                             <div x-show="loading" class="px-3 py-2 text-xs text-zinc-500">{{ __('Reading the skills…') }}</div>
-                            <div x-show="! loading && shown.length === 0" class="px-3 py-2 text-xs text-zinc-500">
-                                <span x-text="query === '' ? @js(__('No skills or commands in this workspace yet.')) : @js(__('Nothing starts with')) + ' /' + query"></span>
+                            <div x-show="! loading && problem !== ''" class="px-3 py-2 text-xs text-red-600" x-text="problem"></div>
+                            <div x-show="! loading && problem === '' && shown.length === 0" class="px-3 py-2 text-xs text-zinc-500">
+                                <span x-show="(found ?? []).length > 0" x-text="@js(__('Nothing starts with')) + ' /' + query"></span>
+                                <span x-show="(found ?? []).length === 0">{{ __('No skills or commands found in the workspace (.claude/skills, .larapilot/skills, .claude/commands) or in your Claude folder (~/.claude/skills, ~/.claude/commands).') }}</span>
                             </div>
                             <template x-for="(skill, i) in shown" :key="skill.name">
                                 <button type="button" data-skill role="option" :aria-selected="i === index"

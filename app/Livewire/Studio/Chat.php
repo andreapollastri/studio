@@ -25,6 +25,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Throwable;
 
 class Chat extends Component
 {
@@ -174,9 +175,10 @@ class Chat extends Component
 
     /**
      * What "/" offers in the input: the skills and commands this conversation can start, read
-     * through the bridge at most once a minute; none while the workspace is stopped.
+     * through the bridge at most once a minute, or why they could not be read (the menu says it,
+     * instead of an empty list that looks like there are none).
      *
-     * @return list<array{name: string, description: string, source: string, argument_hint?: string}>
+     * @return array{skills: list<array{name: string, description: string, source: string, argument_hint?: string}>, error: string|null}
      */
     public function skills(): array
     {
@@ -185,18 +187,23 @@ class Chat extends Component
         $conversation = $this->conversation;
 
         if (! $conversation->workspace->isRunning()) {
-            return [];
+            return ['skills' => [], 'error' => __('The workspace is not running.')];
         }
 
         // a bridge that does not answer leaves nothing in the cache: the next "/" asks again
         try {
-            return Cache::remember('studio.skills.'.$conversation->id, 60, fn () => (new BridgeClient(
+            $skills = Cache::remember('studio.skills.'.$conversation->id, 60, fn () => (new BridgeClient(
                 $conversation->workspace,
                 $conversation->isSandboxed() ? $conversation->sandboxName() : null,
             ))->skills($conversation));
-        } catch (BridgeException) {
-            return [];
+        } catch (Throwable $e) {
+            // the bridge, or anything on the way to it (the conversation's Claude account): logged, and said
+            report($e);
+
+            return ['skills' => [], 'error' => __('The skills could not be read: :reason', ['reason' => $e->getMessage()])];
         }
+
+        return ['skills' => $skills, 'error' => null];
     }
 
     public function allow(string $permissionId, DecidePermission $decide): void

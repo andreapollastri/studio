@@ -292,10 +292,10 @@ test('"/" lists the conversation\'s skills and commands, read from the bridge on
         ->assertSee('x-data="chatComposer"', false)
         ->assertSee('⏎ to send, ⇧⏎ new line, / for skills');
 
-    $chat->call('skills')->assertReturned([
+    $chat->call('skills')->assertReturned(['skills' => [
         ['name' => 'larapilot-triage', 'description' => 'Turn a request into a story', 'source' => '.claude/skills'],
         ['name' => 'deploy-check', 'description' => 'Check a deploy', 'source' => '.claude/commands', 'argument_hint' => '[environment]'],
-    ]);
+    ], 'error' => null]);
     $chat->call('skills');
 
     Http::assertSentCount(1);
@@ -303,8 +303,20 @@ test('"/" lists the conversation\'s skills and commands, read from the bridge on
     // a stopped workspace has none, without asking the bridge
     $workspace->forceFill(['status' => 'stopped'])->save();
     cache()->forget('studio.skills.'.$conversation->id);
-    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation->fresh()])->call('skills')->assertReturned([]);
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation->fresh()])->call('skills')->assertReturned(['skills' => [], 'error' => 'The workspace is not running.']);
     Http::assertSentCount(1);
+});
+
+test('when the bridge cannot list the skills, "/" says why, and nothing is kept to ask again', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create();
+    Http::fake(['http://bridge.test:4455/skills*' => Http::sequence()
+        ->push(['error' => 'boom'], 500)
+        ->push(['skills' => [['name' => 'larapilot-inception', 'description' => 'PRD', 'source' => '.claude/skills']]])]);
+
+    $chat = Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation]);
+    $chat->call('skills')->assertReturned(fn (array $answer) => $answer['skills'] === [] && str_contains((string) $answer['error'], 'could not be read') && str_contains((string) $answer['error'], 'boom'));
+    $chat->call('skills')->assertReturned(fn (array $answer) => $answer['error'] === null && $answer['skills'][0]['name'] === 'larapilot-inception');
 });
 
 function askedQuestions(Conversation $conversation): PermissionRequest

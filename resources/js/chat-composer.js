@@ -12,6 +12,8 @@ function chatComposer() {
     return {
         open: false,
         loading: false,
+        problem: '',
+        found: [],
         query: '',
         shown: [],
         index: 0,
@@ -32,12 +34,19 @@ function chatComposer() {
             }
             this.query = match[1].toLowerCase();
             this.open = true;
-            if (all === null) {
+            if (all === null && !this.loading) {
                 this.loading = true;
+                this.problem = '';
                 try {
-                    all = (await this.$wire.skills()) ?? [];
-                } catch {
-                    all = [];
+                    const answer = await this.$wire.skills();
+                    this.problem = answer?.error ?? '';
+                    // kept for this page only when there is something: a failure or an empty list asks again next time
+                    const found = answer?.skills ?? [];
+                    all = found.length > 0 ? found : null;
+                    this.found = found;
+                } catch (error) {
+                    this.problem = error?.message || 'The skills could not be read.';
+                    this.found = [];
                 }
                 this.loading = false;
             }
@@ -52,7 +61,7 @@ function chatComposer() {
                 if (name.includes(q)) return 1;
                 return (skill.description ?? '').toLowerCase().includes(q) ? 2 : 3;
             };
-            this.shown = (all ?? []).map((skill) => [rank(skill), skill]).filter(([r]) => r < 3).sort((a, b) => a[0] - b[0]).map(([, skill]) => skill);
+            this.shown = (all ?? this.found ?? []).map((skill) => [rank(skill), skill]).filter(([r]) => r < 3).sort((a, b) => a[0] - b[0]).map(([, skill]) => skill);
             this.index = 0;
         },
 
