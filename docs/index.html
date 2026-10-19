@@ -3504,7 +3504,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </figure>
         <p>The list holds the repository's skills (<code>.larapilot/skills</code>, <code>.claude/skills</code>) and commands
           (<code>.claude/commands/*.md</code>, a folder giving <code>folder:name</code>), then your own in your Claude folder
-          (<code>~/.claude/skills</code>, <code>~/.claude/commands</code>) on the server; in a sandbox, the sandbox's. Studio
+          (<code>~/.claude/skills</code>, <code>~/.claude/commands</code>) on the server, those Claude Code syncs from your
+          account included (<code>~/.claude/skills/synced</code>); in a sandbox, the sandbox's. When none can be read, the
+          menu says why. Studio
           reads it through the bridge the first time you type a slash, and again after a minute. Everywhere else in the input,
           <kbd>⏎</kbd> sends and <kbd>⇧</kbd>+<kbd>⏎</kbd> starts a new line.</p>
 

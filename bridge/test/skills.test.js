@@ -47,3 +47,21 @@ test('commands of the repository and the person\'s own skills and commands are l
     { name: 'release:notes', description: 'Write the release notes from the merged PRs.', source: '.claude/commands' },
   ]);
 });
+
+test('skills a folder or two down are found (~/.claude/skills/synced/<name>), hidden folders are not', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'studio-skills-'));
+  const home = await mkdtemp(join(tmpdir(), 'studio-claude-'));
+  await mkdir(join(dir, '.claude/skills/laravel-best-practices'), { recursive: true });
+  await writeFile(join(dir, '.claude/skills/laravel-best-practices/SKILL.md'), '---\nname: laravel-best-practices\ndescription: Boost\n---');
+  await mkdir(join(home, 'skills/synced/larapilot-inception/references'), { recursive: true });
+  await writeFile(join(home, 'skills/synced/larapilot-inception/SKILL.md'), '---\nname: larapilot-inception\ndescription: Runs product inception\n---');
+  // a skill's own files are not skills
+  await writeFile(join(home, 'skills/synced/larapilot-inception/references/SKILL.md'), '---\nname: not-a-skill\n---');
+  await mkdir(join(home, 'skills/.cache/x'), { recursive: true });
+  await writeFile(join(home, 'skills/.cache/x/SKILL.md'), '---\nname: hidden\n---');
+
+  assert.deepEqual((await listSkills(dir, { claudeDir: home })).map((s) => `${s.name} ${s.source}`), [
+    'larapilot-inception ~/.claude/skills',
+    'laravel-best-practices .claude/skills',
+  ]);
+});

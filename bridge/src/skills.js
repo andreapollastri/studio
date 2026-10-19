@@ -38,16 +38,30 @@ export async function listSkills(workspaceDir, { claudeDir = null } = {}) {
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** <dir>/<name>/SKILL.md */
-async function skillsIn(dir) {
+/**
+ * <dir>/<name>/SKILL.md, and skills a folder down or two (~/.claude/skills/synced/<name>/SKILL.md,
+ * the skills Claude Code syncs from the person's account): a folder with a SKILL.md is a skill
+ * and is not looked into further.
+ */
+async function skillsIn(dir, depth = 0) {
   const out = [];
   for (const entry of await entries(dir)) {
-    const file = join(dir, entry, 'SKILL.md');
+    if (entry.startsWith('.') || entry === 'node_modules') continue;
+    const path = join(dir, entry);
     try {
-      if ((await stat(file)).isFile()) out.push({ name: entry, markdown: await readFile(file, 'utf8') });
+      if (!(await stat(path)).isDirectory()) continue;
     } catch {
-      /* not a skill */
+      continue;
     }
+    const file = join(path, 'SKILL.md');
+    let isSkill = false;
+    try {
+      isSkill = (await stat(file)).isFile();
+    } catch {
+      /* not a skill itself */
+    }
+    if (isSkill) out.push({ name: entry, markdown: await readFile(file, 'utf8') });
+    else if (depth < 2) out.push(...(await skillsIn(path, depth + 1)));
   }
   return out;
 }

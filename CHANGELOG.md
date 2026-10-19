@@ -4,6 +4,17 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.3.2
+
+- **The "/" menu finds the skills Claude Code syncs from your account.** They sit a folder down, in
+  `~/.claude/skills/synced/<name>/SKILL.md`, and the menu only looked one level deep: Larapilot's skills could run
+  in the chat and still be missing from the list. Skills are now looked for up to two folders down, in the workspace
+  and in your Claude folder; a folder that is a skill is not looked into further.
+- **The menu says why it is empty.** A failure to read the skills (the bridge, the conversation's Claude account)
+  shows its reason and goes to the log, instead of an empty list; an empty list says where Studio looked. The page
+  no longer keeps an empty or failed answer until it is reloaded: the next "/" asks again.
+- The update restarts the workspace bridges, which read the skills (`installer/upgrades/2.3.2.sh`).
+
 ## 2.3.1
 
 - The bridge checks the rules a turn may run without asking (`allowed_tools`) before it checks that no other turn
