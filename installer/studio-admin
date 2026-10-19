@@ -562,6 +562,14 @@ cmd_project_bootstrap() {
     run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan boost:install --no-interaction >"$tmp/boost.log" 2>&1 \
         || fail "boost:install failed: $(tail -n 5 "$tmp/boost.log" | tr '\n' ' ')"
     grep -q '"laravel/boost"' "$tmp/app/composer.json" || fail "laravel/boost is missing from composer.json after the install"
+    # Boost publishes a package's skills and guidelines only when boost.json lists it under "packages", and
+    # a non-interactive boost:install lists none: Larapilot's /larapilot-* skills would never reach
+    # .claude/skills (and its questions with them). List it, and publish again.
+    jq '.packages = ((.packages // []) + ["andreapollastri/larapilot"] | unique)' "$tmp/app/boost.json" > "$tmp/boost.json" \
+        && install -o "$P_USER" -g "$P_USER" -m 644 "$tmp/boost.json" "$tmp/app/boost.json" || fail "boost.json could not list andreapollastri/larapilot"
+    run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan boost:update --no-interaction >>"$tmp/boost.log" 2>&1 \
+        || fail "boost:update failed: $(tail -n 5 "$tmp/boost.log" | tr '\n' ' ')"
+    [ -f "$tmp/app/.claude/skills/larapilot-inception/SKILL.md" ] || fail "Larapilot's skills were not published to .claude/skills"
     # Larapilot's remote forge integration: the same provider as this Studio, committed in .larapilot/config.yaml
     case "$provider" in
         github|gitlab|bitbucket|azure)

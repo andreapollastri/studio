@@ -4,6 +4,21 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.3.3
+
+- **New projects get Larapilot's skills.** Boost publishes a package's skills and guidelines only when `boost.json`
+  lists it under `"packages"`, and the non-interactive `boost:install` Studio runs lists none: a project created by
+  Studio had Boost's five skills and none of Larapilot's, so `/larapilot-inception` reached Claude as plain words —
+  no skill, no questions, nothing in the "/" menu. The bootstrap now lists `andreapollastri/larapilot` there and runs
+  `boost:update` before the first commit, and stops if `.claude/skills/larapilot-inception` is not there.
+- **A project created before 2.3.3** needs it once. In its workspace's Terminal:
+
+  ```
+  jq '.packages = ((.packages // []) + ["andreapollastri/larapilot"] | unique)' boost.json > boost.json.new && mv boost.json.new boost.json
+  php artisan boost:update --no-interaction
+  git add -A && git commit -m "Publish Larapilot's skills" && git push
+  ```
+
 ## 2.3.2
 
 - **The "/" menu finds the skills Claude Code syncs from your account.** They sit a folder down, in

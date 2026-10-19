@@ -2496,7 +2496,9 @@
           <a href="#setup-git">The git hosts</a>. What lands in the new repository: <code>composer create-project
           laravel/laravel</code> at its current release; <code>laravel/boost</code> and <code>andreapollastri/larapilot</code>
           as dev dependencies, with <code>larapilot:install</code> and <code>boost:install</code> run (Boost is always there:
-          if its install fails, the project stops with the reason instead of going on without it); Larapilot's integration for
+          if its install fails, the project stops with the reason instead of going on without it), Larapilot listed in
+          <code>boost.json</code> and <code>boost:update</code> run so its <code>/larapilot-*</code> skills and guidelines are
+          published in <code>.claude/skills</code> and <code>CLAUDE.md</code>; Larapilot's integration for
           the host turned on in <code>.larapilot/config.yaml</code>; and one commit on the deploy branch (plus
           <code>main</code> when the deploy branch is another name).</p>
 
@@ -2505,7 +2507,10 @@
           <li><a href="https://larapilot.web.ap.it/#quickstart" target="_blank" rel="noopener">Larapilot</a> installed and
             <code>larapilot:install</code> run, so the skills, the <code>.larapilot/</code> workspace, the dashboard and the API
             exist; Larapilot brings Laravel Boost with it, and <code>boost:install</code> gives the agent Boost's guidelines and
-            MCP server. Without Larapilot the site still deploys, but there is no dashboard and the chat has no skills to call.</li>
+            MCP server. Boost publishes a package's skills only when <code>boost.json</code> lists it under
+            <code>"packages"</code>: with <code>andreapollastri/larapilot</code> there and <code>boost:update</code> run, the
+            <code>/larapilot-*</code> skills land in <code>.claude/skills</code>; commit them. Without Larapilot the site still
+            deploys, but there is no dashboard and the chat has no skills to call.</li>
           <li>A <code>.env.example</code>. The server copies it and sets the application URL, the database, redis and the
             Larapilot API token; everything else you put there is kept.</li>
           <li>Optionally a <code>.mcp.json</code> at the root for MCP servers every workspace should have, with secrets as
