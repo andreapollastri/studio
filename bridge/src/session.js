@@ -102,6 +102,7 @@ export class Session extends EventEmitter {
       throw new BridgeError(422, 'unknown auth');
     }
     const account = normalizeAccount(turn);
+    const allowed = normalizeAllowedTools(turn.allowed_tools);
     // One turn at a time: the CLI would queue a second message and Studio would lose
     // track of which answer belongs to what. Interrupt first.
     if (this.#process && this.state !== 'idle') {
@@ -111,7 +112,6 @@ export class Session extends EventEmitter {
     // no browser on this server: the turn goes on without one rather than failing
     const browser = this.#config.browserCmd ? normalizeBrowser(turn.browser) : null;
     const sandbox = this.#sandbox(turn.sandbox);
-    const allowed = normalizeAllowedTools(turn.allowed_tools);
 
     this.#clearIdleTimer();
 

@@ -290,6 +290,7 @@ test('the rules Studio allows go to --allowedTools one per argument, not in plan
 
   // plan mode changes nothing, rules or not
   session.sendTurn({ text: 'piano', permission_mode: 'plan', allowed_tools: rules, callback: callback(studio) });
+  await waitFor(() => studio.events().filter((e) => e.type === 'result').length === 4);
   await waitFor(() => readdirSync(argsDir).length === 3);
   assert.equal((await spawned(argsDir)).args.includes('--allowedTools'), false);
 
