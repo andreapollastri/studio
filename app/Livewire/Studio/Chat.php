@@ -8,6 +8,7 @@ use App\Bridge\BridgeClient;
 use App\Bridge\BridgeException;
 use App\Claude\AllowRules;
 use App\Enums\ConversationStatus;
+use App\Events\ConversationUpdated;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\PermissionRequest;
@@ -366,8 +367,15 @@ class Chat extends Component
         $this->authorize('update', $this->conversation);
 
         try {
-            (new BridgeClient($this->conversation->workspace))->interrupt($this->conversation);
+            $snapshot = (new BridgeClient($this->conversation->workspace))->interrupt($this->conversation);
             Flux::toast(text: __('Asked Claude to stop.'));
+
+            // Nothing was running on the bridge: no event will come to free the conversation, so do it here
+            // (a turn Claude started on its own and Studio never saw end, for one).
+            if (($snapshot['state'] ?? null) === 'idle' && $this->conversation->isBusy() && ! $this->conversation->pendingPermission()) {
+                $this->conversation->setStatus(ConversationStatus::Idle);
+                ConversationUpdated::dispatch($this->conversation->uuid, 'status', ['status' => ConversationStatus::Idle->value]);
+            }
         } catch (BridgeException $e) {
             // The bridge is gone, so no turn is running anywhere: let the person write again.
             $this->conversation->messages()->create([

@@ -430,3 +430,37 @@ test('no warming while Claude works', function () {
 
     Http::assertNotSent(fn (Request $sent) => str_ends_with($sent->url(), '/warm'));
 });
+
+test('a turn Claude starts on its own (background subagents finishing) ends like any other: the person can write again', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Idle]);
+    $post = fn (array $events) => $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), ['conversation' => (string) $conversation->id, 'events' => $events])->assertOk();
+
+    // woken: it writes, which marks the conversation working…
+    $post([['type' => 'text', 'text' => 'Riprendo dal punto in cui ero: i due inventari del legacy sono arrivati.', 'message_id' => 'msg_w']]);
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Running);
+
+    // …and its result, marked woken, sets it free
+    $post([['type' => 'result', 'subtype' => 'success', 'is_error' => false, 'session_id' => 'sess-1', 'woken' => true, 'result' => 'Domande per te']]);
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Idle);
+});
+
+test('Interrupt frees a conversation the bridge has nothing running for', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running]);
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['key' => (string) $conversation->id, 'state' => 'idle', 'alive' => true, 'pending_permissions' => []])]);
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])->call('interrupt');
+
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Idle);
+});
+
+test('while the bridge still works on a turn, Interrupt leaves the state to the events that will come', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $busy = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running]);
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['state' => 'running'])]);
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $busy])->call('interrupt');
+
+    expect($busy->fresh()->status)->toBe(ConversationStatus::Running);
+});

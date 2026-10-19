@@ -41,9 +41,11 @@ test('tool results flatten block arrays into text', () => {
   assert.equal(event.is_error, true);
 });
 
-test('a result the CLI started on its own stays raw', () => {
+test('a result the CLI started on its own (woken by background tasks) is a result too, marked woken', () => {
   const [event] = normalize({ type: 'result', subtype: 'success', origin: { kind: 'task-notification' }, num_turns: 0 });
-  assert.equal(event.type, 'raw');
+  assert.equal(event.type, 'result');
+  assert.equal(event.woken, true);
+  assert.equal(normalize({ type: 'result', subtype: 'success' })[0].woken, false);
 });
 
 test('a real result exposes cost, usage and the context window', () => {

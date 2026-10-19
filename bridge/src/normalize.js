@@ -129,10 +129,9 @@ function normalizeUser(line) {
 }
 
 function normalizeResult(line) {
-  // A result that the CLI started on its own (a background task waking the
-  // session) is not the answer to the person's turn: keep it, do not flip state.
-  if (line.origin) return [raw(line)];
-
+  // A result the CLI started on its own (background subagents finishing wake the session, it writes
+  // and ends) closes that turn like any other: Studio marked the conversation working when its text
+  // came, and only a result sets it free again. `woken` says where it came from.
   const modelUsage = line.modelUsage && typeof line.modelUsage === 'object' ? Object.values(line.modelUsage)[0] : null;
 
   return [{
@@ -147,6 +146,7 @@ function normalizeResult(line) {
     usage: line.usage ?? null,
     context_window: modelUsage?.contextWindow ?? null,
     stop_reason: line.stop_reason ?? null,
+    woken: Boolean(line.origin),
     // the tools Claude Code refused during the turn, a person's Deny included
     permission_denials: Array.isArray(line.permission_denials)
       ? line.permission_denials.map((denial) => ({ tool_name: denial?.tool_name ?? null, tool_use_id: denial?.tool_use_id ?? null })).filter((denial) => denial.tool_name)

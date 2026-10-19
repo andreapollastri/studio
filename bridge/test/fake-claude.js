@@ -109,6 +109,19 @@ rl.on('line', (line) => {
     if (text.startsWith('exit') || process.env.FAKE_EXIT_AFTER_RESULT === '1') process.exit(0);
   };
 
+  // a subagent left running in the background: the turn ends, the task finishes later and wakes the session
+  if (text === 'background') {
+    out({ type: 'system', subtype: 'task_started', session_id: sessionId, task_id: 'task_bg', tool_use_id: 'toolu_bg', description: 'Inventory of the legacy', task_type: 'local_agent', uuid: next() });
+    out({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1, num_turns: 1, session_id: sessionId, result: 'started', uuid: next() });
+    setTimeout(() => {
+      out({ type: 'system', subtype: 'task_notification', session_id: sessionId, task_id: 'task_bg', tool_use_id: 'toolu_bg', status: 'completed', summary: 'Inventory done', uuid: next() });
+      say('Riprendo dal punto in cui ero.', 'msg_woken');
+      out({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1, num_turns: 1, session_id: sessionId, result: 'woken', origin: { kind: 'task-notification' }, uuid: next() });
+    }, Number(process.env.FAKE_BACKGROUND_MS || 600));
+    return;
+  }
+
+
   if (text.startsWith('ask')) {
     // AskUserQuestion goes through can_use_tool like any tool; the answers come back in updatedInput.
     const questions = [{ question: 'How deep should Larapilot work?', header: 'Effort', multiSelect: false, options: [{ label: 'STANDARD', description: 'normal depth' }, { label: 'MAX', description: 'deep on every flow' }] }];

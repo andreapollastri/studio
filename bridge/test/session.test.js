@@ -394,3 +394,19 @@ test('a control request the bridge does not handle gets an error answer, so the 
   assert.ok(studio.events().some((e) => e.type === 'raw'));
   await studio.close();
 });
+
+test('a subagent still running in the background keeps the CLI past the idle time; its woken result ends that turn', async (t) => {
+  const studio = await startCollector();
+  // idle after 0.2 s, the background task takes 0.6 s
+  const session = new Session('15', testConfig({ idleTtl: 0.2 }), { spawn: spawnFake });
+  t.after(async () => {
+    await session.close();
+    await studio.close();
+  });
+
+  session.sendTurn({ text: 'background', permission_mode: 'default', callback: callback(studio) });
+  const woken = await waitFor(() => studio.events().find((e) => e.type === 'result' && e.woken));
+  assert.equal(woken.result, 'woken');
+  assert.ok(studio.events().some((e) => e.type === 'text' && e.text === 'Riprendo dal punto in cui ero.'));
+  assert.equal(session.state, 'idle');
+});

@@ -40,6 +40,8 @@ export class Session extends EventEmitter {
   #parser = null;
   #poster = null;
   #pending = new Map(); // request_id -> { tool_name, input }
+  /** Background tasks (subagents, commands) started and not finished yet, by task id. */
+  #background = new Set();
   #idleTimer = null;
   #spawn;
   #log;
@@ -293,16 +295,21 @@ export class Session extends EventEmitter {
 
     this.#process = child;
     this.#stderr = '';
-    this.#parser = new NdjsonParser(
+    const parser = new NdjsonParser(
       (line) => this.#onLine(line),
       (text) => {
         this.#log(`malformed line skipped (${text.length} bytes)`);
         this.#keepStderr(text + '\n');
       },
     );
+    this.#parser = parser;
 
     child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => this.#parser.push(chunk));
+    // a process this session let go (idle, interrupted, replaced) may still flush a last line, an
+    // answer to the usage question for one: it belongs to no turn any more, not to the next process's
+    child.stdout.on('data', (chunk) => {
+      if (this.#process === child) parser.push(chunk);
+    });
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk) => {
       this.#log(`stderr: ${chunk.trim().slice(0, 500)}`);
@@ -355,6 +362,11 @@ export class Session extends EventEmitter {
 
     for (const event of events) {
       if (event.type === 'init' && event.session_id) this.sessionId = event.session_id;
+      // what runs in the background keeps the process alive past the idle time (see #armIdleTimer)
+      if (event.type === 'task' && event.task_id) {
+        if (event.phase === 'started') this.#background.add(event.task_id);
+        else this.#background.delete(event.task_id);
+      }
       if (event.type === 'result') {
         if (event.session_id) this.sessionId = event.session_id;
         this.state = 'idle';
@@ -412,6 +424,7 @@ export class Session extends EventEmitter {
     const wasBusy = this.state !== 'idle';
     this.state = 'idle';
     this.#pending.clear();
+    this.#background.clear();
     this.#clearIdleTimer();
 
     if (wasBusy) {
@@ -427,6 +440,11 @@ export class Session extends EventEmitter {
   #armIdleTimer() {
     this.#clearIdleTimer();
     this.#idleTimer = setTimeout(() => {
+      // subagents or commands still at work in the background: their results would be lost
+      if (this.#background.size > 0) {
+        this.#armIdleTimer();
+        return;
+      }
       this.#log('idle: releasing the process (next turn resumes the session)');
       this.#stopProcess();
     }, this.#config.idleTtl * 1000);
