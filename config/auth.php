@@ -41,6 +41,8 @@ return [
         'web' => [
             'driver' => 'session',
             'provider' => 'users',
+            // how long "remember me" keeps a browser signed in, in minutes (Laravel's own default is 400 days)
+            'remember' => (int) env('STUDIO_REMEMBER_MINUTES', 30 * 24 * 60),
         ],
     ],
 

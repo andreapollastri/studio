@@ -5,7 +5,6 @@ namespace App\Providers;
 use App\Infrastructure\Connectors;
 use App\Listeners\RecordSecurityEvents;
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -28,8 +27,10 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * What every account's password must be, how long "remember me" lasts, and the
-     * security log of everything about signing in.
+     * What every account's password must be, and the security log of everything about
+     * signing in. How long "remember me" lasts is the web guard's `remember` (config/auth.php):
+     * resolving the guard here would build the encrypted session store before the installer
+     * has generated APP_KEY, and every artisan command would fail.
      */
     private function configureAccounts(): void
     {
@@ -41,8 +42,6 @@ class AppServiceProvider extends ServiceProvider
 
             return app()->runningUnitTests() ? $password : $password->uncompromised();
         });
-
-        Auth::guard('web')->setRememberDuration((int) config('studio.security.remember_minutes', 43200));
 
         Event::subscribe(RecordSecurityEvents::class);
     }

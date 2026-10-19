@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Server\SecurityPolicy;
 use App\Support\SecurityLog;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Livewire\Mechanisms\HandleRequests\HandleRequests;
 
@@ -152,6 +153,23 @@ test('a password has twelve characters at least', function () {
     Livewire::actingAs($user)->test('pages::settings.security')
         ->set('current_password', 'password')->set('password', 'short-one')->set('password_confirmation', 'short-one')
         ->call('updatePassword')->assertHasErrors(['password']);
+});
+
+test('"remember me" lasts thirty days, and booting does not need the encryption key', function () {
+    $user = User::factory()->create();
+    $response = $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password', 'remember' => 'on']);
+
+    $remember = collect($response->headers->getCookies())->first(fn ($c) => str_starts_with($c->getName(), 'remember_web_'));
+    expect($remember)->not->toBeNull()
+        ->and($remember->getExpiresTime())->toBeGreaterThan(now()->addDays(29)->getTimestamp())
+        ->toBeLessThan(now()->addDays(31)->getTimestamp());
+
+    // the installer runs composer (package:discover) before key:generate: nothing at boot may
+    // build the encrypted session store
+    $boot = Process::path(base_path())->env(['APP_KEY' => '', 'SESSION_ENCRYPT' => 'true'])
+        ->run([PHP_BINARY, 'artisan', '--version']);
+
+    expect($boot->successful())->toBeTrue($boot->errorOutput().$boot->output());
 });
 
 test('forgot password answers the same for an unknown address', function () {

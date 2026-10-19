@@ -78,8 +78,6 @@ return [
         'login_per_ip_per_minute' => (int) env('STUDIO_LOGIN_PER_IP_PER_MINUTE', 20),
         // the shortest password (every password is also refused when it appears in leaked lists)
         'password_min' => (int) env('STUDIO_PASSWORD_MIN', 12),
-        // how long "remember me" keeps a browser signed in, in minutes (Laravel's own default is 400 days)
-        'remember_minutes' => (int) env('STUDIO_REMEMBER_MINUTES', 30 * 24 * 60),
         // Strict-Transport-Security, sent over https; empty for none
         'hsts' => env('STUDIO_HSTS', 'max-age=31536000; includeSubDomains'),
     ],

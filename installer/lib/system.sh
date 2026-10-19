@@ -324,7 +324,9 @@ ensure_layout() {
 # the firewall must not lock out whoever moved SSH off the standard port.
 ssh_ports() {
     local ports
-    ports=$(cat /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null | sed -n 's/^[[:space:]]*Port[[:space:]]\+\([0-9]\+\).*/\1/p' | sort -u)
+    # cat fails on a missing file or a drop-in glob that matches nothing (pipefail would then
+    # stop the installer); what it could read is still the answer
+    ports=$({ cat /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true; } | sed -n 's/^[[:space:]]*Port[[:space:]]\+\([0-9]\+\).*/\1/p' | sort -u)
     printf '%s\n' "${ports:-22}"
 }
 
