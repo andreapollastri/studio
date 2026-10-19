@@ -106,21 +106,14 @@ class SidePane extends Component
 
     public bool $stashUntracked = true;
 
-    public string $command = '';
-
-    /** @var array<string, mixed>|null the run being watched */
-    public ?array $run = null;
-
-    /** @var list<array<string, mixed>> earlier runs of this pane, newest first */
-    public array $runs = [];
-
-    public ?string $terminalError = null;
-
     /** The Files tab mounts on first use and then stays alive, hidden, so open editors survive tab switches. */
     public bool $filesMounted = false;
 
-    /** The terminal runs commands in the workspace (local) or opens the project's SSH hosts (remote). */
+    /** The terminal is a shell in the workspace (local) or opens the project's SSH hosts (remote). */
     public string $terminalMode = 'local';
+
+    /** The workspace's shell mounts on first use and stays, hidden, so its session survives tab switches. */
+    public bool $shellMounted = false;
 
     /** The remote terminals mount on first use and stay, hidden, so their sessions survive tab switches. */
     public bool $remoteMounted = false;
@@ -152,6 +145,10 @@ class SidePane extends Component
 
         if ($this->tab === 'files') {
             $this->filesMounted = true;
+        }
+
+        if ($this->tab === 'terminal' && $this->terminalMode === 'local') {
+            $this->shellMounted = true;
         }
 
         if ($this->tab === 'changes') {
@@ -754,65 +751,23 @@ class SidePane extends Component
         }
     }
 
-    /** Run one allowed command in the workspace through the bridge; the pane polls until it ends. */
-    public function runCommand(?string $command = null): void
+    /**
+     * A one-time ticket for the gateway to open this workspace's shell (resources/js/workspace-shell.js
+     * asks for it): the bridge runs it as the workspace user, in the workspace or the sandbox.
+     *
+     * @return array{ticket: string, url: string}|null
+     */
+    public function shellTicket(): ?array
     {
-        if (! $this->canUseTerminal()) {
-            abort(403);
-        }
-
-        $command = trim($command ?? $this->command);
-
-        if ($command === '') {
-            return;
-        }
+        abort_unless($this->canUseTerminal(), 403);
 
         $this->workspace->refresh();
 
-        if (! $this->workspace->isRunning()) {
-            $this->terminalError = __('The workspace is not running.');
-
-            return;
+        if (! $this->workspace->isRunning() || ! $this->workspace->hasBridge()) {
+            return null;
         }
 
-        try {
-            if ($this->run && ($this->run['status'] ?? '') === 'running') {
-                $this->runs = array_slice([$this->run, ...$this->runs], 0, 10);
-            }
-
-            $this->run = $this->bridge()->run($command);
-            $this->terminalError = null;
-            $this->command = '';
-        } catch (BridgeException $e) {
-            $this->terminalError = $e->getMessage();
-        }
-    }
-
-    public function refreshRun(): void
-    {
-        if (! $this->run || ($this->run['status'] ?? '') !== 'running') {
-            return;
-        }
-
-        try {
-            $this->run = $this->bridge()->runStatus((string) $this->run['id']);
-        } catch (BridgeException $e) {
-            $this->terminalError = $e->getMessage();
-            $this->run['status'] = 'failed';
-        }
-    }
-
-    public function killRun(): void
-    {
-        if (! $this->run || ! $this->canUseTerminal()) {
-            return;
-        }
-
-        try {
-            $this->run = $this->bridge()->killRun((string) $this->run['id']);
-        } catch (BridgeException $e) {
-            $this->terminalError = $e->getMessage();
-        }
+        return ['ticket' => Gateway::issueShell($this->workspace, auth()->user(), $this->sandbox), 'url' => Gateway::url()];
     }
 
     public function setTerminalMode(string $mode): void
@@ -821,6 +776,8 @@ class SidePane extends Component
 
         if ($this->terminalMode === 'remote') {
             $this->remoteMounted = true;
+        } else {
+            $this->shellMounted = true;
         }
     }
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\DatabaseTransferController;
 use App\Http\Controllers\DoorController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
+use App\Http\Controllers\WorkspaceFileController;
 use App\Infrastructure\Git\Forges;
 use App\Livewire\Admin\Connectors as AdminConnectors;
 use App\Livewire\Admin\Domains as AdminDomains;
@@ -44,6 +45,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('p/{project:slug}', Shell::class)->name('studio.show');
     Route::get('p/{project:slug}/c/{conversation}', Shell::class)->name('studio.conversation');
     Route::get('p/{project:slug}/c/{conversation}/images/{file}', ConversationImageController::class)->name('studio.conversation.image');
+    // A file of a workspace, from its Files tab
+    Route::get('workspaces/{workspace:uuid}/download', WorkspaceFileController::class)->name('studio.files.download');
     // The rest of a project: its repository with the person's own account, the infrastructure and
     // the access attached to it for their role, its settings for the administrators.
     Route::get('p/{project:slug}/repository', ProjectRepository::class)->name('projects.repository');

@@ -23,8 +23,6 @@
             <flux:button size="xs" variant="ghost" icon="arrow-top-right-on-square" :href="$workspace->isRunning() ? $appUrl : $previewUrl" target="_blank">{{ $workspace->isRunning() ? __('Open') : __('Open the site') }}</flux:button>
         @elseif ($tab === 'changes')
             <flux:button size="xs" variant="ghost" icon="arrow-path" wire:click="setChangesView(@js($changesView))">{{ __('Refresh') }}</flux:button>
-        @elseif ($tab === 'terminal' && $run && ($run['status'] ?? '') === 'running')
-            <flux:button size="xs" variant="ghost" icon="stop" wire:click="killRun">{{ __('Stop') }}</flux:button>
         @endif
         <div class="studio-pane-wide-toggle shrink-0" x-data="{ wide: false }" x-on:studio-pane-wide-changed.window="wide = $event.detail.wide">
             <flux:button size="xs" variant="ghost" icon="arrows-pointing-out" x-show="! wide" x-on:click="$dispatch('studio-pane-toggle')" :aria-label="__('Full screen')" :title="__('Full screen')" />
@@ -37,6 +35,45 @@
             {{-- Mounted on first use and kept, hidden, so open editor tabs survive switching panes. --}}
             <div @class(['absolute inset-0', 'hidden' => $tab !== 'files'])>
                 <livewire:studio.files :workspace="$workspace" :sandbox="$sandbox" :key="'files-'.$workspace->id.'-'.$sandbox" />
+            </div>
+        @endif
+        @if ($shellMounted && $canUseTerminal)
+            {{-- The workspace's shell, on a real terminal through the gateway, kept alive while the pane shows something else. --}}
+            <div x-data="workspaceShell" @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'terminal' || $terminalMode !== 'local'])>
+                <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
+                    @if ($canUseRemote)
+                        <div class="mb-2 inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs dark:bg-zinc-800">
+                            @foreach (['local' => [__('Local'), 'computer-desktop'], 'remote' => [__('Remote (SSH)'), 'globe-alt']] as $mode => [$modeLabel, $modeIcon])
+                                <button type="button" wire:click="setTerminalMode('{{ $mode }}')" @class([
+                                    'flex items-center gap-1 rounded-md px-2.5 py-1 transition',
+                                    'bg-white font-medium shadow-sm dark:bg-zinc-700' => $terminalMode === $mode,
+                                    'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $terminalMode !== $mode,
+                                ])><flux:icon :name="$modeIcon" variant="micro" class="size-3.5" />{{ $modeLabel }}</button>
+                            @endforeach
+                        </div>
+                    @endif
+                    <div class="flex flex-wrap gap-1.5">
+                        @foreach ($shortcuts as $shortcut)
+                            <flux:button size="xs" variant="filled" x-on:click="type({{ \Illuminate\Support\Js::from($shortcut['command']) }})" :title="$shortcut['command']">{{ $shortcut['label'] }}</flux:button>
+                        @endforeach
+                    </div>
+                    <flux:text class="mt-1 text-xs">{{ $sandbox
+                        ? __('A shell in the sandbox, as you: prompts, passwords and Ctrl-C work as over SSH. A shortcut types its command into it.')
+                        : __('A shell in your workspace, as you: prompts, passwords and Ctrl-C work as over SSH. A shortcut types its command into it.') }}</flux:text>
+                </div>
+                <div class="relative min-h-0 flex-1 bg-zinc-950">
+                    <div wire:ignore x-ref="box" class="absolute inset-0 p-2"></div>
+                    <div x-show="state === 'connecting'" x-cloak class="absolute inset-x-0 top-3 text-center text-xs text-zinc-500">{{ __('Opening a shell…') }}</div>
+                    <div x-show="['ended', 'stopped', 'error'].includes(state)" x-cloak class="absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-2 border-t border-zinc-800 bg-zinc-900/95 px-3 py-2 text-xs text-zinc-300">
+                        <span class="min-w-0 flex-1">
+                            <span x-show="state === 'ended'">{{ __('The shell ended') }}<span x-show="exitCode !== null" x-text="' (exit ' + exitCode + ')'"></span>.</span>
+                            <span x-show="state === 'stopped'">{{ __('The workspace is not running: start it, then open a shell.') }}</span>
+                            <span x-show="state === 'error'" class="text-red-400" x-text="error"></span>
+                        </span>
+                        <flux:button size="xs" variant="primary" icon="command-line" x-on:click="restart()">{{ __('New shell') }}</flux:button>
+                    </div>
+                </div>
+                @include('livewire.ssh.partials.keybar', ['visible' => "state === 'ready'"])
             </div>
         @endif
         @if ($remoteMounted && $canUseRemote)
@@ -126,57 +163,6 @@
                     @endif
 
                     @include('livewire.studio.partials.git.'.$changesView)
-                </div>
-            </div>
-        @elseif ($tab === 'terminal' && $terminalMode === 'local')
-            <div class="flex h-full min-h-0 flex-col" @if ($run && ($run['status'] ?? '') === 'running') wire:poll.2s="refreshRun" @endif>
-                <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
-                    @if ($canUseRemote)
-                        <div class="mb-2 inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs dark:bg-zinc-800">
-                            @foreach (['local' => [__('Local'), 'computer-desktop'], 'remote' => [__('Remote (SSH)'), 'globe-alt']] as $mode => [$modeLabel, $modeIcon])
-                                <button type="button" wire:click="setTerminalMode('{{ $mode }}')" @class([
-                                    'flex items-center gap-1 rounded-md px-2.5 py-1 transition',
-                                    'bg-white font-medium shadow-sm dark:bg-zinc-700' => $terminalMode === $mode,
-                                    'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $terminalMode !== $mode,
-                                ])><flux:icon :name="$modeIcon" variant="micro" class="size-3.5" />{{ $modeLabel }}</button>
-                            @endforeach
-                        </div>
-                    @endif
-                    <div class="mb-2 flex flex-wrap gap-1.5">
-                        @foreach ($shortcuts as $shortcut)
-                            <flux:button size="xs" variant="filled" wire:click="runCommand(@js($shortcut['command']))" :title="$shortcut['command']">{{ $shortcut['label'] }}</flux:button>
-                        @endforeach
-                    </div>
-                    <form wire:submit="runCommand" class="flex gap-2">
-                        <flux:input wire:model="command" class="font-mono" :placeholder="__('php artisan … · composer … · npm … · git …')" autocomplete="off" />
-                        <flux:button type="submit" variant="primary" icon="play">{{ __('Run') }}</flux:button>
-                    </form>
-                        <flux:text class="mt-1 text-xs">{{ __('Runs in your workspace as you. Allowed: php artisan, composer, npm, git, vendor/bin/pest, pint and phpstan; no shell, no pipes.') }}</flux:text>
-                    @if ($terminalError)
-                        <flux:text class="mt-1 text-xs text-red-600">{{ $terminalError }}</flux:text>
-                    @endif
-                </div>
-                <div class="min-h-0 flex-1 overflow-auto bg-zinc-950 p-3 font-mono text-[11px] leading-snug text-zinc-100">
-                    @if ($run)
-                        <div class="mb-2 flex items-center gap-2 text-zinc-400">
-                            <span class="text-zinc-200">$ {{ $run['command'] ?? '' }}</span>
-                            @if (($run['status'] ?? '') === 'running')
-                                <flux:icon.loading class="size-3" />
-                            @else
-                                <span @class(['text-green-400' => ($run['status'] ?? '') === 'done', 'text-red-400' => ($run['status'] ?? '') === 'failed'])>{{ $run['status'] ?? '' }}@if (isset($run['exit_code'])) · exit {{ $run['exit_code'] }}@endif</span>
-                            @endif
-                        </div>
-                        <pre class="whitespace-pre-wrap">{{ \App\Support\Ansi::toHtml($run['output'] ?? '') }}@if ($run['truncated'] ?? false)
-[output truncated]@endif</pre>
-                    @else
-                        <div class="text-zinc-500">{{ __('Pick a shortcut or type a command.') }}</div>
-                    @endif
-                    @foreach ($runs as $earlier)
-                        <details class="mt-3 text-zinc-400">
-                            <summary class="cursor-pointer">$ {{ $earlier['command'] ?? '' }} · {{ $earlier['status'] ?? '' }}</summary>
-                            <pre class="mt-1 whitespace-pre-wrap">{{ \App\Support\Ansi::toHtml($earlier['output'] ?? '') }}</pre>
-                        </details>
-                    @endforeach
                 </div>
             </div>
         @endif

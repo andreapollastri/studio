@@ -29,6 +29,11 @@ export function loadConfig(env = process.env) {
     fileMaxBytes: Number(env.BRIDGE_FILE_MAX || 512 * 1024),
     // Largest file Studio's drive may copy into the workspace.
     uploadMaxBytes: Number(env.BRIDGE_UPLOAD_MAX || 512 * 1024 * 1024),
+    // The Terminal tab: the shell (the user's login shell by default) and how many may be open.
+    shell: env.BRIDGE_SHELL || null,
+    maxShells: Number(env.BRIDGE_MAX_SHELLS || 8),
+    // Largest a zip may unpack to, all its files together.
+    unzipMaxBytes: Number(env.BRIDGE_UNZIP_MAX || 2 * 1024 * 1024 * 1024),
     // The agent's browser (Playwright MCP): the command, unset for none; optionally Chromium's path,
     // its sandbox off (only where the kernel refuses it), and the viewport of its screenshots.
     browserCmd: env.BRIDGE_BROWSER_MCP || null,

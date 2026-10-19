@@ -1,15 +1,20 @@
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
 
 /**
- * The project file manager: browse, read, write, create, rename and delete
- * inside the workspace directory, and nowhere else. Paths are relative to
- * the workspace, use forward slashes, may not contain `..`, and may not enter
- * `.git`. Symlinks are resolved so a link cannot lead outside the workspace.
+ * The project file manager: browse, read, write, create, rename (or move),
+ * delete, download, zip and unzip inside the workspace directory, and nowhere
+ * else. Paths are relative to the workspace, use forward slashes, may not
+ * contain `..`, and may not enter `.git`. Symlinks are resolved so a link
+ * cannot lead outside the workspace.
  */
 export class FileError extends Error {
   constructor(status, message) {
@@ -33,9 +38,10 @@ export function cleanPath(input) {
 }
 
 export class Files {
-  constructor(root, { maxBytes = 512 * 1024 } = {}) {
+  constructor(root, { maxBytes = 512 * 1024, unzipMaxBytes = 2 * 1024 * 1024 * 1024 } = {}) {
     this.root = resolve(root);
     this.maxBytes = maxBytes;
+    this.unzipMaxBytes = unzipMaxBytes;
   }
 
   /** Directory listing: folders first, then files, `.git` left out. */
@@ -237,6 +243,117 @@ export class Files {
     return { path };
   }
 
+  /** A regular file's bytes, streamed (the dashboard's download). */
+  async download(input) {
+    const path = cleanPath(input);
+    if (path === '') throw new FileError(400, 'that is a directory');
+    const abs = await this.absolute(path);
+    let info;
+    try {
+      info = await stat(abs);
+    } catch (error) {
+      throw this.translate(error, path);
+    }
+    if (info.isDirectory()) throw new FileError(400, 'a folder downloads as a zip: compress it first');
+    if (!info.isFile()) throw new FileError(400, 'not a regular file');
+
+    return { path, size: info.size, stream: createReadStream(abs) };
+  }
+
+  /**
+   * A zip of files and folders of one folder, next to them: `<name>.zip` for one,
+   * `Archive.zip` for several, numbered when the name is taken. Symlinks go in as
+   * links, so nothing outside the workspace is read into the archive.
+   */
+  async zip(inputs) {
+    const paths = [...new Set((Array.isArray(inputs) ? inputs : [inputs]).map(cleanPath))];
+    if (paths.length === 0 || paths.includes('')) throw new FileError(400, 'choose what to compress');
+    const parent = parentOf(paths[0]);
+    if (paths.some((path) => parentOf(path) !== parent)) throw new FileError(400, 'compress the items of one folder at a time');
+    for (const path of paths) {
+      try {
+        await stat(await this.absolute(path));
+      } catch (error) {
+        throw this.translate(error, path);
+      }
+    }
+
+    const to = await this.free(joinPath(parent, `${paths.length === 1 ? nameOf(paths[0]) : 'Archive'}.zip`));
+    const absTo = await this.absolute(to);
+    const tmp = `${absTo}${TMP_SUFFIX}-${process.pid}-${Date.now()}`;
+    try {
+      // ./name: a name that starts with a dash stays a name; zip stores it without the ./
+      await tool('zip', ['-r', '-q', '-y', tmp, ...paths.map((path) => `./${nameOf(path)}`)], await this.absolute(parent));
+      await rename(tmp, absTo);
+    } catch (error) {
+      await rm(tmp, { force: true });
+      throw error instanceof FileError ? error : this.translate(error, to);
+    }
+
+    return { path: to, size: (await stat(absTo)).size };
+  }
+
+  /**
+   * Extract a zip next to it: an archive with one folder (or file) at its top
+   * becomes that folder, anything else a folder named after the archive;
+   * nothing that exists is overwritten. unzip drops `..` and absolute paths,
+   * and an archive that unpacks to more than the limit is refused first.
+   */
+  async unzip(input) {
+    const path = cleanPath(input);
+    if (path === '') throw new FileError(400, 'choose a zip');
+    const abs = await this.absolute(path);
+    try {
+      if (!(await stat(abs)).isFile()) throw new FileError(400, 'not a regular file');
+    } catch (error) {
+      throw this.translate(error, path);
+    }
+
+    const totals = await tool('unzip', ['-Zt', abs], dirname(abs), `${path} is not a zip archive`);
+    const unpacked = Number(/([0-9]+) bytes uncompressed/.exec(totals)?.[1] ?? NaN);
+    if (!Number.isFinite(unpacked)) throw new FileError(422, `${path} is not a zip archive`);
+    if (unpacked > this.unzipMaxBytes) throw new FileError(413, `${path} unpacks to ${unpacked} bytes, more than the ${this.unzipMaxBytes} allowed`);
+
+    const parent = parentOf(path);
+    const tmp = `${await this.absolute(parent)}${sep}.${nameOf(path)}${TMP_SUFFIX}-${process.pid}-${Date.now()}`;
+    try {
+      await mkdir(tmp);
+      await tool('unzip', ['-q', abs, '-d', tmp], dirname(abs), `${path} could not be extracted`);
+      const top = (await readdir(tmp)).filter((name) => name !== '__MACOSX');
+      let to;
+      // one item at the top, unless that is a .git landing on the workspace's own
+      if (top.length === 1 && !(parent === '' && top[0] === '.git')) {
+        to = await this.free(joinPath(parent, top[0]));
+        await rename(join(tmp, top[0]), await this.absolute(to));
+        await rm(tmp, { recursive: true, force: true });
+      } else {
+        to = await this.free(joinPath(parent, nameOf(path).replace(/\.zip$/i, '') || 'Archive'));
+        await rename(tmp, await this.absolute(to));
+      }
+      return { path: to };
+    } catch (error) {
+      await rm(tmp, { recursive: true, force: true });
+      throw error instanceof FileError ? error : this.translate(error, path);
+    }
+  }
+
+  /** The path itself when nothing is there, otherwise `name 2.ext`, `name 3.ext`… */
+  async free(path) {
+    const name = nameOf(path);
+    const dot = name.lastIndexOf('.');
+    const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+    for (let n = 1; n < 1000; n++) {
+      const candidate = joinPath(parentOf(path), n === 1 ? name : `${stem} ${n}${ext}`);
+      try {
+        await stat(await this.absolute(candidate));
+      } catch (error) {
+        if (error.code === 'ENOENT') return candidate;
+        throw this.translate(error, candidate);
+      }
+    }
+    throw new FileError(409, `too many items named ${name}`);
+  }
+
   /** The absolute path, after checking that no symlink along it leaves the workspace. */
   async absolute(path) {
     const abs = path === '' ? this.root : join(this.root, ...path.split('/'));
@@ -264,6 +381,31 @@ export class Files {
     if (error.code === 'ENOTDIR') return new FileError(400, `${path} is not a directory`);
     if (error.code === 'EACCES' || error.code === 'EPERM') return new FileError(403, `${path} is not accessible`);
     return new FileError(500, error.message || 'file operation failed');
+  }
+}
+
+function parentOf(path) {
+  const slash = path.lastIndexOf('/');
+  return slash === -1 ? '' : path.slice(0, slash);
+}
+
+function nameOf(path) {
+  return path.slice(path.lastIndexOf('/') + 1);
+}
+
+function joinPath(dir, name) {
+  return dir === '' ? name : `${dir}/${name}`;
+}
+
+/** zip and unzip, without a shell; what they say on failure becomes the error. */
+async function tool(bin, args, cwd, message = null) {
+  try {
+    const { stdout } = await run(bin, args, { cwd, maxBuffer: 1024 * 1024, timeout: 10 * 60 * 1000 });
+    return stdout.toString();
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new FileError(500, `${bin} is not installed in the workspace`);
+    const told = (error.stderr || error.stdout || '').toString().trim().split('\n').slice(-3).join(' ');
+    throw new FileError(422, message ?? (told || `${bin} failed`));
   }
 }
 

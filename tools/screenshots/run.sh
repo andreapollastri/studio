@@ -17,14 +17,15 @@ DB="$WORK/demo.sqlite"; LOGS="$WORK/logs"; mkdir -p "$LOGS"
 PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; pkill -f "studio-shots-" 2>/dev/null || true; }
 trap cleanup EXIT
-for port in 4455 8766 8767 8768 8769 9333; do
+for port in 4455 8082 8766 8767 8768 8769 9333; do
     if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then echo "port $port is in use: stop what listens there first" >&2; exit 1; fi
 done
 
 export DB_CONNECTION=sqlite DB_DATABASE="$DB" STUDIO_DOMAIN=dev.agency.test STUDIO_WORKSPACE_DRIVER=local \
   STUDIO_LOCAL_BRIDGE_URL=http://127.0.0.1:4455 STUDIO_LOCAL_BRIDGE_TOKEN=local-bridge-token \
   STUDIO_LOCAL_APP_URL=http://127.0.0.1:8766/preview/ DEMO_STAGING_URL=http://127.0.0.1:8766 DEMO_PREVIEW_URL=http://127.0.0.1:8766/preview/ \
-  STUDIO_SERVER_IPS=203.0.113.10 APP_URL=http://127.0.0.1:8767 QUEUE_CONNECTION=sync BROADCAST_CONNECTION=log CACHE_STORE=array SESSION_DRIVER=file
+  STUDIO_SERVER_IPS=203.0.113.10 APP_URL=http://127.0.0.1:8767 QUEUE_CONNECTION=sync BROADCAST_CONNECTION=log CACHE_STORE=file SESSION_DRIVER=file \
+  STUDIO_SSH_URL=ws://127.0.0.1:8082/ssh/ws
 
 rm -f "$DB"; touch "$DB"
 (cd "$ROOT" && php artisan migrate --force --seed --seeder=DemoSeeder >"$LOGS/seed.log")
@@ -34,7 +35,13 @@ rm -f "$DB"; touch "$DB"
 
 # a throwaway workspace and the bridge on it
 "$ROOT/tools/screenshots/make-demo-workspace.sh" "$WORK/workspace" >/dev/null
-(cd "$ROOT" && exec env BRIDGE_TOKEN=local-bridge-token BRIDGE_HOST=127.0.0.1 WORKSPACE_DIR="$WORK/workspace" node bridge/bin/bridge.js >"$LOGS/bridge.log" 2>&1) & PIDS+=($!)
+# its Terminal shell: bash with a home of its own, so the shots show a workspace user's prompt, not yours
+mkdir -p "$WORK/home"
+cat >"$WORK/home/.bash_profile" <<'SH'
+PS1='\[\e[1;32m\]ws-maria\[\e[0m\]:\[\e[1;34m\]shop-acme\[\e[0m\] \[\e[33m\]($(git branch --show-current 2>/dev/null))\[\e[0m\] $ '
+SH
+(cd "$ROOT" && exec env BRIDGE_TOKEN=local-bridge-token BRIDGE_HOST=127.0.0.1 WORKSPACE_DIR="$WORK/workspace" \
+    HOME="$WORK/home" BRIDGE_SHELL=/bin/bash BASH_SILENCE_DEPRECATION_WARNING=1 node bridge/bin/bridge.js >"$LOGS/bridge.log" 2>&1) & PIDS+=($!)
 
 # the updater states the System page reads
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -50,6 +57,9 @@ serve() { # port, extra env…
     (cd "$ROOT" && exec env "$@" php -S "127.0.0.1:$port" -t public tools/screenshots/router.php >"$LOGS/studio-$port.log" 2>&1) & PIDS+=($!)
 }
 serve 8767
+# the SSH gateway, for the Terminal tab's shell: it redeems tickets at the Studio above
+(cd "$ROOT" && exec env APP_KEY="$(sed -n 's/^APP_KEY=//p' .env)" SSH_GATEWAY_REDEEM_URL=http://127.0.0.1:8767/api/ssh/redeem SSH_GATEWAY_ORIGIN=http://127.0.0.1:8767 \
+    node ssh-gateway/bin/gateway.js >"$LOGS/gateway.log" 2>&1) & PIDS+=($!)
 NATIVE=(STUDIO_WORKSPACE_DRIVER=native STUDIO_HELPER="$ROOT/tests/fixtures/fake-studio-admin" STUDIO_HELPER_SUDO=false)
 serve 8768 "${NATIVE[@]}" STUDIO_UPDATE_STATE="$WORK/state.json"
 serve 8769 "${NATIVE[@]}" STUDIO_UPDATE_STATE="$WORK/state-beta.json"

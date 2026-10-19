@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { pipeline } from 'node:stream/promises';
 import { SessionManager } from './sessions.js';
 import { BridgeError } from './session.js';
 import { listSkills } from './skills.js';
@@ -44,6 +45,7 @@ import {
 import { CommandError, RunManager } from './commands.js';
 import { FileError, Files } from './files.js';
 import { Sandboxes } from './sandboxes.js';
+import { ShellSession } from './shell.js';
 
 export const VERSION = createRequire(import.meta.url)('../package.json').version;
 
@@ -56,7 +58,7 @@ export function createServer(config, options = {}) {
   const sandboxes = new Sandboxes(config.workspaceDir, config.sandboxRoot);
   const sessions = new SessionManager(config, { ...options, log, sandboxes });
   const runs = new RunManager(config, { spawn: options.spawnCommand });
-  const workspaceFiles = new Files(config.workspaceDir, { maxBytes: config.fileMaxBytes });
+  const workspaceFiles = new Files(config.workspaceDir, { maxBytes: config.fileMaxBytes, unzipMaxBytes: config.unzipMaxBytes });
   const startedAt = Date.now();
 
   const server = http.createServer(async (req, res) => {
@@ -80,7 +82,7 @@ export function createServer(config, options = {}) {
       // The Changes, Terminal and Files tabs of a sandboxed conversation: the same routes, in its worktree.
       const sandbox = req.headers['x-studio-sandbox'];
       const dir = sandbox ? sandboxes.resolve(String(sandbox)) : config.workspaceDir;
-      const files = sandbox ? new Files(dir, { maxBytes: config.fileMaxBytes }) : workspaceFiles;
+      const files = sandbox ? new Files(dir, { maxBytes: config.fileMaxBytes, unzipMaxBytes: config.unzipMaxBytes }) : workspaceFiles;
 
       if (req.method === 'POST' && path === '/sandboxes') {
         const body = await readJson(req, config.maxBodyBytes);
@@ -144,6 +146,23 @@ export function createServer(config, options = {}) {
         return json(res, 200, await files.remove(url.searchParams.get('path') ?? ''));
       }
 
+      if (req.method === 'GET' && path === '/files/download') {
+        const file = await files.download(url.searchParams.get('path') ?? '');
+        res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': file.size });
+        await pipeline(file.stream, res);
+        return;
+      }
+
+      if (req.method === 'POST' && path === '/files/zip') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 201, await files.zip(body.paths ?? []));
+      }
+
+      if (req.method === 'POST' && path === '/files/unzip') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 201, await files.unzip(body.path));
+      }
+
       if (req.method === 'POST' && path === '/run') {
         const body = await readJson(req, config.maxBodyBytes);
         return json(res, 202, runs.start(body.command, { cwd: dir }));
@@ -197,15 +216,57 @@ export function createServer(config, options = {}) {
 
       return json(res, 404, { error: 'not found' });
     } catch (error) {
+      // a download cut short: the status is already sent, so the connection ends instead
+      if (res.headersSent) return res.destroy();
       if (error instanceof BridgeError || error instanceof CommandError || error instanceof FileError || error instanceof GitError) return json(res, error.status, { error: error.message });
       log(`request failed: ${error.stack || error.message}`);
       return json(res, 500, { error: error.message || 'internal error' });
     }
   });
 
+  // The Terminal tab: GET /shell upgraded to a raw socket for one shell (src/shell.js), which
+  // Studio's SSH gateway relays to the browser. The token and the sandbox header as for the rest.
+  const shells = new Set();
+  server.on('upgrade', (req, socket) => {
+    try {
+      openShell(req, socket);
+    } catch (error) {
+      // a shell that cannot start must not take the bridge down with it
+      log(`shell failed: ${error.stack || error.message}`);
+      socket.destroy();
+    }
+  });
+  function openShell(req, socket) {
+    const url = new URL(req.url, 'http://bridge');
+    const refuse = (status, message) => socket.end(`HTTP/1.1 ${status} ${message}\r\ncontent-type: text/plain\r\nconnection: close\r\n\r\n${message}`);
+    if (url.pathname.replace(/\/+$/, '') !== '/shell' || (req.headers.upgrade ?? '').toLowerCase() !== 'studio-shell') return refuse(404, 'Not Found');
+    if (!authorized(req, config.token)) return refuse(401, 'invalid bridge token');
+    if (shells.size >= config.maxShells) return refuse(429, `at most ${config.maxShells} shells at a time`);
+
+    let cwd;
+    try {
+      const sandbox = req.headers['x-studio-sandbox'];
+      cwd = sandbox ? sandboxes.resolve(String(sandbox)) : config.workspaceDir;
+    } catch (error) {
+      return refuse(error.status ?? 400, error.message);
+    }
+
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nupgrade: studio-shell\r\nconnection: Upgrade\r\n\r\n');
+    const shell = new ShellSession(socket, {
+      cwd,
+      cols: Number(url.searchParams.get('cols')) || 80,
+      rows: Number(url.searchParams.get('rows')) || 24,
+      shell: config.shell,
+      onClose: () => shells.delete(shell),
+    });
+    shells.add(shell);
+    log(`shell opened in ${cwd}`);
+  }
+
   server.sessions = sessions;
   server.shutdown = async () => {
     await sessions.closeAll();
+    for (const shell of shells) shell.close();
     await new Promise((resolve) => server.close(() => resolve()));
   };
 

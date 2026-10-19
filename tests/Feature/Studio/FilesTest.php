@@ -5,6 +5,7 @@ use App\Livewire\Studio\SidePane;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -163,4 +164,114 @@ test('the Files tab is there for a developer, mounts the file manager, and is ab
     Livewire::actingAs($client)
         ->test(Files::class, ['workspace' => $clientWorkspace])
         ->assertForbidden();
+});
+
+test('an upload goes to the bridge under the folder, keeping a folder\'s tree; a file already there waits for Replace', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
+    fakeFileBridge([
+        'http://bridge.test:4455/files/upload?path=app%2Fdocs%2Fguide.md&overwrite=0' => ['method' => 'PUT', 'status' => 201, 'body' => ['path' => 'app/docs/guide.md', 'size' => 5]],
+        'http://bridge.test:4455/files/upload?path=app%2Fdocs%2Fold.md&overwrite=0' => ['method' => 'PUT', 'status' => 409, 'body' => ['error' => 'app/docs/old.md already exists']],
+        'http://bridge.test:4455/files/upload?path=app%2Fdocs%2Fold.md&overwrite=1' => ['method' => 'PUT', 'status' => 201, 'body' => ['path' => 'app/docs/old.md', 'size' => 3]],
+    ]);
+
+    $component = Livewire::actingAs($user)
+        ->test(Files::class, ['workspace' => $workspace])
+        ->call('prepareUpload', 'app', ['docs/guide.md', 'docs/old.md'])
+        ->assertReturned(true)
+        ->set('uploads', [UploadedFile::fake()->createWithContent('guide.md', 'guide'), UploadedFile::fake()->createWithContent('old.md', 'new')])
+        ->assertSet('notice', '1 file uploaded.')
+        ->assertSet('uploads', [])
+        ->assertSee('1 file is already there')
+        ->assertSee('app/docs/old.md');
+
+    expect($component->get('clashes'))->toHaveCount(1);
+    Http::assertSent(fn (Request $request) => $request->method() === 'PUT' && $request->url() === 'http://bridge.test:4455/files/upload?path=app%2Fdocs%2Fguide.md&overwrite=0');
+
+    $component->call('replaceClashes')
+        ->assertSet('clashes', [])
+        ->assertSet('notice', '1 file uploaded.');
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/files/upload?path=app%2Fdocs%2Fold.md&overwrite=1');
+});
+
+test('an upload refuses paths that climb out or into .git, and too many files at once', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
+    fakeFileBridge();
+
+    Livewire::actingAs($user)
+        ->test(Files::class, ['workspace' => $workspace])
+        ->call('prepareUpload', '', ['site/../../etc/passwd'])
+        ->assertReturned(false)
+        ->assertSee('no &quot;..&quot;, no .git at the top', false)
+        ->call('prepareUpload', '', ['.git/config'])
+        ->assertReturned(false)
+        ->call('prepareUpload', '', array_map(fn (int $i) => "f{$i}.txt", range(1, Files::MAX_UPLOAD_FILES + 1)))
+        ->assertReturned(false)
+        ->assertSee('upload the zip and extract it here');
+});
+
+test('a row moves into a folder by drag and drop or through Move to…, never into itself', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
+    fakeFileBridge(['http://bridge.test:4455/files/rename' => ['method' => 'POST', 'body' => ['from' => 'README.md', 'to' => 'app/README.md']]]);
+
+    Livewire::actingAs($user)
+        ->test(Files::class, ['workspace' => $workspace])
+        ->call('moveInto', 'README.md', 'app')
+        ->assertReturned(true)
+        ->assertDispatched('files-renamed', oldPath: 'README.md', newPath: 'app/README.md')
+        ->assertSet('notice', 'Moved README.md to /app.')
+        ->call('moveInto', 'app', 'app/Models')
+        ->assertReturned(false)
+        ->assertSee('A folder cannot go into itself.')
+        // the dialog: it opens on the row's folder, lists folders only, and moves into the one opened
+        ->call('startMoving', 'logo.png')
+        ->assertSet('moveTo', '')
+        ->assertSet('moveDirs', ['app'])
+        ->assertSee('It is already here')
+        ->call('browseMove', 'app')
+        ->assertSet('moveDirs', ['app/Models'])
+        ->call('browseMove', 'app/Models')
+        ->call('move')
+        ->assertSet('moving', null)
+        ->assertDispatched('files-renamed', oldPath: 'logo.png', newPath: 'app/Models/logo.png');
+
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/files/rename' && $request['from'] === 'logo.png' && $request['to'] === 'app/Models/logo.png');
+    Http::assertNotSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/files/rename' && $request['from'] === 'app');
+});
+
+test('a row compresses to a zip next to it, and a zip extracts next to it', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
+    fakeFileBridge([
+        'http://bridge.test:4455/files/zip' => ['method' => 'POST', 'status' => 201, 'body' => ['path' => 'app.zip', 'size' => 300]],
+        'http://bridge.test:4455/files/unzip' => ['method' => 'POST', 'status' => 201, 'body' => ['path' => 'app 2']],
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Files::class, ['workspace' => $workspace])
+        ->call('compress', 'app')
+        ->assertSet('notice', 'Compressed into app.zip.')
+        ->call('extract', 'app.zip')
+        ->assertSet('notice', 'Extracted into app 2.');
+
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/files/zip' && $request['paths'] === ['app']);
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/files/unzip' && $request['path'] === 'app.zip');
+});
+
+test('a file downloads from the bridge for its owner only; a folder or a missing file is a 404', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
+    fakeFileBridge([
+        'http://bridge.test:4455/files/download?path=logo.png' => ['method' => 'GET', 'body' => "\x89PNG\x00\x01"],
+        'http://bridge.test:4455/files/download?path=app' => ['method' => 'GET', 'status' => 400, 'body' => ['error' => 'a folder downloads as a zip: compress it first']],
+    ]);
+
+    $response = $this->actingAs($user)->get(route('studio.files.download', ['workspace' => $workspace->uuid, 'path' => 'logo.png']));
+    $response->assertOk()->assertDownload('logo.png');
+    expect($response->streamedContent())->toBe("\x89PNG\x00\x01");
+
+    $this->actingAs($user)->get(route('studio.files.download', ['workspace' => $workspace->uuid, 'path' => 'app']))->assertNotFound();
+    $this->actingAs(User::factory()->create())->get(route('studio.files.download', ['workspace' => $workspace->uuid, 'path' => 'logo.png']))->assertNotFound();
 });

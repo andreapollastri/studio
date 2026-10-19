@@ -17,6 +17,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * @phpstan-type GitLines array{added: ?int, removed: ?int}
@@ -765,6 +766,43 @@ final class BridgeClient
     }
 
     /**
+     * A zip of files and folders of one folder, next to them; the bridge picks a free name.
+     *
+     * @param  list<string>  $paths
+     * @return array<string, mixed> path, size
+     */
+    public function zipPaths(array $paths): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->timeout(600)->post('/files/zip', ['paths' => $paths]));
+    }
+
+    /**
+     * Extract a zip next to it, into a new folder (or the one folder at its top).
+     *
+     * @return array<string, mixed> path
+     */
+    public function unzipPath(string $path): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->timeout(600)->post('/files/unzip', ['path' => $path]));
+    }
+
+    /**
+     * A file's bytes as they come from the bridge, to stream on to the browser.
+     *
+     * @return array{stream: StreamInterface, size: ?int}
+     */
+    public function downloadFile(string $path): array
+    {
+        $response = $this->send(fn (PendingRequest $http) => $http
+            ->withOptions(['stream' => true])
+            ->timeout(600)
+            ->get('/files/download', ['path' => $path]));
+        $size = $response->header('Content-Length');
+
+        return ['stream' => $response->toPsrResponse()->getBody(), 'size' => $size === '' ? null : (int) $size];
+    }
+
+    /**
      * The project's MCP servers this person may use, for Claude Code in the
      * workspace: those that come with what is attached to the project (a Cipi
      * app's agent, its server), then those added in its settings, which win on
@@ -800,6 +838,14 @@ final class BridgeClient
      */
     private function request(callable $call): array
     {
+        return (array) $this->send($call)->json();
+    }
+
+    /**
+     * @param  callable(PendingRequest): Response  $call
+     */
+    private function send(callable $call): Response
+    {
         if (! $this->workspace->hasBridge()) {
             throw new BridgeException(__('The workspace has no bridge configured.'));
         }
@@ -811,10 +857,10 @@ final class BridgeClient
         } catch (RequestException $e) {
             $body = $e->response->json('error') ?? $e->response->body();
 
-            throw new BridgeException(__('The bridge answered :status: :body', ['status' => $e->response->status(), 'body' => Str::limit((string) $body, 300)]), previous: $e);
+            throw new BridgeException(__('The bridge answered :status: :body', ['status' => $e->response->status(), 'body' => Str::limit((string) $body, 300)]), $e->response->status(), $e);
         }
 
-        return (array) $response->json();
+        return $response;
     }
 
     private function http(): PendingRequest

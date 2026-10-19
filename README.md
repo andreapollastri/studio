@@ -97,7 +97,7 @@ Inside a conversation the chat is the full Claude Code CLI: subagents, plan mode
 MCP servers from the repository, hooks. Studio adds a browser signed in to the preview (screenshots show in the
 chat), subagent cards with `code-reviewer` and `browser-qa`, and conversations in a sandbox of their own
 (worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* picks the model, the effort and the permission mode
-(ask, ask with edits, autopilot, plan only); the *Terminal* tab runs allowlisted commands in the workspace; the *Files* tab is a file manager with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role, unless the site, or the site and its previews, are made public; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
+(ask, ask with edits, autopilot, plan only); the *Terminal* tab is a shell in the workspace, on a real terminal; the *Files* tab is a file manager (uploads, moves, zips) with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role, unless the site, or the site and its previews, are made public; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
 **A project is a hub.** Its page has tabs: *Workspace* (the chat, the preview, the changes, the terminal, the files),
 *Repository* (pull requests, issues, branches, pipelines and releases of its repository, with the person's own account),
@@ -222,7 +222,7 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/history.png" alt="The History view: a commit graph with lanes and merges"><br><sub><strong>History.</strong> Every branch in one graph, with lanes and merges, refs as badges; a click opens the commit and its patch.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/img/terminal.png" alt="The Terminal tab: shortcut buttons, a command field, the output of git status"><br><sub><strong>Terminal.</strong> Shortcuts for the useful commands, a field for the rest; what is not on the allowlist never runs.</sub></td>
+<td width="50%"><img src="docs/img/terminal.png" alt="The Terminal tab: shortcut buttons over a shell, where an artisan command asked for a password twice and added the user"><br><sub><strong>Terminal.</strong> A shell in the workspace on a real terminal: prompts and passwords work; shortcuts type the useful commands.</sub></td>
 <td width="50%"><img src="docs/img/chat-dark.png" alt="The same conversation in dark mode"><br><sub><strong>Light or dark.</strong> Studio follows the system appearance, or the choice in Settings → Appearance.</sub></td>
 </tr>
 </table>
@@ -301,8 +301,8 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Workspaces on the server through `studio-admin` (`native` driver); `local` driver for development | native tested with a stand-in helper; local tested |
 | Chat: messages, slash commands for skills, permission cards, cards for Claude's questions (AskUserQuestion), streaming text, Reverb with polling fallback | done, tested with a fake bridge |
 | Per conversation: model, effort, mode (ask, ask with edits, autopilot, plan only) | done, tested |
-| Terminal tab: allowlisted commands run in the workspace through the bridge | done, tested (allowlist in `bridge/src/commands.js`) |
-| Files tab: workspace tree, Monaco editor (the editor of VS Code), save with conflict check, create/rename/delete | done, tested (`bridge/src/files.js` against real directories) |
+| Terminal tab: a shell in the workspace on a real terminal (the bridge's `src/terminal.py`), carried by the SSH gateway | done, tested end to end (gateway → bridge → shell) on a local machine; not yet run on a live server |
+| Files tab: workspace tree, Monaco editor (the editor of VS Code), save with conflict check, create/rename/move/delete, uploads of files and folders, download, zip and unzip | done, tested (`bridge/src/files.js` against real directories) |
 | Changes tab: working tree, history graph, branches with switch and fetch | done, tested (`bridge/src/git.js` against real repositories) |
 | MCP servers per project: remote servers added in the project settings, by role, header stored encrypted, connection test; each chat gets them from the next message | done, tested |
 | Project settings: scheduler and queues on every host by default, extra queues, Horizon, Reverb, Pulse; every project host behind the Studio login and the project assignment (a per-host pass) unless made public (the site, or the site and the previews; /larapilot never), narrowed by address lists per site, previews and branch | done in Studio and the helper, tested with stand-ins; the helper's services block exercised in a sandbox with systemctl stubbed; units, cron and Caddy `forward_auth` not yet run on a live server |

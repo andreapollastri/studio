@@ -85,23 +85,23 @@
     "wait": 1500
   },
   {
-    "name": "terminal",
     "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
     "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Terminal\"); if (b) b.click(); return !!b; })()",
-    "height": 960,
-    "wait": 1200
-  },
-  {
-    "name": "terminal",
-    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Git status\"); if (b) b.click(); return !!b; })()",
-    "height": 960,
     "wait": 3500
   },
   {
-    "name": "terminal-refused",
-    "eval": "(() => { const w = Livewire.all().find(c => c.name === 'studio.side-pane').$wire; w.set('command', 'php artisan tinker', false); w.call('runCommand'); return true; })()",
+    "eval": "(Alpine.$data(document.querySelector('[x-data=\"workspaceShell\"]')).type('php artisan larapilot:dashboard-user add loyalty --role=admin'), true)",
+    "wait": 1500
+  },
+  {
+    "eval": "(Alpine.$data(document.querySelector('[x-data=\"workspaceShell\"]')).send({type: 'data', data: 'correct-horse-battery\\r'}), true)",
+    "wait": 800
+  },
+  {
+    "name": "terminal",
+    "eval": "(Alpine.$data(document.querySelector('[x-data=\"workspaceShell\"]')).send({type: 'data', data: 'correct-horse-battery\\r'}), true)",
     "height": 960,
-    "wait": 2500
+    "wait": 1500
   },
   {
     "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Files\"); if (b) b.click(); return !!b; })()",
@@ -130,6 +130,16 @@
   {
     "eval": "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'})); document.body.click()",
     "wait": 500
+  },
+  {
+    "name": "files-move",
+    "eval": "(() => { const w = Livewire.all().find(c => c.name === 'studio.files').$wire; w.call('startMoving', 'app/Models/Order.php').then(() => w.call('browseMove', 'app')); return true; })()",
+    "height": 960,
+    "wait": 1500
+  },
+  {
+    "eval": "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'})); document.body.click()",
+    "wait": 600
   },
   {
     "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Changes\"); if (b) b.click(); return !!b; })()",

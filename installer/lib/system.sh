@@ -105,7 +105,7 @@ ver_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$2" ]; }
 # ------------------------------------------------------------------ packages
 
 ensure_base_packages() {
-    apt_ensure curl wget git unzip zip jq acl ufw fail2ban cron openssl ca-certificates gnupg lsb-release \
+    apt_ensure curl wget git unzip zip python3 jq acl ufw fail2ban cron openssl ca-certificates gnupg lsb-release \
         software-properties-common unattended-upgrades debian-keyring debian-archive-keyring apt-transport-https sudo dnsutils \
         openssh-client rclone sqlite3 mariadb-client postgresql-client
 }

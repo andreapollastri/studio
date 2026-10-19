@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { redeem as redeemTicket } from './redeem.js';
 import { LoginSession } from './login.js';
 import { SshSession } from './session.js';
+import { WorkspaceShellSession } from './workspace-shell.js';
 
 export const VERSION = createRequire(import.meta.url)('../package.json').version;
 
@@ -14,8 +15,9 @@ export const CLOSE = { badTicket: 4401, forbiddenOrigin: 4403, tooMany: 4429, st
  * GET /health, and the WebSocket at /ssh/ws?ticket=…&cols=…&rows=… that
  * Caddy forwards from https://studio.<domain>/ssh/ws. The ticket is Studio's
  * permission for this one session; nothing else authenticates the socket.
- * A ticket stands for an SSH connection, or (kind: claude-login) for a
- * person's sign-in to Claude Code in their own home.
+ * A ticket stands for an SSH connection, (kind: claude-login) for a person's
+ * sign-in to Claude Code in their own home, or (kind: workspace-shell) for the
+ * shell of a workspace, which its bridge runs.
  */
 export function createGateway(config, { redeem = (ticket) => redeemTicket(config, ticket), ClientImpl, spawn } = {}) {
   const log = config.log ? (message) => console.log(`[ssh-gateway] ${message}`) : () => {};
@@ -76,6 +78,8 @@ export function createGateway(config, { redeem = (ticket) => redeemTicket(config
     const size = { cols: Number(url.searchParams.get('cols')) || 80, rows: Number(url.searchParams.get('rows')) || 24 };
     if (target.kind === 'claude-login') {
       new LoginSession(ws, target, config, { size, log, ...(spawn ? { spawn } : {}) }).start();
+    } else if (target.kind === 'workspace-shell') {
+      new WorkspaceShellSession(ws, target, { size, log }).start();
     } else {
       new SshSession(ws, target, config, { size, log, ...(ClientImpl ? { ClientImpl } : {}) }).start();
     }

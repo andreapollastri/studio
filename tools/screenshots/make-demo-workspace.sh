@@ -45,6 +45,31 @@ description: "Pre-deploy gate before a production release — GO or NO-GO."
 ---
 # Acme — Pre-deploy gate
 MD
+# a stand-in for artisan whose command asks for a password, as the Terminal tab's shot shows
+cat > artisan <<'PHP'
+#!/usr/bin/env php
+<?php
+$args = array_slice($argv, 1);
+if (($args[0] ?? '') === 'larapilot:dashboard-user') {
+    $ask = function (string $question): string {
+        echo " \e[32m{$question}\e[0m:\n > ";
+        system('stty -echo');
+        $answer = trim((string) fgets(STDIN));
+        system('stty echo');
+        echo "\n\n";
+
+        return $answer;
+    };
+    $password = $ask('Password (at least 12 characters)');
+    $confirm = $ask('Confirm password');
+    echo $password === $confirm && strlen($password) >= 12
+        ? "   \e[44;37m INFO \e[0m Dashboard user \e[1m{$args[2]}\e[0m added with the admin role.\n\n"
+        : "   \e[41;37m ERROR \e[0m The passwords do not match.\n\n";
+    exit(0);
+}
+echo "Laravel Framework 13.36.0\n";
+PHP
+chmod +x artisan
 printf 'vendor/\nnode_modules/\n.env\n' > .gitignore
 G="git -c user.name=demo -c user.email=demo@example.test"
 git add -A && $G commit -q -m "Orders list with search by number"

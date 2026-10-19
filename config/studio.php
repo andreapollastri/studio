@@ -245,9 +245,8 @@ return [
     |--------------------------------------------------------------------------
     | Project terminal
     |--------------------------------------------------------------------------
-    | Shortcuts shown in the Terminal tab. Whatever is typed is checked by the
-    | bridge against its own allowlist (php artisan, composer, npm, git,
-    | vendor/bin/{pest,pint,phpstan}; no shell, no pipes, no redirections).
+    | Shortcuts shown in the Terminal tab: each types its command into the
+    | workspace's shell and runs it, as if typed by hand.
     */
     'terminal' => [
         ['label' => 'Doctor', 'command' => 'php artisan larapilot:doctor --human'],

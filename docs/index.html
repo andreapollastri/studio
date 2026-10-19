@@ -3505,7 +3505,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <dl><dt>Changes</dt><dd>A git client for the workspace: the working tree, the history, the branches, the stashes
             and the tags, read and run through the bridge; see <a href="#work-history">Changes, history &amp; branches</a>.
             It refreshes after every stored chat event while the tab is open.</dd></dl>
-          <dl><dt>Terminal</dt><dd>Allowlisted commands in your workspace, without the agent in between; see
+          <dl><dt>Terminal</dt><dd>A shell in your workspace, as you, without the agent in between; see
             <a href="#work-terminal">Terminal</a>.</dd></dl>
           <dl><dt>Files</dt><dd>The workspace's files in the browser, with the editor of VS Code; see <a href="#work-files">Files</a>.</dd></dl>
           <dl><dt>Over SSH</dt><dd>The workspace is a directory on the server. A developer with SSH access can open it in
@@ -3527,8 +3527,19 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="walkthrough-grid">
           <dl><dt>Browse</dt><dd>Folders open on click and load through the bridge; <code>.git</code> is never shown; the
             button next to the open tabs hides the tree when the editor needs the room.
-            New file, new folder, rename and delete sit in the row menu; a folder is deleted with everything in it,
+            New file, new folder, rename, move and delete sit in the row menu; a folder is deleted with everything in it,
             after a confirmation.</dd></dl>
+          <dl><dt>Upload</dt><dd>The arrow at the top of the tree uploads files or a whole folder, which keeps its tree;
+            so does dropping them from the computer onto the tree or onto a folder. Up to
+            <code>STUDIO_DRIVE_MAX_UPLOAD_MB</code> (100) a file and a thousand files at a time: for more, upload a zip and
+            extract it. A file that is already there is not replaced until you say so.</dd></dl>
+          <dl><dt>Move</dt><dd>Drag a row onto a folder, or onto the empty part of the tree for the top; or <em>Move
+            to…</em> in its menu, and pick the folder. Open editor tabs follow the file.</dd></dl>
+          <dl><dt>Zip</dt><dd><em>Compress to zip</em> makes <code>&lt;name&gt;.zip</code> next to a file or folder;
+            <em>Extract here</em> unpacks a zip next to it, into the one folder at its top or into a folder named after it,
+            never over anything that exists. Nothing in an archive lands outside the workspace, and one that unpacks to
+            more than <code>BRIDGE_UNZIP_MAX</code> (2 GB) is refused. <em>Download</em> saves a file; a folder downloads
+            as its zip.</dd></dl>
           <dl><dt>Edit</dt><dd>Files open in tabs. Syntax highlighting follows the extension (PHP and Blade, JavaScript,
             TypeScript, CSS, JSON, Markdown, YAML, shell, SQL…), with VS Code's find, replace, multi-cursor and
             keyboard shortcuts. The theme follows Studio's light or dark mode.</dd></dl>
@@ -3540,9 +3551,13 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             workspace's own Linux user, so what a person can edit here is exactly what they could edit over SSH.</dd></dl>
         </div>
         <figure class="shot">
-          <img src="img/files-menu.png" alt="The row menu of a folder in the Files tree: new file, new folder, rename, delete" loading="lazy" width="2880" height="1920" />
-          <figcaption><strong>The row menu.</strong> New file and new folder inside a folder, rename and delete for any row.
-            A new name is typed in place.</figcaption>
+          <img src="img/files-menu.png" alt="The row menu of a folder in the Files tree: new file, new folder, upload files or a folder here, rename, move, compress, delete" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>The row menu.</strong> New file, new folder and uploads inside a folder; rename, move, compress
+            and delete for any row; download and extract for a file. A new name is typed in place.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/files-move.png" alt="The Move dialog of the Files tab: the folders of the workspace, opened one by one, and the button that moves the file there" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Move to….</strong> Open the folder it goes into, then move it there.</figcaption>
         </figure>
       </section>
 
@@ -3592,45 +3607,31 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="section-header">
           <span class="section-label">Work</span>
           <h2>Terminal</h2>
-          <p>A tab in the right pane runs commands in your workspace, as you, without the agent in between.</p>
+          <p>A tab in the right pane: a shell in your workspace, as you, without the agent in between.</p>
         </div>
 
         <figure class="shot">
-          <img src="img/terminal.png" alt="The Terminal tab: shortcut buttons, a command field, the output of git status" loading="lazy" width="2880" height="1920" />
-          <figcaption><strong>Terminal.</strong> Shortcuts for the useful commands, a field for the rest, the output as it
-            arrives. The pane polls while a command runs; <em>Stop</em> kills it.</figcaption>
+          <img src="img/terminal.png" alt="The Terminal tab: shortcut buttons over a shell, where an artisan command asked for a password twice and added the user" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Terminal.</strong> A real terminal: a command that asks for a password gets it, as over SSH.
+            The shortcuts type their command into the shell.</figcaption>
         </figure>
 
-        <p>It is not a shell. The bridge takes the line, splits it into words, checks the binary and its first argument
-          against a list, refuses anything that looks like shell syntax, and runs the binary directly in the workspace
-          directory. Allowed today:</p>
-        <div class="table-card">
-          <table>
-            <thead><tr><th>Binary</th><th>Allowed</th><th>Refused</th></tr></thead>
-            <tbody>
-              <tr><td><code>php artisan …</code></td><td>Any artisan command with plain options</td><td><code>tinker</code>, <code>serve</code>, <code>db:wipe</code>, <code>down</code>, <code>migrate:fresh --force</code></td></tr>
-              <tr><td><code>composer</code></td><td><code>install</code>, <code>update</code>, <code>require</code>, <code>remove</code>, <code>dump-autoload</code>, <code>show</code>, <code>outdated</code>, <code>audit</code>, <code>run</code>, <code>test</code>, <code>lint</code></td><td>everything else</td></tr>
-              <tr><td><code>npm</code></td><td><code>ci</code>, <code>install</code>, <code>run …</code>, <code>test</code>, <code>outdated</code>, <code>audit</code>, <code>ls</code></td><td>everything else</td></tr>
-              <tr><td><code>git</code></td><td><code>status</code>, <code>log</code>, <code>diff</code>, <code>branch</code>, <code>fetch</code>, <code>pull</code>, <code>checkout</code>, <code>switch</code>, <code>stash</code>, <code>show</code>, <code>add</code>, <code>commit</code>, <code>push</code>, <code>restore</code>, <code>remote</code>, <code>tag</code></td><td><code>--force</code>, <code>-f</code>, <code>branch -D</code>, force pushes</td></tr>
-              <tr><td><code>vendor/bin/…</code></td><td><code>pest</code>, <code>pint</code>, <code>phpstan</code>, <code>phpunit</code>, <code>rector</code></td><td>other binaries</td></tr>
-              <tr><td>any</td><td>plain words, paths and options</td><td>quotes, <code>;</code>, <code>&amp;&amp;</code>, <code>|</code>, <code>&gt;</code>, <code>$()</code>, backticks</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p>Output comes in colour: git, Composer, artisan and the test tools are asked for it, and the pane draws the ANSI
-          colours instead of their escape codes. Output is kept to 200 KB and a command is killed after ten minutes. The shortcuts come from
-          <code>config/studio.php</code>; the allowlist lives in the bridge (<code>bridge/src/commands.js</code>), so what the
-          dashboard sends is checked where it runs. Clients have no terminal.</p>
-        <p><strong>Remote.</strong> The switch at the top turns the tab into a real shell on the project's SSH hosts: each
+        <p>It is your login shell on a real terminal, in the workspace directory (or the sandbox's worktree of the open
+          conversation), as the workspace's Linux user: the same user Claude Code runs as and SSH reaches. Prompts and
+          passwords, colours, <kbd>Ctrl</kbd>+<kbd>C</kbd>, <code>tinker</code>, <code>vim</code>, <code>htop</code> and pipes
+          work. The workspace's bridge runs it (on a terminal of Python's standard library, so nothing native is installed)
+          and the SSH gateway carries it to the browser over its WebSocket, with a ticket Studio gives for one session and
+          checks again when the gateway redeems it. git answers with your own token, as for the agent; the bridge's token and
+          the API key it hands to conversations are not in the shell's environment.</p>
+        <p>The session stays open while you look at the preview, the changes or the files; when the shell ends (<code>exit</code>,
+          <kbd>Ctrl</kbd>+<kbd>D</kbd>), <em>New shell</em> starts another. A phone gets the keys its keyboard lacks above the
+          keyboard, as on the SSH page. At most <code>BRIDGE_MAX_SHELLS</code> (8) shells are open in a workspace at a time.
+          The shortcuts come from <code>config/studio.php</code>. Clients have no terminal.</p>
+        <p><strong>Remote.</strong> The switch at the top turns the tab into a shell on the project's SSH hosts: each
           SSH connection tied to the project (the app's user on its Cipi server, a staging box) is a button, and opens a
           terminal through the SSH gateway, as on the <a href="#tools-ssh">SSH page</a>, with your own key or password and
           its host key checked. As there, your password is asked again first. The sessions stay open while you look at
           the preview or the changes; those who may not use SSH see no switch.</p>
-        <figure class="shot">
-          <img src="img/terminal-refused.png" alt="The Terminal refusing a command that is not on the allowlist, with the reason under the field" loading="lazy" width="2880" height="1920" />
-          <figcaption><strong>Refused.</strong> A command that is not on the list, or looks like shell syntax, never runs; the
-            reason shows under the field.</figcaption>
-        </figure>
       </section>
 
 <!-- Work: agent -->
@@ -4823,7 +4824,7 @@ bridge ──stdio──▶ Playwright MCP  <span class="comment">the agent's br
               <tr><td>POST</td><td><code>/sandboxes</code></td><td><code>{name, branch, base?}</code> → 201: a git worktree of the workspace on a new branch</td></tr>
               <tr><td>GET, DELETE</td><td><code>/sandboxes/{name}</code></td><td>its branch and state; remove it (its Claude Code stopped first, <code>?branch=1</code> deletes the branch too)</td></tr>
               <tr><td>POST</td><td><code>/sandboxes/{name}/commit</code></td><td><code>{message}</code> commits what the sandbox holds, before a merge</td></tr>
-              <tr><td>POST</td><td><code>/run</code></td><td><code>{command}</code> → 202 with the run; refused with 422 when not on the allowlist</td></tr>
+              <tr><td>POST</td><td><code>/run</code></td><td><code>{command}</code> → 202 with the run; refused with 422 when not on the allowlist (one-shot commands without a terminal, for scripts)</td></tr>
               <tr><td>GET</td><td><code>/run</code>, <code>/run/{id}</code></td><td>recent runs, one run with its output so far</td></tr>
               <tr><td>POST</td><td><code>/run/{id}/kill</code></td><td>stop a run</td></tr>
               <tr><td>GET</td><td><code>/git</code></td><td>branch, status, stat, diff of the working tree</td></tr>
@@ -4836,7 +4837,10 @@ bridge ──stdio──▶ Playwright MCP  <span class="comment">the agent's br
               <tr><td>GET</td><td><code>/files?path=</code>, <code>/files/read?path=</code></td><td>one folder (folders first, <code>.git</code> hidden); a file's text with the hash of its bytes, or <code>binary</code> / <code>too_large</code></td></tr>
               <tr><td>PUT</td><td><code>/files</code></td><td><code>{path, content, hash}</code> writes atomically; 409 when the file no longer matches <code>hash</code></td></tr>
               <tr><td>PUT</td><td><code>/files/upload?path=</code></td><td>the request body as a new file (the drive's <em>Copy / Move into the workspace</em>), <code>&amp;overwrite=1</code> to replace</td></tr>
-              <tr><td>POST</td><td><code>/files</code>, <code>/files/rename</code></td><td><code>{path, type}</code> creates a file or folder; <code>{from, to}</code> renames</td></tr>
+              <tr><td>POST</td><td><code>/files</code>, <code>/files/rename</code></td><td><code>{path, type}</code> creates a file or folder; <code>{from, to}</code> renames or moves</td></tr>
+              <tr><td>GET</td><td><code>/files/download?path=</code></td><td>a file's bytes, streamed</td></tr>
+              <tr><td>POST</td><td><code>/files/zip</code>, <code>/files/unzip</code></td><td><code>{paths}</code> zips items of one folder next to them; <code>{path}</code> extracts a zip next to it, over nothing that exists, within <code>BRIDGE_UNZIP_MAX</code></td></tr>
+              <tr><td>GET</td><td><code>/shell?cols=&amp;rows=</code></td><td><code>Upgrade: studio-shell</code> → 101 and one socket of newline-delimited JSON (<code>data</code>, <code>resize</code> in; <code>data</code>, <code>exit</code> out): the login shell on a terminal, for the Terminal tab through the SSH gateway</td></tr>
               <tr><td>DELETE</td><td><code>/files?path=</code></td><td>a file, or a folder with its contents; never the workspace itself</td></tr>
             </tbody>
           </table>

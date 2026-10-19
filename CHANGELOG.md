@@ -4,6 +4,36 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.2.0
+
+A real terminal, and a file manager that does what one expects.
+
+### Terminal
+- **The Terminal tab is a shell**: your login shell on a real terminal, in the workspace (or the sandbox of the open
+  conversation), as the workspace's Linux user, the one Claude Code runs as. A command that asks for a password gets
+  it (`php artisan … add` with its prompts no longer fails with "run the command in an interactive shell"), and
+  colours, Ctrl-C, `tinker`, `vim`, `htop` and pipes work. It was a list of allowed commands run without a terminal.
+- The bridge runs it on a pseudo-terminal of Python's standard library (`bridge/src/terminal.py`, nothing native to
+  build; the system step installs `python3`), and the SSH gateway carries it to the browser over its WebSocket, with
+  a one-time ticket Studio checks again when it is redeemed. The session survives switching tabs; *New shell* starts
+  another when it ends; phones get the key bar of the SSH page. The shell's environment leaves out the bridge's
+  token and the API key it hands to conversations; git still answers with the person's token.
+- The shortcuts stay, and type their command into the shell. At most `BRIDGE_MAX_SHELLS` (8) shells per workspace.
+
+### Files
+- **Upload** files or a whole folder (its tree kept) from the arrow at the top of the tree, from a folder's menu, or
+  by dropping them from the computer onto the tree or onto a folder: up to `STUDIO_DRIVE_MAX_UPLOAD_MB` (100) a file
+  and a thousand files at a time, in batches. A file already there waits for *Replace* or *Keep the old*.
+- **Move** a file or folder by dragging it onto another folder, or with *Move to…* and a folder picker; open editor
+  tabs follow it.
+- **Compress to zip** next to a file or folder, **Extract here** next to a zip (into the one folder at its top, or a
+  folder named after it; never over anything, nothing outside the workspace, refused past `BRIDGE_UNZIP_MAX`, 2 GB
+  unpacked), and **Download** a file.
+
+### Updating
+- The update restarts every workspace's bridge on the new code (`installer/upgrades/2.2.0.sh`): open conversations
+  resume on their next message.
+
 ## 2.1.2
 
 Fresh installs work again, on Ubuntu 26.04 too.

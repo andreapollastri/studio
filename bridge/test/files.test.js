@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, symlink, readFile, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { lstat, mkdtemp, mkdir, readdir, writeFile, symlink, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { Files, FileError, cleanPath } from '../src/files.js';
 import { createServer } from '../src/server.js';
 import { testConfig, listen } from './helpers.js';
@@ -145,6 +147,104 @@ test('an upload streams any bytes into a new file, replaces one only when asked,
   await assert.rejects(stat(join(root, 'big.bin')));
   const escape = await fetch(`${base}/files/upload?path=../x`, { method: 'PUT', headers: auth, body: 'x' });
   assert.equal(escape.status, 400);
+
+  await server.shutdown();
+});
+
+test('moving goes through rename: into another folder, never into itself or onto something', async () => {
+  const root = await workspace();
+  const files = new Files(root);
+  await files.create('docs', 'dir');
+  assert.deepEqual(await files.rename('README.md', 'docs/README.md'), { from: 'README.md', to: 'docs/README.md' });
+  assert.equal(await readFile(join(root, 'docs', 'README.md'), 'utf8'), '# Demo\n');
+  await files.rename('app', 'docs/app');
+  assert.ok((await stat(join(root, 'docs', 'app', 'Models', 'Order.php'))).isFile());
+  await assert.rejects(files.rename('docs', 'docs/app/docs'), (e) => e.status === 400);
+  await assert.rejects(files.rename('logo.png', 'docs/README.md'), (e) => e.status === 409);
+});
+
+test('a zip holds files and folders of one folder, takes a free name, and stores links as links', async () => {
+  const root = await workspace();
+  const files = new Files(root);
+  await symlink('/etc/hosts', join(root, 'app', 'hosts'));
+
+  const one = await files.zip(['app']);
+  assert.equal(one.path, 'app.zip');
+  assert.ok(one.size > 0);
+  assert.equal((await files.zip('app')).path, 'app 2.zip');
+  const several = await files.zip(['README.md', 'logo.png']);
+  assert.equal(several.path, 'Archive.zip');
+  await files.create('-dash', 'dir');
+  assert.equal((await files.zip(['-dash'])).path, '-dash.zip');
+
+  // the link went in as a link: unzipped elsewhere, it is a link again, not a copy of /etc/hosts
+  const out = await mkdtemp(join(tmpdir(), 'studio-unzip-'));
+  await promisify(execFile)('unzip', ['-q', join(root, 'app.zip'), '-d', out]);
+  assert.ok((await lstat(join(out, 'app', 'hosts'))).isSymbolicLink());
+  assert.ok((await stat(join(out, 'app', 'Models', 'Order.php'))).isFile());
+
+  await assert.rejects(files.zip(['README.md', 'app/Models']), (e) => e.status === 400);
+  await assert.rejects(files.zip([]), (e) => e.status === 400);
+  await assert.rejects(files.zip(['nope']), (e) => e.status === 404);
+  await assert.rejects(files.zip(['../x']), (e) => e.status === 400);
+});
+
+test('unzip puts one folder at the top in place, anything else in a folder of its own, and overwrites nothing', async () => {
+  const root = await workspace();
+  const files = new Files(root);
+  await files.zip(['app']);
+  await files.zip(['README.md', 'logo.png']);
+
+  // app.zip holds app/: it becomes "app 2", since app is there
+  assert.deepEqual(await files.unzip('app.zip'), { path: 'app 2' });
+  assert.equal(await readFile(join(root, 'app 2', 'Models', 'Order.php'), 'utf8'), '<?php\n\nclass Order {}\n');
+  assert.equal(await readFile(join(root, 'app', 'Models', 'Order.php'), 'utf8'), '<?php\n\nclass Order {}\n');
+  // two files at the top: a folder named after the archive
+  assert.deepEqual(await files.unzip('Archive.zip'), { path: 'Archive' });
+  assert.equal(await readFile(join(root, 'Archive', 'README.md'), 'utf8'), '# Demo\n');
+  // nothing left behind
+  assert.deepEqual((await readdir(root)).filter((name) => name.includes('studio-tmp')), []);
+
+  await assert.rejects(files.unzip('README.md'), (e) => e.status === 422);
+  await assert.rejects(files.unzip('app'), (e) => e.status === 400);
+  await assert.rejects(new Files(root, { unzipMaxBytes: 4 }).unzip('Archive.zip'), (e) => e.status === 413);
+});
+
+test('unzip keeps an archive inside the workspace: no .. and no absolute paths', async () => {
+  const root = await workspace();
+  const files = new Files(root);
+  // an archive whose entry climbs out (zip stores ../ when asked from a deeper folder)
+  const outside = await mkdtemp(join(tmpdir(), 'studio-evil-'));
+  await mkdir(join(outside, 'a', 'b'), { recursive: true });
+  await writeFile(join(outside, 'a', 'escaped.txt'), 'gotcha');
+  await promisify(execFile)('zip', ['-q', join(root, 'evil.zip'), '../escaped.txt'], { cwd: join(outside, 'a', 'b') });
+
+  const { path } = await files.unzip('evil.zip');
+  assert.equal(path, 'escaped.txt');
+  assert.equal(await readFile(join(root, 'escaped.txt'), 'utf8'), 'gotcha');
+  await assert.rejects(stat(join(root, '..', 'escaped.txt')));
+});
+
+test('the download, zip and unzip routes', async () => {
+  const root = await workspace();
+  const server = createServer(testConfig({ workspaceDir: root }));
+  const base = await listen(server);
+  const headers = { authorization: 'Bearer bridge-secret', 'content-type': 'application/json' };
+
+  const download = await fetch(`${base}/files/download?path=logo.png`, { headers });
+  assert.equal(download.status, 200);
+  assert.equal(download.headers.get('content-type'), 'application/octet-stream');
+  assert.deepEqual(Buffer.from(await download.arrayBuffer()), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]));
+  assert.equal((await fetch(`${base}/files/download?path=app`, { headers })).status, 400);
+  assert.equal((await fetch(`${base}/files/download?path=nope`, { headers })).status, 404);
+  assert.equal((await fetch(`${base}/files/download?path=.git/HEAD`, { headers })).status, 403);
+
+  const zipped = await fetch(`${base}/files/zip`, { method: 'POST', headers, body: JSON.stringify({ paths: ['app'] }) });
+  assert.equal(zipped.status, 201);
+  assert.equal((await zipped.json()).path, 'app.zip');
+  const unzipped = await fetch(`${base}/files/unzip`, { method: 'POST', headers, body: JSON.stringify({ path: 'app.zip' }) });
+  assert.equal(unzipped.status, 201);
+  assert.deepEqual(await unzipped.json(), { path: 'app 2' });
 
   await server.shutdown();
 });

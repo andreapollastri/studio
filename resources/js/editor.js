@@ -3,6 +3,8 @@
  * first use so the rest of Studio stays light. Livewire owns the tree and the
  * disk; this Alpine component owns the open tabs and their unsaved text.
  */
+import './file-drop';
+
 const LANGUAGES = {
     php: 'php', js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
     json: 'json', lock: 'json', css: 'css', scss: 'scss', less: 'less', html: 'html', htm: 'html', vue: 'html', xml: 'xml', svg: 'xml',

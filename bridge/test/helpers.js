@@ -20,6 +20,7 @@ export function testConfig(overrides = {}) {
     flushInterval: 10,
     maxBodyBytes: 1024 * 1024,
     fileMaxBytes: 512 * 1024,
+    maxShells: 8,
     log: false,
     ...overrides,
   };

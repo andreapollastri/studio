@@ -2,9 +2,11 @@
 
 namespace App\Ssh;
 
+use App\Livewire\Studio\Files;
 use App\Models\ClaudeAccount;
 use App\Models\SshConnection;
 use App\Models\User;
+use App\Models\Workspace;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -57,6 +59,18 @@ final class Gateway
     }
 
     /**
+     * A ticket for the Terminal tab: a shell in this workspace (or a sandbox's
+     * worktree of it), which its bridge runs as the workspace's user.
+     */
+    public static function issueShell(Workspace $workspace, User $user, ?string $sandbox = null): string
+    {
+        $ticket = Str::random(48);
+        Cache::put(self::key($ticket), ['kind' => 'workspace-shell', 'user_id' => $user->id, 'workspace_id' => $workspace->id, 'sandbox' => $sandbox], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
+
+        return $ticket;
+    }
+
+    /**
      * The connection behind a ticket, with the secret of the person it was
      * issued to; null when the ticket is unknown, spent or expired, or that
      * person may no longer use the terminal or see the connection.
@@ -85,6 +99,24 @@ final class Gateway
             Log::info('Claude sign-in started', ['user' => $user->email, 'account' => $account->name]);
 
             return ['kind' => 'claude-login', 'user_id' => $user->id, 'handle' => $user->handle, 'dir' => $account->dir ?? ClaudeAccount::DEFAULT_DIR];
+        }
+
+        if (($issued['kind'] ?? null) === 'workspace-shell') {
+            $workspace = Workspace::query()->with('project')->whereKey($issued['workspace_id'] ?? 0)->first();
+
+            // who may still use the terminal of a workspace that still runs
+            if ($user === null || $workspace === null || ! Files::allows($user, $workspace) || ! $workspace->isRunning() || ! $workspace->hasBridge()) {
+                return null;
+            }
+            Log::info('Workspace terminal opened', ['user' => $user->email, 'workspace' => $workspace->id, 'owner' => $workspace->user_id, 'sandbox' => $issued['sandbox'] ?? null]);
+
+            return [
+                'kind' => 'workspace-shell',
+                'user_id' => $user->id,
+                'bridge_url' => (string) $workspace->bridge_url,
+                'bridge_token' => (string) $workspace->bridge_token,
+                'sandbox' => $issued['sandbox'] ?? null,
+            ];
         }
 
         $connection = SshConnection::query()->with('key')->whereKey($issued['connection_id'] ?? 0)->first();

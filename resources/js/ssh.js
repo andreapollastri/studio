@@ -16,7 +16,7 @@ const CLOSE_REASONS = {
 };
 
 /** What the touch key bar sends: the keys a phone's keyboard lacks. */
-const KEYS = {
+export const KEYS = {
     esc: '\x1b',
     tab: '\t',
     up: '\x1b[A',
@@ -34,7 +34,7 @@ const KEYS = {
 };
 
 /** Ctrl + a key: @ to _ (letters either case) map to 0x00–0x1f, ? to DEL. */
-function controlOf(char) {
+export function controlOf(char) {
     if (char === '?') return '\x7f';
     const code = char.toUpperCase().charCodeAt(0);
     return code >= 64 && code <= 95 ? String.fromCharCode(code - 64) : char;

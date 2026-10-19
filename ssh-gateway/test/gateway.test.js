@@ -218,3 +218,49 @@ test('a claude-login ticket without a valid home name is refused before anything
   await s.closed;
   assert.equal(ran, false);
 });
+
+test('a workspace-shell ticket opens the shell of that workspace\'s bridge and relays it both ways, with the size', async (t) => {
+  // the real bridge, on a temporary workspace, with /bin/sh as the shell
+  const { createServer: createBridge } = await import('../../bridge/src/server.js');
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const bridge = createBridge({ host: '127.0.0.1', port: 0, token: 'bridge-secret', workspaceDir: await mkdtemp(join(tmpdir(), 'gw-shell-')), claudeBin: 'claude', idleTtl: 60, flushInterval: 10, maxBodyBytes: 1024 * 1024, fileMaxBytes: 1024, maxShells: 2, shell: '/bin/sh', log: false });
+  await new Promise((resolve) => bridge.listen(0, '127.0.0.1', resolve));
+  t.after(() => bridge.shutdown());
+  const bridgeUrl = `http://127.0.0.1:${bridge.address().port}`;
+
+  const gw = await gateway(() => ({ kind: 'workspace-shell', user_id: 3, bridge_url: bridgeUrl, bridge_token: 'bridge-secret', sandbox: null }));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until((m) => m.type === 'status');
+  s.send({ type: 'data', data: 'printf "Password: "; read -r answer; echo "got:$answer"; stty size\r' });
+  await s.until(() => s.output().includes('Password: '));
+  s.send({ type: 'data', data: 'hunter2\r' });
+  await s.until(() => s.output().includes('got:hunter2') && s.output().includes('30 100'));
+  s.send({ type: 'resize', cols: 132, rows: 43 });
+  s.send({ type: 'data', data: 'stty size; exit 5\r' });
+  const exit = await s.until((m) => m.type === 'exit');
+  assert.equal(exit.code, 5);
+  assert.match(s.output(), /43 132/);
+  await s.closed;
+});
+
+test('a workspace-shell ticket is followed to a loopback bridge only, and a refusal is told', async (t) => {
+  const elsewhere = await gateway(() => ({ kind: 'workspace-shell', user_id: 3, bridge_url: 'http://10.0.0.5:4455', bridge_token: 'x' }));
+  t.after(() => elsewhere.close());
+  const s = open(elsewhere, 'good');
+  assert.match((await s.until((m) => m.type === 'error')).message, /no bridge/);
+  await s.closed;
+
+  const { createServer: createBridge } = await import('../../bridge/src/server.js');
+  const bridge = createBridge({ host: '127.0.0.1', port: 0, token: 'bridge-secret', workspaceDir: process.cwd(), claudeBin: 'claude', idleTtl: 60, flushInterval: 10, maxBodyBytes: 1024, fileMaxBytes: 1024, maxShells: 2, log: false });
+  await new Promise((resolve) => bridge.listen(0, '127.0.0.1', resolve));
+  t.after(() => bridge.shutdown());
+  const wrong = await gateway(() => ({ kind: 'workspace-shell', user_id: 3, bridge_url: `http://127.0.0.1:${bridge.address().port}`, bridge_token: 'stale' }));
+  t.after(() => wrong.close());
+  const r = open(wrong, 'good');
+  assert.match((await r.until((m) => m.type === 'error')).message, /refused the terminal \(401\)/);
+  await r.closed;
+});

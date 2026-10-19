@@ -37,12 +37,16 @@ Studio in advance.
 | GET | `/skills` | | `{skills: [{name, description, source}]}` |
 | GET | `/git` | | `{branch, status[], stat, diff}` |
 | PUT | `/files/upload?path=…&overwrite=0\|1` | raw bytes | 201 `{path, size}`; 409 when it exists (without overwrite), 413 over `BRIDGE_UPLOAD_MAX` (512 MB) |
+| GET | `/files/download?path=…` | | the file's bytes; 400 for a folder |
+| POST | `/files/zip` | `{paths: [...]}` (one folder's items) | 201 `{path, size}`: `<name>.zip` or `Archive.zip` next to them, numbered when taken |
+| POST | `/files/unzip` | `{path}` | 201 `{path}`: the one item at the archive's top, or a folder named after it; 413 over `BRIDGE_UNZIP_MAX` (2 GB unpacked) |
+| GET | `/shell?cols=…&rows=…` | `Upgrade: studio-shell` | 101, then one socket of NDJSON: `data`, `resize` in; `data`, `exit` out. The login shell on a terminal (`src/terminal.py`, python3); at most `BRIDGE_MAX_SHELLS` (8) |
 | POST | `/sandboxes` | `{name: "c<id>", branch, base?}` | 201, the sandbox's state: a worktree on `branch` under `BRIDGE_SANDBOX_ROOT` |
 | GET | `/sandboxes/{name}` | | `{path, branch, workspace_branch, ahead, behind, files, status, stat}` |
 | POST | `/sandboxes/{name}/commit` | `{message}` | everything committed on its branch (nothing to commit is fine) |
 | DELETE | `/sandboxes/{name}?branch=0\|1` | | stops the agent in it, removes the worktree (and the branch) |
 
-With `X-Studio-Sandbox: c<id>`, the `/git`, `/files` and `/run` routes work in that sandbox's worktree.
+With `X-Studio-Sandbox: c<id>`, the `/git`, `/files`, `/run` and `/shell` routes work in that sandbox's worktree.
 A turn may carry `browser: {url, cookies}` (the agent gets Playwright MCP as the MCP server `browser`,
 signed in with those cookies, when `BRIDGE_BROWSER_MCP` names its command) and `sandbox: "c<id>"`
 (Claude Code runs in that worktree). Studio's subagents (`--agents`) and context (`--append-system-prompt`)
