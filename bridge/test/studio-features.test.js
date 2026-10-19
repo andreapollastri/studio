@@ -45,6 +45,14 @@ const flag = (args, name) => {
   return i === -1 ? null : args[i + 1];
 };
 
+/** Every value of a flag that takes several (--allowedTools a b c), up to the next flag. */
+const values = (args, name) => {
+  const i = args.indexOf(name);
+  if (i === -1) return [];
+  const end = args.findIndex((arg, j) => j > i && arg.startsWith('--'));
+  return args.slice(i + 1, end === -1 ? undefined : end);
+};
+
 test('screenshots in tool results travel as images; subagent tasks as task events', () => {
   const [result] = normalize({ type: 'user', parent_tool_use_id: 'toolu_agent', message: { content: [{ type: 'tool_result', tool_use_id: 't', content: [
     { type: 'text', text: 'shot' },
@@ -101,9 +109,9 @@ test('a turn with a preview gets the browser server, its signed-in state, the su
   assert.equal(JSON.parse(readFileSync(flag(mcp.browser.args, '--config'), 'utf8')).browser.browserName, 'chromium');
 
   // asking before actions: looking at the preview is free, clicking in it asks
-  const allowed = flag(args, '--allowedTools');
-  assert.match(allowed, /mcp__browser__browser_take_screenshot/);
-  assert.doesNotMatch(allowed, /browser_click/);
+  const allowed = values(args, '--allowedTools');
+  assert.ok(allowed.includes('mcp__browser__browser_take_screenshot'));
+  assert.ok(!allowed.some((tool) => tool.includes('browser_click')));
 
   const agents = JSON.parse(readFileSync(flag(args, '--agents'), 'utf8'));
   assert.deepEqual(Object.keys(agents).sort(), ['browser-qa', 'code-reviewer']);
@@ -130,7 +138,7 @@ test('with edits allowed the whole browser is free; without a browser on the ser
   const free = new Session('72', testConfig({ browserCmd: 'playwright-mcp' }), { spawn: spawnFake });
   free.sendTurn({ text: 'ciao', permission_mode: 'acceptEdits', callback: callback(studio), browser });
   await waitFor(() => studio.events().some((e) => e.type === 'result'));
-  assert.equal(flag((await spawned(argsDir)).args, '--allowedTools'), 'mcp__browser');
+  assert.deepEqual(values((await spawned(argsDir)).args, '--allowedTools'), ['mcp__browser']);
   await free.close();
 
   const none = new Session('73', testConfig({ browserCmd: null }), { spawn: spawnFake });
@@ -256,4 +264,37 @@ test('the sandbox routes, and the git and file routes pointed at a sandbox', asy
   assert.equal((await fetch(`${base}/sandboxes/c5`, { headers })).status, 404);
 
   await server.shutdown();
+});
+
+test('the rules Studio allows go to --allowedTools one per argument, not in plan mode; a change of them restarts the CLI', async () => {
+  const studio = await startCollector();
+  const argsDir = await mkdtemp(join(tmpdir(), 'studio-args-'));
+  process.env.FAKE_CLAUDE_ARGS_DIR = argsDir;
+  const session = new Session('74', testConfig(), { spawn: spawnFake });
+  const rules = ['Bash(php artisan test:*)', 'Bash(git commit -m a,b:*)'];
+
+  session.sendTurn({ text: 'ciao', permission_mode: 'acceptEdits', allowed_tools: rules, callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  assert.deepEqual(values((await spawned(argsDir)).args, '--allowedTools'), rules);
+
+  // the same rules: the same process
+  session.sendTurn({ text: 'ancora', permission_mode: 'acceptEdits', allowed_tools: rules, callback: callback(studio) });
+  await waitFor(() => studio.events().filter((e) => e.type === 'result').length === 2);
+  assert.equal(readdirSync(argsDir).length, 1);
+
+  // one more ("Always allow"): a new process with it
+  session.sendTurn({ text: 'e poi', permission_mode: 'acceptEdits', allowed_tools: [...rules, 'Bash(npm run build:*)'], callback: callback(studio) });
+  await waitFor(() => studio.events().filter((e) => e.type === 'result').length === 3);
+  await waitFor(() => readdirSync(argsDir).length === 2);
+  assert.ok(values((await spawned(argsDir)).args, '--allowedTools').includes('Bash(npm run build:*)'));
+
+  // plan mode changes nothing, rules or not
+  session.sendTurn({ text: 'piano', permission_mode: 'plan', allowed_tools: rules, callback: callback(studio) });
+  await waitFor(() => readdirSync(argsDir).length === 3);
+  assert.equal((await spawned(argsDir)).args.includes('--allowedTools'), false);
+
+  assert.throws(() => session.sendTurn({ text: 'x', allowed_tools: ['Bash(rm -rf /) --dangerously-skip-permissions'], callback: callback(studio) }), /allowed_tools/);
+  await session.close();
+  delete process.env.FAKE_CLAUDE_ARGS_DIR;
+  await studio.close();
 });

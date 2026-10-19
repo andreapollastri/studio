@@ -26,6 +26,7 @@ use App\Models\DatabaseQuery;
 use App\Models\DatabaseTransfer;
 use App\Models\Domain;
 use App\Models\Message;
+use App\Models\PermissionRule;
 use App\Models\Project;
 use App\Models\ProjectGroup;
 use App\Models\ProjectMcpServer;
@@ -206,17 +207,20 @@ class DemoSeeder extends Seeder
         $say(Message::ROLE_ASSISTANT, Message::KIND_TOOL_USE, 'Bash', ['name' => 'Bash', 'input' => ['command' => 'php artisan larapilot:spec-plan US-014 --file=.larapilot/tmp-US-014-plan.json']], 'toolu_demo_2');
         $say(Message::ROLE_TOOL, Message::KIND_TOOL_RESULT, '{ "data": { "code": "US-014", "status": "PLANNED", "tasks": 2 } }', ['is_error' => false], 'toolu_demo_2');
         $say(Message::ROLE_USER, Message::KIND_TEXT, 'Perfect, go ahead with the implementation.');
-        $say(Message::ROLE_ASSISTANT, Message::KIND_TEXT, "Working on branch `feature/US-014-date-filter`. The first task is done: a `between()` scope on the Order model, the two fields in the form, and the test. Before rebuilding the assets for the preview I'm asking you, because `npm run build` is outside the automatic perimeter of your role.");
+        $say(Message::ROLE_ASSISTANT, Message::KIND_TEXT, "Working on branch `feature/US-014-date-filter`. The first task is done: a `between()` scope on the Order model, the two fields in the form, and the test. Before resetting the workspace database with the demo orders I'm asking you, because `php artisan migrate:fresh --seed` wipes what is in it.");
         $say(Message::ROLE_ASSISTANT, Message::KIND_TOOL_USE, 'Edit', ['name' => 'Edit', 'input' => ['file_path' => 'app/Models/Order.php']], 'toolu_demo_3');
         $say(Message::ROLE_TOOL, Message::KIND_TOOL_RESULT, 'The file app/Models/Order.php has been updated.', ['is_error' => false], 'toolu_demo_3');
 
         $conversation->permissionRequests()->create([
             'request_id' => 'req_demo_1',
             'tool_name' => 'Bash',
-            'description' => 'Rebuild the front-end assets to refresh the preview',
-            'input' => ['command' => 'npm run build'],
+            'description' => 'Reset the workspace database with the demo orders',
+            'input' => ['command' => 'php artisan migrate:fresh --seed'],
+            'suggestions' => ['Bash(php artisan migrate:fresh:*)'],
             'status' => PermissionStatus::Pending,
         ]);
+        // one "Always allow" Maria gave on this project earlier
+        PermissionRule::query()->firstOrCreate(['user_id' => $maria->id, 'project_id' => $mariaShop->project_id, 'rule' => 'Bash(composer require:*)']);
 
         Conversation::query()->updateOrCreate(
             ['workspace_id' => $mariaShop->id, 'user_id' => $maria->id, 'title' => 'Triage of the client feedback on search'],

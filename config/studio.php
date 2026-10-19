@@ -212,10 +212,30 @@ return [
     ],
 
     'modes' => [
-        'default' => ['label' => 'Ask before actions', 'hint' => 'Claude asks before commands and edits outside the automatic scope'],
+        'default' => ['label' => 'Ask before actions', 'hint' => 'Claude asks before edits and before commands it may not run on its own'],
         'acceptEdits' => ['label' => 'Ask, edits allowed', 'hint' => 'File edits in the workspace run; commands still ask'],
         'auto' => ['label' => 'Autopilot', 'hint' => 'A classifier reviews every action; nothing waits for you'],
         'plan' => ['label' => 'Plan only', 'hint' => 'Reads and proposes, changes nothing'],
+    ],
+
+    /*
+    | What runs without asking in every mode but "plan", per role, beyond Claude Code's own
+    | read-only commands (ls, cat, git status…): the everyday commands of a Laravel project
+    | that change nothing outside the workspace. Each person adds their own with "Always
+    | allow" on a permission card; Claude Code's rule syntax, Bash(prefix:*) for a prefix.
+    */
+    'allowed_tools' => [
+        'admin' => $everyday = [
+            'Bash(php artisan test:*)', 'Bash(vendor/bin/pest:*)', 'Bash(vendor/bin/phpunit:*)',
+            'Bash(vendor/bin/pint:*)', 'Bash(vendor/bin/phpstan:*)', 'Bash(vendor/bin/rector:*)',
+            'Bash(php artisan route:list:*)', 'Bash(php artisan about:*)', 'Bash(php artisan optimize:clear:*)',
+            'Bash(composer install:*)', 'Bash(composer dump-autoload:*)',
+            'Bash(npm ci:*)', 'Bash(npm install:*)', 'Bash(npm run build:*)', 'Bash(npm run lint:*)', 'Bash(npm test:*)',
+            'Bash(git add:*)', 'Bash(git commit:*)',
+        ],
+        'dev' => $everyday,
+        'pm' => $everyday,
+        'client' => [],
     ],
 
     'modes_by_role' => [

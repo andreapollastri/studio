@@ -102,6 +102,7 @@ export class Session extends EventEmitter {
     // no browser on this server: the turn goes on without one rather than failing
     const browser = this.#config.browserCmd ? normalizeBrowser(turn.browser) : null;
     const sandbox = this.#sandbox(turn.sandbox);
+    const allowed = normalizeAllowedTools(turn.allowed_tools);
 
     this.#clearIdleTimer();
 
@@ -116,7 +117,8 @@ export class Session extends EventEmitter {
       && this.#turn.claudeDir === account.claudeDir
       && this.#turn.mcp === mcp.key
       && (this.#turn.browser?.url ?? null) === (browser?.url ?? null)
-      && this.#turn.cwd === sandbox.cwd;
+      && this.#turn.cwd === sandbox.cwd
+      && this.#turn.allowed.join('\n') === allowed.join('\n');
 
     // a fresh pass for the browser on every turn: the process reads it when it next opens the browser
     if (browser) browserServer(this.key, browser, this.#config);
@@ -124,7 +126,7 @@ export class Session extends EventEmitter {
     if (!this.#process || !sameTarget) {
       this.#stopProcess();
       if (turn.session_id && !this.sessionId) this.sessionId = turn.session_id;
-      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, ...account, mcp: mcp.key, mcpServers: mcp.servers, browser, sandbox: sandbox.info, cwd: sandbox.cwd };
+      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, ...account, mcp: mcp.key, mcpServers: mcp.servers, browser, sandbox: sandbox.info, cwd: sandbox.cwd, allowed };
       this.#poster = new CallbackPoster({
         url: turn.callback.url,
         token: turn.callback.token,
@@ -146,7 +148,7 @@ export class Session extends EventEmitter {
    * @param {Record<string, string>|null} answers AskUserQuestion: question text → the chosen label(s), comma
    *   separated, or the person's own words. Without them the CLI tells the agent "the user did not answer".
    */
-  answerPermission(requestId, behavior, message = null, answers = null) {
+  answerPermission(requestId, behavior, message = null, answers = null, rules = null) {
     const pending = this.#pending.get(requestId);
     if (!pending) throw new BridgeError(404, `no pending permission ${requestId}`);
     if (behavior !== 'allow' && behavior !== 'deny') throw new BridgeError(422, 'behavior must be allow or deny');
@@ -154,8 +156,15 @@ export class Session extends EventEmitter {
       throw new BridgeError(422, 'answers must map each question to a string');
     }
 
+    // "Always allow": the rules apply to the rest of this process at once; Studio keeps them and
+    // hands them over as --allowedTools to every later process
+    const always = normalizeAllowedTools(rules).map(ruleValue);
     const response = behavior === 'allow'
-      ? { behavior: 'allow', updatedInput: answers ? { ...pending.input, answers } : pending.input }
+      ? {
+        behavior: 'allow',
+        updatedInput: answers ? { ...pending.input, answers } : pending.input,
+        ...(always.length ? { updatedPermissions: [{ type: 'addRules', rules: always, behavior: 'allow', destination: 'session' }] } : {}),
+      }
       : { behavior: 'deny', message: message || 'The person declined this action.', interrupt: false };
 
     this.#write({ type: 'control_response', response: { request_id: requestId, subtype: 'success', response } });
@@ -244,10 +253,14 @@ export class Session extends EventEmitter {
     }
     // Looking at the preview never asks, in any mode; acting in it (clicks, forms) is part of the work in
     // the modes that let edits run, and asks like any other tool in the others.
+    const allowedTools = [...this.#turn.allowed];
     if (this.#turn.browser) {
       const free = ['acceptEdits', 'auto', 'bypassPermissions'].includes(this.#turn.permission_mode);
-      args.push('--allowedTools', free ? `mcp__${BROWSER_SERVER}` : BROWSER_READ_TOOLS.join(','));
+      allowedTools.push(...(free ? [`mcp__${BROWSER_SERVER}`] : BROWSER_READ_TOOLS));
     }
+    // what Studio lets run without asking (the role's list, the person's "Always allow"): one
+    // argument per rule, since a rule may hold a comma; plan mode still changes nothing
+    if (allowedTools.length && this.#turn.permission_mode !== 'plan') args.push('--allowedTools', ...allowedTools);
 
     this.#log(`spawn ${this.#config.claudeBin} ${args.filter((arg) => !arg.includes('\n')).join(' ')}`);
 
@@ -362,6 +375,7 @@ export class Session extends EventEmitter {
       input: request.input ?? {},
       description: stripAnsi(request.description ?? request.decision_reason ?? ''),
       tool_use_id: request.tool_use_id ?? null,
+      suggestions: suggestedRules(request.permission_suggestions),
     }]);
   }
 
@@ -526,4 +540,33 @@ export function claudeEnv(base, auth, { apiKey = null, claudeDir = null, home = 
     env.CLAUDE_CONFIG_DIR = join(home ?? base.HOME ?? homedir(), claudeDir);
   }
   return env;
+}
+
+/** Claude Code's rule syntax, Tool or Tool(specifier), one per argument of --allowedTools. */
+const RULE = /^[A-Za-z][\w-]*(\([^()\n]+\))?$/;
+
+export function normalizeAllowedTools(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.some((rule) => typeof rule !== 'string' || rule.length > 500 || !RULE.test(rule))) {
+    throw new BridgeError(422, 'allowed_tools must be a list of rules like Bash(npm run build:*)');
+  }
+  return [...new Set(value)];
+}
+
+/** Bash(npm run build:*) → { toolName: 'Bash', ruleContent: 'npm run build:*' }, as the CLI's permission updates have it. */
+function ruleValue(rule) {
+  const open = rule.indexOf('(');
+  return open === -1 ? { toolName: rule } : { toolName: rule.slice(0, open), ruleContent: rule.slice(open + 1, -1) };
+}
+
+/** The allow rules the CLI suggests with a request ("don't ask again for …"), back in rule syntax. */
+export function suggestedRules(updates) {
+  if (!Array.isArray(updates)) return [];
+  const rules = updates
+    .filter((update) => update?.type === 'addRules' && update.behavior === 'allow' && Array.isArray(update.rules))
+    .flatMap((update) => update.rules)
+    .filter((rule) => typeof rule?.toolName === 'string')
+    .map((rule) => (typeof rule.ruleContent === 'string' && rule.ruleContent !== '' ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName))
+    .filter((rule) => rule.length <= 500 && RULE.test(rule));
+  return [...new Set(rules)];
 }

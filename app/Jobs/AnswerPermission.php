@@ -17,15 +17,18 @@ class AnswerPermission implements ShouldQueue
 
     public int $tries = 1;
 
-    /** @param  array<string, string>|null  $answers */
-    public function __construct(public PermissionRequest $request, public bool $allow, public ?string $message = null, public ?array $answers = null) {}
+    /**
+     * @param  array<string, string>|null  $answers
+     * @param  list<string>|null  $rules  "Always allow": what the running session stops asking for at once
+     */
+    public function __construct(public PermissionRequest $request, public bool $allow, public ?string $message = null, public ?array $answers = null, public ?array $rules = null) {}
 
     public function handle(): void
     {
         $conversation = $this->request->conversation;
 
         try {
-            (new BridgeClient($conversation->workspace))->answerPermission($this->request, $this->allow, $this->message, $this->answers);
+            (new BridgeClient($conversation->workspace))->answerPermission($this->request, $this->allow, $this->message, $this->answers, $this->rules);
         } catch (BridgeException $e) {
             $conversation->messages()->create([
                 'role' => Message::ROLE_SYSTEM,

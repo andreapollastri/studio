@@ -3,6 +3,7 @@
 namespace App\Bridge;
 
 use App\Accounts\Accounts;
+use App\Claude\AllowRules;
 use App\Enums\ConversationStatus;
 use App\Enums\PermissionStatus;
 use App\Events\ConversationUpdated;
@@ -331,6 +332,7 @@ final class IngestBridgeEvents
                 'tool_name' => (string) ($event['tool_name'] ?? 'tool'),
                 'description' => isset($event['description']) ? Str::limit(strip_tags((string) $event['description']), 1000) : null,
                 'input' => is_array($event['input'] ?? null) ? $event['input'] : [],
+                'suggestions' => array_values(array_filter((array) ($event['suggestions'] ?? []), fn ($rule) => is_string($rule) && AllowRules::valid($rule))),
                 'status' => PermissionStatus::Pending,
             ],
         );

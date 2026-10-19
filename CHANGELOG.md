@@ -4,6 +4,22 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.3.0
+
+Fewer "Claude wants to run Bash".
+
+- **Always allow** on a permission card: the command runs, and is not asked again on that project, for that person.
+  The rule is the one Claude Code suggests (`composer require …`, any package) or, for a plain command, its runner
+  and name with any arguments; a line with `&&`, pipes or redirections gets no such button and asks each time. The
+  running conversation stops asking at once (the rule goes back with the answer), and every later turn carries it as
+  `--allowedTools`. *Model & mode* lists them under *Runs without asking*, where × takes one back.
+- **The everyday commands run without asking** for admins, developers and PMs, in every mode but *Plan only*: the
+  tests, Pint, PHPStan, Rector, `composer install`, `npm ci`, `npm run build`, `git add` and `git commit`, and a few
+  read-only artisan commands (`allowed_tools` in `config/studio.php`). Nothing that leaves the workspace: a push or a
+  `migrate:fresh` still asks.
+- A card with no rule to offer (a file edit in *Ask before actions*) says where to let edits run instead.
+- The update restarts the workspace bridges, which carry the rules (`installer/upgrades/2.3.0.sh`).
+
 ## 2.2.0
 
 A real terminal, and a file manager that does what one expects.

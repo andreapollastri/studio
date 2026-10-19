@@ -80,7 +80,7 @@
   {
     "name": "chat-settings",
     "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
-    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Model & mode\"); if (b) b.click(); return !!b; })()",
+    "eval": "(() => { const b = document.querySelector('[data-flux-modal-trigger] button[aria-label=\"Model & mode\"], button[aria-label=\"Model & mode\"]') ?? [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Model & mode\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 1500
   },

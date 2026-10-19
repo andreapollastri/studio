@@ -240,8 +240,16 @@
                         @if ($canChat)
                             <div class="mt-3 flex flex-wrap gap-2">
                                 <flux:button size="sm" variant="primary" icon="check" wire:click="allow('{{ $this->pending->uuid }}')">{{ __('Allow') }}</flux:button>
+                                @if ($alwaysRule)
+                                    <flux:button size="sm" icon="check-badge" wire:click="allowAlways('{{ $this->pending->uuid }}')" :title="__('Allowed now and from now on, for you on this project; remove it in Model & mode.')">
+                                        {{ __('Always allow') }} <span class="ms-1 font-mono text-xs">{{ \App\Claude\AllowRules::label($alwaysRule) }}</span>
+                                    </flux:button>
+                                @endif
                                 <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="deny('{{ $this->pending->uuid }}')">{{ __('Deny') }}</flux:button>
                             </div>
+                            @if (! $alwaysRule && $conversation->permission_mode === 'default')
+                                <flux:text class="mt-2 text-xs">{{ __('Asked too often? In Model & mode, "Ask, edits allowed" lets file edits run, and Autopilot lets a classifier decide instead of you.') }}</flux:text>
+                            @endif
                         @endif
                     </div>
                 </div>
@@ -272,6 +280,32 @@
                     @endforeach
                 </flux:radio.group>
                 <flux:error name="mode" />
+                <div class="rounded-lg bg-zinc-50 px-3 py-2 text-xs dark:bg-zinc-800">
+                    <div class="font-medium">{{ __('Runs without asking') }}</div>
+                    @if ($ownRules->isNotEmpty())
+                        <div class="mt-1 flex flex-wrap gap-1">
+                            @foreach ($ownRules as $rule)
+                                <flux:badge size="sm" class="font-mono" wire:key="rule-{{ $rule->uuid }}" :title="$rule->rule">
+                                    {{ \App\Claude\AllowRules::label($rule->rule) }}
+                                    <flux:badge.close wire:click="forgetRule('{{ $rule->uuid }}')" :aria-label="__('Ask again for :rule', ['rule' => \App\Claude\AllowRules::label($rule->rule)])" />
+                                </flux:badge>
+                            @endforeach
+                        </div>
+                    @endif
+                    <div class="mt-1 text-zinc-500">
+                        {{ $ownRules->isNotEmpty()
+                            ? __('Yours on this project, from "Always allow"; × asks again from the next message. Plan only still changes nothing.')
+                            : __('Nothing of yours yet: "Always allow" on a request adds it here. Plan only still changes nothing.') }}
+                    </div>
+                    @if ($roleRules !== [])
+                        <details class="mt-1.5">
+                            <summary class="cursor-pointer text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">{{ trans_choice('And :count everyday command of your role|And :count everyday commands of your role', count($roleRules), ['count' => count($roleRules)]) }}</summary>
+                            <div class="mt-1 flex flex-wrap gap-1">
+                                @foreach ($roleRules as $rule)<flux:badge size="sm" variant="pill" class="font-mono" :title="$rule">{{ \App\Claude\AllowRules::label($rule) }}</flux:badge>@endforeach
+                            </div>
+                        </details>
+                    @endif
+                </div>
                 <div class="rounded-lg bg-zinc-50 px-3 py-2 text-xs dark:bg-zinc-800">
                     <div class="font-medium">{{ __('MCP servers') }}</div>
                     @if ($mcpNames !== [])

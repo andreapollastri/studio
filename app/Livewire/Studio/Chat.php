@@ -6,10 +6,12 @@ use App\Actions\Studio\DecidePermission;
 use App\Actions\Studio\StartTurn;
 use App\Bridge\BridgeClient;
 use App\Bridge\BridgeException;
+use App\Claude\AllowRules;
 use App\Enums\ConversationStatus;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\PermissionRequest;
+use App\Models\PermissionRule;
 use App\Workspaces\Sandboxes;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
@@ -182,6 +184,26 @@ class Chat extends Component
     public function deny(string $permissionId, DecidePermission $decide): void
     {
         $this->decide($permissionId, false, $decide);
+    }
+
+    /** Allowed, and never asked again on this project: the rule Claude Code suggested, or Studio's for the command. */
+    public function allowAlways(string $permissionId, DecidePermission $decide): void
+    {
+        $request = $this->conversation->permissionRequests()->where('uuid', $permissionId)->firstOrFail();
+
+        $this->decide($permissionId, true, $decide, AllowRules::suggest($request));
+    }
+
+    /** A rule added with "Always allow" goes: that action asks again from the next message. */
+    public function forgetRule(string $ruleId): void
+    {
+        $this->authorize('update', $this->conversation);
+
+        PermissionRule::query()
+            ->where('uuid', $ruleId)
+            ->where('user_id', $this->conversation->user_id)
+            ->where('project_id', $this->conversation->workspace->project_id)
+            ->delete();
     }
 
     /** Claude's questions answered: every question needs a choice or the person's own words. */
@@ -412,14 +434,14 @@ class Chat extends Component
         return $this->conversation->pendingPermission();
     }
 
-    private function decide(string $permissionId, bool $allow, DecidePermission $decide): void
+    private function decide(string $permissionId, bool $allow, DecidePermission $decide, ?string $always = null): void
     {
         $this->authorize('update', $this->conversation);
 
         $request = $this->conversation->permissionRequests()->where('uuid', $permissionId)->firstOrFail();
 
         try {
-            $decide->handle($request, auth()->user(), $allow);
+            $decide->handle($request, auth()->user(), $allow, always: $always);
         } catch (InvalidArgumentException $e) {
             Flux::toast(variant: 'warning', text: $e->getMessage());
         }
@@ -451,6 +473,10 @@ class Chat extends Component
 
     public function render(): View
     {
+        $owner = $this->conversation->user;
+        $project = $this->conversation->workspace->project;
+        $pending = $this->pending();
+
         return view('livewire.studio.chat', [
             'canChat' => auth()->user()->can('chat', $this->conversation->workspace->project) && $this->conversation->user_id === auth()->id(),
             'models' => (array) config('studio.models', []),
@@ -458,6 +484,10 @@ class Chat extends Component
             'modes' => array_intersect_key((array) config('studio.modes', []), array_flip($this->allowedModes())),
             'mcpNames' => array_keys((new BridgeClient($this->conversation->workspace))->mcpServers($this->conversation) ?? []),
             'browser' => $this->conversation->workspace->project->agentSettings()['browser'],
+            // "Always allow" on the card, and what runs without asking, in the settings
+            'alwaysRule' => $pending !== null ? AllowRules::suggest($pending) : null,
+            'roleRules' => AllowRules::forRole($owner, $project),
+            'ownRules' => PermissionRule::query()->where('user_id', $owner->id)->where('project_id', $project->id)->orderBy('id')->get(),
         ]);
     }
 }

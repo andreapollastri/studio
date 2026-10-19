@@ -205,7 +205,7 @@ export function createServer(config, options = {}) {
         const body = await readJson(req, config.maxBodyBytes);
         const session = sessions.get(decodeURIComponent(match[1]));
         if (!session) return json(res, 404, { error: 'unknown conversation' });
-        return json(res, 200, session.answerPermission(decodeURIComponent(match[2]), body.behavior, body.message ?? null, body.answers ?? null));
+        return json(res, 200, session.answerPermission(decodeURIComponent(match[2]), body.behavior, body.message ?? null, body.answers ?? null, body.rules ?? null));
       }
 
       if ((match = /^\/conversations\/([^/]+)\/interrupt$/.exec(path)) && req.method === 'POST') {

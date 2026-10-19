@@ -12,7 +12,7 @@ to it; its passwords, files, SSH connections and backups. People read, decide an
 laptop but a browser.
 
 <p align="center">
-<img src="docs/img/chat-permission.png" alt="A permission card asking to run npm run build, with Allow and Deny, the preview of the branch on the right" width="100%">
+<img src="docs/img/chat-permission.png" alt="A permission card asking to run php artisan migrate:fresh --seed, with Allow, Always allow and Deny, the preview of the branch on the right" width="100%">
 </p>
 
 **Version 2.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
@@ -168,7 +168,7 @@ shows the result on her own branch.
 <table>
 <tr>
 <td width="50%"><img src="docs/img/chat-top.png" alt="The chat: a request in plain words, the story written and planned"><br><sub><strong>Ask in plain words.</strong> Claude reads the PRD and the backlog through the Larapilot skills, writes the story, plans it and answers with an estimate.</sub></td>
-<td width="50%"><img src="docs/img/chat-permission.png" alt="A permission card before npm run build, the preview of the branch on the right"><br><sub><strong>Approve what matters.</strong> The PM's preset lets nothing outside its automatic scope run without her; the preview on the right follows her branch.</sub></td>
+<td width="50%"><img src="docs/img/chat-permission.png" alt="A permission card before php artisan migrate:fresh --seed, with Always allow, the preview of the branch on the right"><br><sub><strong>Approve what matters.</strong> Tests and builds run on their own; the rest asks once, or never again with <em>Always allow</em>. The preview on the right follows her branch.</sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/img/chat-changes.png" alt="The Changes tab: branch, modified files and the diff"><br><sub><strong>See the change.</strong> The Changes tab reads the working tree of the workspace: branch, files, diff.</sub></td>
@@ -176,7 +176,7 @@ shows the result on her own branch.
 </tr>
 <tr>
 <td width="50%"><img src="docs/img/chat-tools-open.png" alt="The chat with Details on: every command and its result expanded"><br><sub><strong>Details.</strong> Each tool call is a row; Details expands them all with their results and the agent's reasoning.</sub></td>
-<td width="50%"><img src="docs/img/chat-settings.png" alt="The Model and mode dialog: model, effort, four permission modes"><br><sub><strong>Model &amp; mode.</strong> Model, effort and the permission mode of this conversation; below, the MCP servers it gets from the project.</sub></td>
+<td width="50%"><img src="docs/img/chat-settings.png" alt="The Model and mode dialog: model, effort, four permission modes, what runs without asking"><br><sub><strong>Model &amp; mode.</strong> Model, effort and the permission mode of this conversation; below, what runs without asking and the MCP servers it gets from the project.</sub></td>
 </tr>
 </table>
 

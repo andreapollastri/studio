@@ -40,6 +40,7 @@ test('a permission question is forwarded and the answer lets the turn finish', a
   assert.equal(ask.tool_name, 'Bash');
   assert.equal(ask.input.command, 'npm run build');
   assert.equal(ask.description, 'Build the assets');
+  assert.deepEqual(ask.suggestions, ['Bash(npm run build:*)']);
   assert.equal(session.state, 'waiting_permission');
 
   session.answerPermission('req_1', 'allow');
@@ -363,5 +364,20 @@ test('on an API key the plan is not asked about', async () => {
   await new Promise((r) => setTimeout(r, 100));
   await session.close();
   assert.ok(!studio.events().some((e) => e.type === 'plan_usage'));
+  await studio.close();
+});
+
+test('"Always allow" answers with the rule for the rest of the session', async () => {
+  const studio = await startCollector();
+  const session = new Session('13', testConfig(), { spawn: spawnFake });
+
+  session.sendTurn({ text: 'tool please', permission_mode: 'default', callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'permission_request'));
+  assert.throws(() => session.answerPermission('req_1', 'allow', null, null, ['rm -rf /']), /allowed_tools/);
+  session.answerPermission('req_1', 'allow', null, null, ['Bash(npm run build:*)']);
+  await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  await session.close();
+
+  assert.match(studio.events().find((e) => e.type === 'tool_result').content, /always session:Bash\(npm run build:\*\)/);
   await studio.close();
 });

@@ -131,9 +131,12 @@ rl.on('line', (line) => {
     say('Prima lancio la build.', 'msg_tool');
     out({ type: 'assistant', session_id: sessionId, uuid: next(), parent_tool_use_id: null, message: { id: 'msg_tool', role: 'assistant', model, content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'npm run build' } }] } });
 
-    const finish = (allowed) => {
+    const finish = (allowed, response = {}) => {
       if (allowed) {
-        out({ type: 'user', session_id: sessionId, uuid: next(), parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'built in 1.2s', is_error: false }] } });
+        // rules that came back with the answer ("Always allow") show in the result, for the tests
+        const always = (response.updatedPermissions ?? []).flatMap((update) => update.rules.map((rule) => `${update.destination}:${rule.toolName}(${rule.ruleContent})`));
+        const content = `built in 1.2s${always.length ? ` · always ${always.join(', ')}` : ''}`;
+        out({ type: 'user', session_id: sessionId, uuid: next(), parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content, is_error: false }] } });
         say('Fatto, assets ricompilati.', 'msg_done');
         result('Fatto, assets ricompilati.');
       } else {
@@ -144,7 +147,7 @@ rl.on('line', (line) => {
 
     if (hasStdioPermissions && permissionMode !== 'bypassPermissions') {
       pending = { requestId: 'req_1', finish };
-      out({ type: 'control_request', request_id: 'req_1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'npm run build' }, tool_use_id: 'toolu_1', description: 'Build the \u001b[1massets\u001b[0m' } });
+      out({ type: 'control_request', request_id: 'req_1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'npm run build' }, tool_use_id: 'toolu_1', description: 'Build the \u001b[1massets\u001b[0m', permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm run build:*' }], behavior: 'allow', destination: 'localSettings' }] } });
     } else {
       finish(true);
     }

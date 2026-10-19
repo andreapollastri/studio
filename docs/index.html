@@ -2211,10 +2211,10 @@
         </figure>
 
         <figure class="shot">
-          <img src="img/chat-permission.png" alt="A permission card asking to run npm run build, with Allow and Deny buttons, the preview of the branch on the right" loading="lazy" width="2880" height="1920" />
-          <figcaption><strong>Approve what matters.</strong> Implementation starts on a branch. Before rebuilding the front-end
-            assets, Claude asks: the PM's preset, <em>Ask before actions</em>, lets nothing outside its automatic scope run
-            without her. One click, and the preview on the right shows the new filter on her own branch.</figcaption>
+          <img src="img/chat-permission.png" alt="A permission card asking to run php artisan migrate:fresh --seed, with Allow, Always allow and Deny buttons, the preview of the branch on the right" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Approve what matters.</strong> Implementation starts on a branch. Tests, linters and the asset
+            build run on their own; before wiping the workspace database, Claude asks. <em>Allow</em> lets it run once,
+            <em>Always allow</em> for good on this project; the preview on the right shows the new filter on her own branch.</figcaption>
         </figure>
 
         <figure class="shot">
@@ -2274,7 +2274,7 @@
             <thead><tr><th>Role</th><th>Can</th><th>Permission preset</th></tr></thead>
             <tbody>
               <tr><td><strong>Administrator</strong></td><td>Everything, on every project, without being a member: the projects and their <em>Settings</em> tab, members and roles, people, service accounts; a workspace on every project; the <a href="#infra">infrastructure connectors</a>, whose pages no other role sees</td><td><code>acceptEdits</code></td></tr>
-              <tr><td><strong>PM</strong></td><td>On the projects where they are PM: chat, approve; preview, changes and history, terminal and files of their own workspace; the <em>Repository</em> tab; what is shared with the project's PMs</td><td><code>default</code>: Claude asks before commands and edits outside the automatic scope</td></tr>
+              <tr><td><strong>PM</strong></td><td>On the projects where they are PM: chat, approve; preview, changes and history, terminal and files of their own workspace; the <em>Repository</em> tab; what is shared with the project's PMs</td><td><code>default</code>: Claude asks before edits and before commands it may not run on its own</td></tr>
               <tr><td><strong>Developer</strong></td><td>The same as a PM, with the developer's preset: implement, test, open pull requests; and the project's SSH connections</td><td><code>acceptEdits</code>: edits run, commands still ask</td></tr>
               <tr><td><strong>Client</strong></td><td>Look: the project site as preview, its Larapilot dashboard, and what is shared with the project's clients in its <em>Access</em> and <em>Infrastructure</em> tabs; no chat, no workspace, no repository</td><td>—</td></tr>
             </tbody>
@@ -3448,7 +3448,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             <tbody>
               <tr><td><strong>Model</strong></td><td>Default, Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 (the list is in <code>config/studio.php</code>)</td><td><code>--model</code></td></tr>
               <tr><td><strong>Effort</strong></td><td>Default, low, medium, high, max: how much the model thinks before it answers</td><td><code>--effort</code></td></tr>
-              <tr><td><strong>Ask before actions</strong></td><td>Claude asks before commands and edits outside the automatic scope</td><td><code>--permission-mode default</code></td></tr>
+              <tr><td><strong>Ask before actions</strong></td><td>Claude asks before edits and before commands it may not run on its own (below)</td><td><code>--permission-mode default</code></td></tr>
               <tr><td><strong>Ask, edits allowed</strong></td><td>File edits in the workspace run; commands still ask</td><td><code>acceptEdits</code></td></tr>
               <tr><td><strong>Autopilot</strong></td><td>No questions: Claude Code's classifier reviews each action before it runs; the turn goes to the end on its own</td><td><code>auto</code></td></tr>
               <tr><td><strong>Plan only</strong></td><td>Reads, reasons and proposes; changes nothing</td><td><code>plan</code></td></tr>
@@ -3458,6 +3458,19 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <p>Which modes a person may pick follows their role on the project: <code>modes_by_role</code> in
           <code>config/studio.php</code>; the role's starting mode is <code>permission_mode</code>. Bypass mode, the one with no review at all, is not offered and is disabled in
           every workspace by the managed settings: autopilot is as far as it goes.</p>
+
+        <h3>What runs without asking</h3>
+        <p>In every mode but <em>Plan only</em>, three things run without a card: Claude Code's own read-only commands
+          (<code>ls</code>, <code>cat</code>, <code>grep</code>, <code>git status</code>, <code>git diff</code>…); the everyday
+          commands of the person's role, <code>allowed_tools</code> in <code>config/studio.php</code> (tests, Pint, PHPStan,
+          <code>composer install</code>, <code>npm ci</code>, <code>npm run build</code>, <code>git add</code> and
+          <code>git commit</code>, nothing that leaves the workspace); and what the person allowed for good.</p>
+        <p><strong>Always allow</strong> on a permission card runs the command and stops asking for it on that project, for
+          that person: the rule Claude Code suggests (<code>composer require …</code>, any package), or, for a plain command,
+          its runner and name with any arguments. A line with shell syntax (<code>&amp;&amp;</code>, pipes, redirections) gets no
+          such button: it asks each time. The running conversation stops asking at once, and every later one gets the rule
+          as <code>--allowedTools</code>. The rules are listed under <em>Runs without asking</em> in <em>Model &amp; mode</em>,
+          where <strong>×</strong> takes one back.</p>
       </section>
 
 <!-- Work: skills and questions -->

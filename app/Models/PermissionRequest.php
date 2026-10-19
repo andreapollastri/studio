@@ -20,12 +20,13 @@ use Illuminate\Support\Carbon;
  * @property string $tool_name
  * @property string|null $description
  * @property array<string, mixed>|null $input
+ * @property list<string>|null $suggestions the rules Claude Code suggested to allow it from now on
  * @property PermissionStatus $status
  * @property int|null $decided_by
  * @property Carbon|null $decided_at
  * @property-read Conversation $conversation
  */
-#[Fillable(['conversation_id', 'request_id', 'tool_name', 'description', 'input', 'status', 'decided_by', 'decided_at'])]
+#[Fillable(['conversation_id', 'request_id', 'tool_name', 'description', 'input', 'suggestions', 'status', 'decided_by', 'decided_at'])]
 class PermissionRequest extends Model
 {
     /** @use HasFactory<PermissionRequestFactory> */
@@ -40,6 +41,7 @@ class PermissionRequest extends Model
     {
         return [
             'input' => 'array',
+            'suggestions' => 'array',
             'status' => PermissionStatus::class,
             'decided_at' => 'datetime',
         ];

@@ -3,6 +3,7 @@
 namespace App\Bridge;
 
 use App\Accounts\Accounts;
+use App\Claude\AllowRules;
 use App\Mcp\NativeServers;
 use App\Models\Conversation;
 use App\Models\PermissionRequest;
@@ -68,6 +69,8 @@ final class BridgeClient
             'browser' => $this->browser($conversation),
             // a sandboxed conversation runs in its worktree; one whose sandbox is not ready never gets here
             'sandbox' => $conversation->isSandboxed() ? $conversation->sandboxName() : null,
+            // what runs without asking: the role's everyday commands and the person's "Always allow"
+            'allowed_tools' => AllowRules::forTurn($conversation->user, $conversation->workspace->project),
             'callback' => [
                 'url' => $this->callbackUrl(),
                 'token' => $this->workspace->callback_token,
@@ -159,13 +162,14 @@ final class BridgeClient
 
     /**
      * @param  array<string, string>|null  $answers  AskUserQuestion: question text → the person's answer
+     * @param  list<string>|null  $rules  "Always allow": rules the running session applies at once
      * @return array<string, mixed>
      */
-    public function answerPermission(PermissionRequest $request, bool $allow, ?string $message = null, ?array $answers = null): array
+    public function answerPermission(PermissionRequest $request, bool $allow, ?string $message = null, ?array $answers = null, ?array $rules = null): array
     {
         return $this->request(fn (PendingRequest $http) => $http->post(
             "/conversations/{$request->conversation_id}/permissions/{$request->request_id}",
-            ['behavior' => $allow ? 'allow' : 'deny', 'message' => $message, ...($answers ? ['answers' => $answers] : [])],
+            ['behavior' => $allow ? 'allow' : 'deny', 'message' => $message, ...($answers ? ['answers' => $answers] : []), ...($rules ? ['rules' => $rules] : [])],
         ));
     }
 
