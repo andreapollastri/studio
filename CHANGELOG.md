@@ -4,6 +4,12 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.3.1
+
+- The bridge checks the rules a turn may run without asking (`allowed_tools`) before it checks that no other turn
+  is running: a rule that is not one is refused as a bad request whatever the conversation is doing, like an unknown
+  mode or effort. Its test waits for the turn before it, which made it fail on slower machines.
+
 ## 2.3.0
 
 Fewer "Claude wants to run Bash", a chat input that knows its skills, and a faster chat.
