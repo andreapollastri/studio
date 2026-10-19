@@ -58,6 +58,14 @@ rl.on('line', (line) => {
     return;
   }
 
+  if (message.type === 'control_response' && message.response?.request_id === 'req_unknown') {
+    // the bridge answered a request it does not handle: the turn goes on with what it said
+    const said = `${message.response.subtype}: ${message.response.error ?? ''}`;
+    out({ type: 'assistant', session_id: sessionId, uuid: next(), parent_tool_use_id: null, message: { id: 'msg_unknown', role: 'assistant', model, content: [{ type: 'text', text: said }] } });
+    out({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1, num_turns: 1, session_id: sessionId, result: said, uuid: next() });
+    return;
+  }
+
   if (message.type === 'control_response') {
     const response = message.response ?? {};
     if (pending && response.request_id === pending.requestId) {
@@ -71,6 +79,11 @@ rl.on('line', (line) => {
 
   if (message.type !== 'user') return;
   const text = message.message?.content?.[0]?.text ?? '';
+
+  if (text === 'unknown request') {
+    out({ type: 'control_request', request_id: 'req_unknown', request: { subtype: 'elicitation', message: 'Pick one' } });
+    return;
+  }
 
   if (text.startsWith('crash')) {
     const said = text.slice('crash'.length).trim();

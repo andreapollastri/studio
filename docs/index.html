@@ -3514,6 +3514,11 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           several where the question allows it, and a field for an answer of your own. <em>Answer</em> sends the choices back to
           the same turn and Claude goes on; <em>Skip</em> lets it go on with its own judgement and say what it chose. The
           conversation waits for the card like it waits for a permission.</p>
+        <p>Questions reach you in <em>Ask before actions</em>, <em>Ask, edits allowed</em> and <em>Plan only</em>. Two cases
+          keep them from you, both Claude Code's own: in <em>Autopilot</em> nothing waits for a person, so a question is
+          refused and Claude goes on with its own choice; and a subagent cannot ask at all, so a skill that hands its
+          interview to a subagent never shows the card. When Claude Code refuses a question, the chat says so in a notice,
+          with what to do, instead of going on in silence; in Autopilot it also says which tools the classifier stopped.</p>
       </section>
 
 <!-- Work: panes -->

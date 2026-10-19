@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $uuid
  * @property int $conversation_id
  * @property string $request_id
+ * @property string|null $tool_use_id the tool call the request is about
  * @property string $tool_name
  * @property string|null $description
  * @property array<string, mixed>|null $input
@@ -26,7 +27,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $decided_at
  * @property-read Conversation $conversation
  */
-#[Fillable(['conversation_id', 'request_id', 'tool_name', 'description', 'input', 'suggestions', 'status', 'decided_by', 'decided_at'])]
+#[Fillable(['conversation_id', 'request_id', 'tool_use_id', 'tool_name', 'description', 'input', 'suggestions', 'status', 'decided_by', 'decided_at'])]
 class PermissionRequest extends Model
 {
     /** @use HasFactory<PermissionRequestFactory> */

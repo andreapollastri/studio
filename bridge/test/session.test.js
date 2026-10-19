@@ -381,3 +381,16 @@ test('"Always allow" answers with the rule for the rest of the session', async (
   assert.match(studio.events().find((e) => e.type === 'tool_result').content, /always session:Bash\(npm run build:\*\)/);
   await studio.close();
 });
+
+test('a control request the bridge does not handle gets an error answer, so the turn goes on', async () => {
+  const studio = await startCollector();
+  const session = new Session('14', testConfig(), { spawn: spawnFake });
+
+  session.sendTurn({ text: 'unknown request', permission_mode: 'default', callback: callback(studio) });
+  const result = await waitFor(() => studio.events().find((e) => e.type === 'result'));
+  await session.close();
+
+  assert.equal(result.result, 'error: Studio does not handle elicitation');
+  assert.ok(studio.events().some((e) => e.type === 'raw'));
+  await studio.close();
+});

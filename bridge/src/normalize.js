@@ -64,6 +64,9 @@ function normalizeSystem(line) {
       return [task(line, 'started')];
     case 'task_notification':
       return [task(line, 'finished'), { type: 'status', status: 'task_notification', summary: line.summary ?? null }];
+    // Claude Code refused a tool on its own (a mode, a rule, no person to ask): Studio says so in the chat
+    case 'permission_denied':
+      return [{ type: 'permission_denied', tool_name: line.tool_name ?? line.toolName ?? null, tool_use_id: line.tool_use_id ?? null, reason: line.reason ?? line.message ?? line.decision_reason ?? null }];
     default:
       return [raw(line)];
   }
@@ -144,6 +147,10 @@ function normalizeResult(line) {
     usage: line.usage ?? null,
     context_window: modelUsage?.contextWindow ?? null,
     stop_reason: line.stop_reason ?? null,
+    // the tools Claude Code refused during the turn, a person's Deny included
+    permission_denials: Array.isArray(line.permission_denials)
+      ? line.permission_denials.map((denial) => ({ tool_name: denial?.tool_name ?? null, tool_use_id: denial?.tool_use_id ?? null })).filter((denial) => denial.tool_name)
+      : [],
   }];
 }
 

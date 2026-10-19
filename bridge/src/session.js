@@ -380,9 +380,13 @@ export class Session extends EventEmitter {
     const requestId = line.request_id;
 
     if (request.subtype !== 'can_use_tool' || !requestId) {
-      // Other control questions are the CLI talking to a client we are not;
-      // keep them visible without pretending to understand them.
+      // Other control questions are the CLI talking to a client we are not: keep them, and
+      // say we do not handle them, so the CLI goes on instead of waiting for ever.
+      this.#log(`control request not handled: ${request.subtype ?? 'unknown'}`);
       this.#emitEvents(normalize({ ...line, type: 'control_request_other' }));
+      if (requestId) {
+        this.#write({ type: 'control_response', response: { subtype: 'error', request_id: requestId, error: `Studio does not handle ${request.subtype ?? 'this request'}` } });
+      }
       return;
     }
 

@@ -115,3 +115,43 @@ test('the settings list the person\'s rules and × removes one; a plain Allow ad
     expect(PermissionRule::query()->count())->toBe(0);
     Http::assertSent(fn (Request $sent) => str_contains($sent->url(), '/permissions/') && ! isset($sent['rules']));
 });
+
+test('a question Claude Code refused on its own is said in the chat, once; a person\'s Skip is not', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running, 'permission_mode' => 'auto']);
+    $post = fn (array $events) => $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), ['conversation' => (string) $conversation->id, 'events' => $events])->assertOk();
+
+    // Autopilot: the question never reached a card
+    $post([['type' => 'permission_denied', 'tool_name' => 'AskUserQuestion', 'tool_use_id' => 'toolu_q1', 'reason' => null]]);
+    // the result lists it again, with a Bash the classifier stopped
+    $post([['type' => 'result', 'subtype' => 'success', 'session_id' => 's', 'permission_denials' => [
+        ['tool_name' => 'AskUserQuestion', 'tool_use_id' => 'toolu_q1'],
+        ['tool_name' => 'Bash', 'tool_use_id' => 'toolu_b1'],
+    ]]]);
+
+    $notices = $conversation->messages()->where('kind', 'notice')->pluck('content');
+    expect($notices)->toHaveCount(2)
+        ->and($notices[0])->toContain('in Autopilot its questions cannot reach you')
+        ->and($notices[1])->toContain('Autopilot did not let Bash run');
+});
+
+test('in the asking modes only refused questions are said, and not those the person skipped on a card', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->running()->create(['user_id' => $user->id]);
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running, 'permission_mode' => 'acceptEdits']);
+    $post = fn (array $events) => $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), ['conversation' => (string) $conversation->id, 'events' => $events])->assertOk();
+
+    $post([['type' => 'permission_request', 'request_id' => 'req_q', 'tool_name' => 'AskUserQuestion', 'tool_use_id' => 'toolu_skipped', 'input' => ['questions' => []]]]);
+    expect($conversation->pendingPermission()->tool_use_id)->toBe('toolu_skipped');
+
+    $post([['type' => 'result', 'subtype' => 'success', 'session_id' => 's', 'permission_denials' => [
+        ['tool_name' => 'AskUserQuestion', 'tool_use_id' => 'toolu_skipped'],
+        ['tool_name' => 'Bash', 'tool_use_id' => 'toolu_denied_by_person'],
+        ['tool_name' => 'AskUserQuestion', 'tool_use_id' => 'toolu_lost'],
+    ]]]);
+
+    $notices = $conversation->messages()->where('kind', 'notice')->pluck('content');
+    expect($notices)->toHaveCount(1)
+        ->and($notices[0])->toContain('Claude Code did not let the question through');
+});

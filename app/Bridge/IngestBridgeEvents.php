@@ -49,6 +49,7 @@ final class IngestBridgeEvents
                 'tool_result' => $this->toolResult($conversation, $event),
                 'permission_request' => $this->permissionRequest($conversation, $event),
                 'permission_resolved' => $this->permissionResolved($conversation, $event),
+                'permission_denied' => $this->denied($conversation, $event),
                 'result' => $this->result($conversation, $event),
                 'error' => $this->error($conversation, $event),
                 'text_delta' => ConversationUpdated::dispatch($conversation->uuid, 'text_delta', ['text' => (string) ($event['text'] ?? '')]),
@@ -330,6 +331,7 @@ final class IngestBridgeEvents
             ['conversation_id' => $conversation->id, 'request_id' => $requestId],
             [
                 'tool_name' => (string) ($event['tool_name'] ?? 'tool'),
+                'tool_use_id' => isset($event['tool_use_id']) ? (string) $event['tool_use_id'] : null,
                 'description' => isset($event['description']) ? Str::limit(strip_tags((string) $event['description']), 1000) : null,
                 'input' => is_array($event['input'] ?? null) ? $event['input'] : [],
                 'suggestions' => array_values(array_filter((array) ($event['suggestions'] ?? []), fn ($rule) => is_string($rule) && AllowRules::valid($rule))),
@@ -365,6 +367,12 @@ final class IngestBridgeEvents
     private function result(Conversation $conversation, array $event): void
     {
         $isError = (bool) ($event['is_error'] ?? false);
+
+        foreach ((array) ($event['permission_denials'] ?? []) as $denial) {
+            if (is_array($denial)) {
+                $this->denied($conversation, $denial);
+            }
+        }
 
         $conversation->forceFill([
             'agent_session_id' => $event['session_id'] ?? $conversation->agent_session_id,
@@ -417,6 +425,54 @@ final class IngestBridgeEvents
         ]);
 
         $conversation->setStatus(ConversationStatus::Failed);
+    }
+
+    /**
+     * Claude Code refused a tool on its own, with no card for the person: a question that could not
+     * reach them (Autopilot, or a rule) says so in the chat, and so does what Autopilot's classifier
+     * stopped. A refusal of a call that had a card was the person's own Deny or Skip.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private function denied(Conversation $conversation, array $event): void
+    {
+        $tool = (string) ($event['tool_name'] ?? '');
+        $call = (string) ($event['tool_use_id'] ?? '');
+        $question = $tool === 'AskUserQuestion';
+
+        if ($tool === '' || (! $question && $conversation->permission_mode !== 'auto')) {
+            return;
+        }
+
+        // the person decided it on a card; or it was said already (the result lists again what the turn refused)
+        if ($call !== '' && ($conversation->permissionRequests()->where('tool_use_id', $call)->exists()
+            || $conversation->messages()->where('kind', Message::KIND_NOTICE)->where('payload->denied', $call)->exists())) {
+            return;
+        }
+
+        $reason = trim((string) ($event['reason'] ?? ''));
+
+        $conversation->messages()->create([
+            'role' => Message::ROLE_SYSTEM,
+            'kind' => Message::KIND_NOTICE,
+            'content' => Str::limit($this->deniedText($tool, $question, $conversation->permission_mode, $reason), 2000),
+            'payload' => ['level' => 'warning', 'denied' => $call !== '' ? $call : null, 'tool' => $tool],
+        ]);
+    }
+
+    private function deniedText(string $tool, bool $question, string $mode, string $reason): string
+    {
+        $why = $reason !== '' ? ' ('.$reason.')' : '';
+
+        if ($question && $mode === 'auto') {
+            return __('Claude wanted to ask you something, but in Autopilot its questions cannot reach you, so it went on by itself. To answer them, switch to "Ask before actions" or "Ask, edits allowed" in Model & mode and ask again.');
+        }
+
+        if ($question) {
+            return __('Claude wanted to ask you something, but Claude Code did not let the question through:reason, so it went on by itself. Ask again; if it keeps happening, tell your administrator.', ['reason' => $why]);
+        }
+
+        return __('Autopilot did not let :tool run:reason. Run it yourself in the Terminal, or switch to "Ask before actions" in Model & mode to decide it here.', ['tool' => $tool, 'reason' => $why]);
     }
 
     /**

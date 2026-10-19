@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\Schema;
 /**
  * "Always allow": the rules a person added from a permission card (Bash(npm run build:*)),
  * each for one project, handed to Claude Code as --allowedTools on every turn of their
- * conversations there; and on each request, the rules Claude Code itself suggested for it.
+ * conversations there; and on each request, the rules Claude Code itself suggested for it and
+ * the tool call it is about (a refusal Claude Code reports for a call with a card was a person's).
  */
 return new class extends Migration
 {
@@ -27,13 +28,15 @@ return new class extends Migration
 
         Schema::table('permission_requests', function (Blueprint $table) {
             $table->json('suggestions')->nullable()->after('input');
+            $table->string('tool_use_id')->nullable()->after('request_id')->index();
         });
     }
 
     public function down(): void
     {
         Schema::table('permission_requests', function (Blueprint $table) {
-            $table->dropColumn('suggestions');
+            $table->dropIndex(['tool_use_id']);
+            $table->dropColumn(['suggestions', 'tool_use_id']);
         });
         Schema::dropIfExists('permission_rules');
     }

@@ -26,6 +26,14 @@ Fewer "Claude wants to run Bash", a chat input that knows its skills, and a fast
   a click starts the highlighted one, Tab writes it so a request can follow, Esc closes the list.
 - **Enter sends**, Shift+Enter starts a new line (it was ⌘⏎ / Ctrl+⏎).
 
+### Questions that cannot reach you are said
+- When Claude Code refuses one of Claude's questions on its own (in *Autopilot* nothing waits for a person), the chat
+  now says so in a notice, with what to do, instead of Claude going on in silence; in *Autopilot* it also names the
+  tools the classifier stopped. The bridge forwards Claude Code's `permission_denied` messages and the result's
+  `permission_denials`; a refusal of a call that had a card (the person's Deny or Skip) is not repeated.
+- A control request the bridge does not handle gets an error answer, so the turn goes on instead of waiting, and it
+  is logged.
+
 ### A faster chat
 - **No queue between a message and Claude.** The hand-off to the bridge (and the answer to a permission card) ran on
   Studio's one queue worker, after up to two seconds of its sleep and behind whatever was there: a workspace being

@@ -63,3 +63,12 @@ test('hook payloads are dropped and unknown types are kept raw but bounded', () 
 test('ansi escapes are stripped from reasons', () => {
   assert.equal(stripAnsi('Build the \u001b[1massets\u001b[0m'), 'Build the assets');
 });
+
+test('what Claude Code refused on its own reaches Studio: as it happens, and listed with the result', () => {
+  assert.deepEqual(normalize({ type: 'system', subtype: 'permission_denied', tool_name: 'AskUserQuestion', tool_use_id: 'toolu_q', reason: 'no host' }), [
+    { type: 'permission_denied', tool_name: 'AskUserQuestion', tool_use_id: 'toolu_q', reason: 'no host' },
+  ]);
+  const [result] = normalize({ type: 'result', subtype: 'success', result: 'ok', permission_denials: [{ tool_name: 'Bash', tool_use_id: 'toolu_b', tool_input: { command: 'rm -rf /' } }, { nope: 1 }] });
+  assert.deepEqual(result.permission_denials, [{ tool_name: 'Bash', tool_use_id: 'toolu_b' }]);
+  assert.deepEqual(normalize({ type: 'result', subtype: 'success', result: 'ok' })[0].permission_denials, []);
+});
