@@ -291,6 +291,12 @@ if [ -z "$STUDIO_REF" ]; then
 fi
 MAIN_SHORT=$(git ls-remote "$STUDIO_REPO" refs/heads/main 2>/dev/null | cut -c1-7 || true)
 if [ -z "$STUDIO_REF" ]; then
+    # release tags without their v (2.2.0) are not releases for the installer and the updater: say so
+    unprefixed=$(git ls-remote --tags --refs "$STUDIO_REPO" 2>/dev/null | awk '{print $2}' | sed 's#^refs/tags/##' \
+        | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1 || true)
+    if [ -n "$unprefixed" ]; then
+        warn "the repository has release tags without their v (the newest is $unprefixed): only vX.Y.Z tags are releases"
+    fi
     warn "no release of Studio is published yet: installing the head of main; the first release replaces it"
     STUDIO_REF=main
 fi

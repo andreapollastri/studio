@@ -2,11 +2,14 @@ name: release
 
 # A release is a vMAJOR.MINOR.PATCH tag whose VERSION file says the same:
 # every Studio server installs it on its next update (studio-update), so the
-# tag must point at a commit that passed the tests.
+# tag must point at a commit that passed the tests. A tag without the v (what
+# GitHub's "Create a new release" makes when the v is left out) is invisible to
+# the installer and the updater: it fails here, saying which tag to push.
 on:
   push:
     tags:
       - 'v*'
+      - '[0-9]*'
 
 permissions:
   contents: read
@@ -23,5 +26,9 @@ jobs:
       - name: The tag is a stable release and matches VERSION
         run: |
           tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" =~ ^[0-9] ]]; then
+            echo "::error::$tag has no v: servers only see vX.Y.Z tags. Tag this commit v$(tr -d '[:space:]' < VERSION) (git tag v$(tr -d '[:space:]' < VERSION) $GITHUB_SHA && git push origin v$(tr -d '[:space:]' < VERSION)), and pick that tag for the GitHub release."
+            exit 1
+          fi
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::warning::$tag is not a stable release tag: servers ignore it"; exit 0; }
           [ "v$(tr -d '[:space:]' < VERSION)" = "$tag" ] || { echo "::error::VERSION says $(cat VERSION), the tag says $tag: servers refuse this release"; exit 1; }
