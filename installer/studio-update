@@ -76,6 +76,14 @@ export STUDIO_HOME STUDIO_ETC=$ETC
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 say() { printf '[%s] %s\n' "$(date '+%F %T')" "$*"; }
 bool() { if "$@"; then echo true; else echo false; fi; }
+# quietly CMD…: nothing when it works; when it fails, the end of what it said (Composer's and
+# npm's own --quiet would hide that too)
+quietly() {
+    local out
+    out=$("$@" 2>&1) && return 0
+    printf '%s\n' "$out" | tail -n 25
+    return 1
+}
 
 is_tag() { [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 is_version() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
@@ -438,8 +446,8 @@ cmd_apply() {
     ln -sfn "$SHARED/.env" "$rel/.env"
     rm -rf "$rel/storage"; ln -sfn "$SHARED/storage" "$rel/storage"
     chown -R studio:studio "$rel"; chmod 751 "$rel"
-    ( cd "$rel" && as_studio "php$php_new" /usr/local/bin/composer install --no-dev --no-interaction --prefer-dist --no-progress --optimize-autoloader --quiet ) || drop "composer install of $TARGET_LABEL failed"
-    ( cd "$rel" && as_studio npm ci --no-audit --no-fund --silent && as_studio npm run build --silent ) || drop "the asset build of $TARGET_LABEL failed"
+    ( cd "$rel" && quietly as_studio "php$php_new" /usr/local/bin/composer install --no-dev --no-interaction --prefer-dist --no-progress --optimize-autoloader ) || drop "composer install of $TARGET_LABEL failed"
+    ( cd "$rel" && quietly as_studio npm ci --no-audit --no-fund && quietly as_studio npm run build ) || drop "the asset build of $TARGET_LABEL failed"
     rm -rf "$rel/node_modules"
 
     # 5. database

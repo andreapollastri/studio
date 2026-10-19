@@ -4,6 +4,25 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.1.2
+
+Fresh installs work again, on Ubuntu 26.04 too.
+
+- **A fresh install stopped at `composer install`** (`package:discover … returned with error code 1`): 2.1 set how
+  long "remember me" lasts by building the sign-in guard as Studio booted, and with it the encrypted session store,
+  which needs `APP_KEY`; the installer generates the key only after Composer, so every `artisan` command before it
+  failed. The thirty days are now the `remember` option of the web guard (`config/auth.php`, still
+  `STUDIO_REMEMBER_MINUTES`), read when the guard is first used. A test boots Studio with no key.
+- **A false error about SSH's ports**: on a server whose `/etc/ssh/sshd_config.d/` has no `.conf` file (Ubuntu 26.04),
+  the installer printed `ERROR … system.sh:327` twice while reading which ports sshd listens on. It carried on and the
+  firewall was right; it no longer says so.
+- **Why Composer or npm failed is on screen**: the installer sends their output to `/var/log/studio-install.log`
+  like apt's, and shows its last lines when one fails; the updater shows them in its log. Their own `--quiet` used to
+  hide the reason, leaving only the exit code.
+- **postcss-selector-parser 7.1.6** in place of the 6.0.10 that `@tailwindcss/typography` pins (quadratic parsing of
+  long flat selectors, advisory for every version before 7.1.6). It runs only when the assets are built, on Studio's own CSS,
+  so no installation was exposed; the built CSS is byte for byte the same.
+
 ## 2.1.1
 
 Claude Code's sign-in, kept to the letter of Anthropic's terms for a platform that hosts it.

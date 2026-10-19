@@ -27,7 +27,7 @@ set -Eeuo pipefail
 
 # A command that fails stops the installer (set -e); say so, and where, instead of
 # going quiet. -E above carries the trap into the functions of installer/lib/system.sh.
-trap 'printf "\n\033[1;31mERROR: the installer stopped at %s:%s\n  command: %s\n  apt, NodeSource and npm wrote to %s; its last lines may say why.\n  Fix the cause and run the installer again: it picks up where things are.\033[0m\n" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND" "${STUDIO_APT_LOG:-/var/log/studio-install.log}" >&2' ERR
+trap 'printf "\n\033[1;31mERROR: the installer stopped at %s:%s\n  command: %s\n  apt, NodeSource, Composer and npm wrote to %s; its last lines may say why.\n  Fix the cause and run the installer again: it picks up where things are.\033[0m\n" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND" "${STUDIO_APT_LOG:-/var/log/studio-install.log}" >&2' ERR
 
 STUDIO_REPO=${STUDIO_REPO:-https://github.com/andreapollastri/studio.git}
 STUDIO_REF=${STUDIO_REF:-}          # a release tag (vX.Y.Z) to install instead of the newest one
@@ -379,10 +379,18 @@ rm -rf "$RELEASE/storage"; ln -sfn "$STUDIO_HOME/shared/storage" "$RELEASE/stora
 chown -R studio:studio "$RELEASE"; chmod 751 "$RELEASE"
 
 as_studio() { sudo -u studio env HOME=/var/lib/studio COMPOSER_HOME=/var/lib/studio/.composer "$@"; }
+# Composer and npm write to the log like apt (their --quiet hides why they failed too);
+# when one fails, the end of the log is on screen
+build_run() {
+    as_studio "$@" >>"$STUDIO_APT_LOG" 2>&1 && return 0
+    warn "$* failed; the end of $STUDIO_APT_LOG:"
+    tail -n 25 "$STUDIO_APT_LOG" | sed 's/^/      /' >&2
+    return 1
+}
 cd "$RELEASE"
-as_studio "php${STUDIO_PHP}" /usr/local/bin/composer install --no-dev --no-interaction --prefer-dist --no-progress --optimize-autoloader --quiet
-as_studio npm ci --no-audit --no-fund --silent
-as_studio npm run build --silent
+build_run "php${STUDIO_PHP}" /usr/local/bin/composer install --no-dev --no-interaction --prefer-dist --no-progress --optimize-autoloader
+build_run npm ci --no-audit --no-fund
+build_run npm run build
 rm -rf "$RELEASE/node_modules"
 as_studio "php${STUDIO_PHP}" artisan key:generate --force --quiet
 as_studio "php${STUDIO_PHP}" artisan migrate --force --quiet
