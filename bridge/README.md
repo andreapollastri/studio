@@ -17,7 +17,7 @@ Zero dependencies, Node 20+.
 
 ```bash
 BRIDGE_TOKEN=secret WORKSPACE_DIR=/path/to/laravel-project node bin/bridge.js
-# optional: CLAUDE_BIN, BRIDGE_PORT (4455), BRIDGE_IDLE_TTL (600s), BRIDGE_FLUSH_MS (200),
+# optional: CLAUDE_BIN, BRIDGE_PORT (4455), BRIDGE_IDLE_TTL (600s), BRIDGE_FLUSH_MS (100),
 # BRIDGE_BROWSER_MCP (playwright-mcp), BRIDGE_BROWSER_EXECUTABLE, BRIDGE_BROWSER_NO_SANDBOX, BRIDGE_SANDBOX_ROOT
 ```
 
@@ -31,7 +31,8 @@ Studio in advance.
 | GET | `/health` | | version, uptime (open) |
 | GET | `/info` | | version, workspace, sessions |
 | POST | `/conversations/{key}/turns` | `{text, session_id?, permission_mode?, model?, callback: {url, token}}` | 202, session snapshot; 409 while a turn runs |
-| POST | `/conversations/{key}/permissions/{request_id}` | `{behavior: allow\|deny, message?}` | snapshot |
+| POST | `/conversations/{key}/warm` | the turn's settings, without `text` | starts the CLI for the next turn (`warmed`), reused when nothing changed; ends after `BRIDGE_IDLE_TTL` unused |
+| POST | `/conversations/{key}/permissions/{request_id}` | `{behavior: allow\|deny, message?, answers?, rules?}` | snapshot; `rules` ("Always allow") apply to the session at once |
 | POST | `/conversations/{key}/interrupt` | | snapshot |
 | GET | `/conversations[/{key}]` | | snapshots |
 | GET | `/skills` | | `{skills: [{name, description, source}]}` |

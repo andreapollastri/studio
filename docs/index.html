@@ -2249,7 +2249,8 @@
             <code>browser</code>
           </div>
           <p class="command-flow-note">Text, tool calls, results and permission questions come back as small batches. Studio
-            stores them, broadcasts them to the open chat, and polls as a fallback when no websocket is available.</p>
+            stores them and broadcasts them to the open chat: the text as it is typed grows in the browser, a stored event
+            asks the page for one refresh. Without a websocket the page polls instead.</p>
         </div>
 
         <div class="chat-example">
@@ -3374,8 +3375,14 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="walkthrough-grid">
           <dl><dt>Messages</dt><dd>Yours on the right. Claude's as prose, with Markdown rendered and code inline. System
             notices, in red when something failed, say what to do.</dd></dl>
-          <dl><dt>Streaming</dt><dd>Text arrives as it is typed over Reverb. Without a websocket the chat polls every few
-            seconds while the agent works; nothing is lost either way.</dd></dl>
+          <dl><dt>Streaming</dt><dd>Text arrives as it is typed over Reverb, ten times a second, and grows in the browser
+            without asking the server. Without a websocket the chat polls every few seconds while the agent works; nothing is
+            lost either way.</dd></dl>
+          <dl><dt>Speed</dt><dd>A message reaches the bridge as soon as it is sent, never through the queue where workspaces
+            are built and sites deploy. Focusing the input starts Claude Code for the next turn already, with the model,
+            mode and account it will run on, so the first message after a pause does not wait for it to boot; the process
+            stays ten minutes after the last turn (<code>BRIDGE_IDLE_TTL</code>). The model and the effort of <em>Model &amp;
+            mode</em> weigh most on the rest: Sonnet or Haiku with a low effort answer quickest.</dd></dl>
           <dl><dt>Sessions</dt><dd>A conversation keeps its Claude session id. Close the laptop, come back tomorrow: the next
             message resumes with the same memory. The title is the first message, trimmed.</dd></dl>
           <dl><dt>Interrupt</dt><dd>Stops the current turn. The process is released; the next message resumes the session.</dd></dl>
@@ -4766,7 +4773,8 @@ bridge ──stdio──▶ Playwright MCP  <span class="comment">the agent's br
 
         <div class="layer-stack">
           <div class="layer-card"><strong>App\Bridge\BridgeClient</strong><p>Sends turns, permission answers and interrupts to
-            the bridge, and tells it with every turn where to call back and with which token.</p></div>
+            the bridge, warms the process of the next turn, and tells it with every turn where to call back and with which
+            token.</p></div>
           <div class="layer-card"><strong>App\Bridge\IngestBridgeEvents</strong><p>Turns the bridge's events into messages,
             permission requests, status changes and <code>ConversationUpdated</code> broadcasts. <code>text_delta</code> is
             broadcast only, never stored.</p></div>
@@ -4873,7 +4881,7 @@ bridge ──stdio──▶ Playwright MCP  <span class="comment">the agent's br
           <code>X-Studio-Sandbox: &lt;name&gt;</code> header, the <code>/git</code>, <code>/files</code> and <code>/run</code>
           routes work in that sandbox instead of the workspace. Environment: <code>BRIDGE_TOKEN</code>,
           <code>BRIDGE_PORT</code> (4455), <code>BRIDGE_HOST</code> (127.0.0.1), <code>WORKSPACE_DIR</code>,
-          <code>CLAUDE_BIN</code>, <code>BRIDGE_IDLE_TTL</code> (600 s), <code>BRIDGE_FLUSH_MS</code> (200),
+          <code>CLAUDE_BIN</code>, <code>BRIDGE_IDLE_TTL</code> (600 s), <code>BRIDGE_FLUSH_MS</code> (100),
           <code>BRIDGE_SANDBOX_ROOT</code> (where sandboxes go), <code>BRIDGE_BROWSER_MCP</code> (the Playwright MCP command;
           unset, no browser), <code>BRIDGE_STUDIO_AGENTS</code> (Studio's subagents and context, on by default), and the
           terminal and file limits in <a href="#deep-dive-config">Configuration</a>.</p>
@@ -5033,7 +5041,7 @@ bridge ──stdio──▶ Playwright MCP  <span class="comment">the agent's br
   </div>
 
   <footer>
-    <p>Studio v2.1 · Open source · MIT · <a href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a> · <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a></p>
+    <p>Studio v2.3 · Open source · MIT · <a href="https://github.com/andreapollastri/studio" target="_blank" rel="noopener">GitHub</a> · <a href="https://larapilot.web.ap.it" target="_blank" rel="noopener">Larapilot</a></p>
     <p>Made by <a href="https://web.ap.it" target="_blank" rel="noopener">Andrea Pollastri</a></p>
     <p>An independent project, not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic, PBC; Studio runs the Claude Code each person signs in to. <a href="#setup-claude-terms">Anthropic's terms</a>.</p>
   </footer>

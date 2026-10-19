@@ -12,7 +12,9 @@ use InvalidArgumentException;
 
 /**
  * Records what the person said, marks the conversation as working, and
- * queues the hand-off to the bridge. The chat shows the message at once.
+ * hands it to the bridge right after the response has gone: no queue, so a
+ * message never waits behind a workspace being built or a site deploying.
+ * The chat shows the message at once.
  */
 final class StartTurn
 {
@@ -52,7 +54,7 @@ final class StartTurn
 
         $conversation->setStatus(ConversationStatus::Running);
 
-        SendTurn::dispatch($conversation, $text);
+        SendTurn::dispatchAfterResponse($conversation, $text);
 
         ConversationUpdated::dispatch($conversation->uuid, 'messages', ['kinds' => ['user'], 'status' => ConversationStatus::Running->value]);
 

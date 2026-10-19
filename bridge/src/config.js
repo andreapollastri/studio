@@ -19,7 +19,7 @@ export function loadConfig(env = process.env) {
     // Seconds a finished session keeps its process alive for the next turn.
     idleTtl: Number(env.BRIDGE_IDLE_TTL || 600),
     // Milliseconds to coalesce text deltas before posting them to Studio.
-    flushInterval: Number(env.BRIDGE_FLUSH_MS || 200),
+    flushInterval: Number(env.BRIDGE_FLUSH_MS || 100),
     maxBodyBytes: Number(env.BRIDGE_MAX_BODY || 1024 * 1024),
     // Project terminal: seconds a command may run, bytes of output kept, runs remembered.
     runTimeout: Number(env.BRIDGE_RUN_TIMEOUT || 600),

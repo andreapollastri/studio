@@ -1,12 +1,13 @@
 /**
  * The chat's input, as Claude Code's own: Enter sends (Shift+Enter is a new
- * line), and "/" at the start opens the skills and commands this conversation
+ * line), focusing it starts the CLI for the next turn ahead of time, and "/" at the start opens the skills and commands this conversation
  * can start, read once from the bridge through Livewire (Chat::skills). In the
  * list, Enter or a click starts the highlighted one at once, Tab writes it out
  * so a request can follow, Esc closes it.
  */
 function chatComposer() {
     let all = null;
+    let warmed = false;
 
     return {
         open: false,
@@ -15,7 +16,15 @@ function chatComposer() {
         shown: [],
         index: 0,
 
+        /** About to write: Claude Code starts for the next turn now (Chat::warm), once per visit. */
+        warm() {
+            if (warmed) return;
+            warmed = true;
+            this.$wire.warm();
+        },
+
         async typed(event) {
+            this.warm();
             const match = /^\/(\S*)$/.exec(event.target.value);
             if (!match) {
                 this.open = false;
@@ -100,6 +109,8 @@ function chatComposer() {
             if (this.$refs.input.value.trim() === '') return;
             this.$wire.draft = this.$refs.input.value;
             this.open = false;
+            // the next time the person writes, the CLI is checked again (it may have gone idle meanwhile)
+            warmed = false;
             this.$wire.send();
         },
     };

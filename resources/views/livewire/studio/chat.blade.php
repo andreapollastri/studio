@@ -1,7 +1,8 @@
 <div
     class="flex h-full min-h-0 flex-col"
-    @if ($conversation->isBusy() || in_array($conversation->sandboxStatus(), [\App\Models\Conversation::SANDBOX_CREATING, \App\Models\Conversation::SANDBOX_REMOVING], true)) wire:poll.4s="poll" @endif
-    x-data="{ shot: null }"
+    {{-- while something is under way and no websocket brings the news, the page asks every few seconds --}}
+    data-polling="{{ $conversation->isBusy() || in_array($conversation->sandboxStatus(), [\App\Models\Conversation::SANDBOX_CREATING, \App\Models\Conversation::SANDBOX_REMOVING], true) ? '1' : '0' }}"
+    x-data="chatStream(@js($conversation->uuid))"
     x-on:studio-shot.window="shot = $event.detail.src"
     x-on:keydown.escape.window="shot = null"
 >
@@ -129,10 +130,10 @@
             </div>
         @endforelse
 
-        @if ($streaming !== '')
-            <div class="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed">{{ $streaming }}<span class="animate-pulse">▍</span></div>
-        @elseif ($conversation->status === \App\Enums\ConversationStatus::Running)
-            <div class="flex items-center gap-2 text-xs text-zinc-500">
+        {{-- Claude's text as it is typed: grown in the browser from the channel (resources/js/chat-stream.js) --}}
+        <div x-show="text !== ''" x-cloak class="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed"><span x-text="text"></span><span class="animate-pulse">▍</span></div>
+        @if ($conversation->status === \App\Enums\ConversationStatus::Running)
+            <div x-show="text === ''" class="flex items-center gap-2 text-xs text-zinc-500">
                 <flux:icon.loading class="size-3" /> {{ __('Claude is working…') }}
             </div>
         @endif
@@ -365,6 +366,7 @@
                     <flux:textarea
                         wire:model="draft"
                         x-ref="input"
+                        x-on:focus="warm()"
                         x-on:input="typed($event)"
                         x-on:keydown="key($event)"
                         rows="2"

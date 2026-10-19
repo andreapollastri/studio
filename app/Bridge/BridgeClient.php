@@ -56,8 +56,28 @@ final class BridgeClient
      */
     public function sendTurn(Conversation $conversation, string $text): array
     {
-        return $this->request(fn (PendingRequest $http) => $http->post("/conversations/{$conversation->id}/turns", [
-            'text' => $text,
+        return $this->request(fn (PendingRequest $http) => $http->post("/conversations/{$conversation->id}/turns", ['text' => $text, ...$this->turn($conversation)]));
+    }
+
+    /**
+     * Start the process of the conversation's next turn before it is written, with the settings it
+     * will have: Enter then does not wait for the CLI to boot, resume and connect its MCP servers.
+     *
+     * @return array<string, mixed>
+     */
+    public function warm(Conversation $conversation): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->timeout(5)->post("/conversations/{$conversation->id}/warm", $this->turn($conversation)));
+    }
+
+    /**
+     * Everything a turn carries but its text.
+     *
+     * @return array<string, mixed>
+     */
+    private function turn(Conversation $conversation): array
+    {
+        return [
             'session_id' => $conversation->agent_session_id,
             'permission_mode' => $conversation->permission_mode,
             'model' => $conversation->model,
@@ -75,7 +95,7 @@ final class BridgeClient
                 'url' => $this->callbackUrl(),
                 'token' => $this->workspace->callback_token,
             ],
-        ]));
+        ];
     }
 
     /**

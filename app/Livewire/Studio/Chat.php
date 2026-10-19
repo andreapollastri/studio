@@ -34,9 +34,6 @@ class Chat extends Component
 
     public string $draft = '';
 
-    /** Text still being typed by the agent, assembled from `text_delta` broadcasts and never stored. */
-    public string $streaming = '';
-
     public bool $showTools = false;
 
     public string $model = '';
@@ -124,28 +121,10 @@ class Chat extends Component
     }
 
     /**
-     * @param  array<string, mixed>  $payload
+     * Something was stored: the browser asks once per burst of the conversation's broadcasts
+     * (resources/js/chat-stream.js, which also shows the text as it is typed), and every few
+     * seconds while the agent works, for when no websocket is around.
      */
-    #[On('echo-private:conversations.{conversation.uuid},.ConversationUpdated')]
-    public function onUpdated(array $payload = []): void
-    {
-        $kind = (string) ($payload['kind'] ?? '');
-
-        if ($kind === 'text_delta') {
-            $this->streaming .= (string) ($payload['data']['text'] ?? '');
-
-            return;
-        }
-
-        if ($kind === 'status') {
-            return;
-        }
-
-        $this->streaming = '';
-        $this->reload();
-    }
-
-    /** Fallback when no websocket is around: the view polls while the agent works. */
     public function poll(): void
     {
         $this->reload();
@@ -173,8 +152,24 @@ class Chat extends Component
         }
 
         $this->draft = '';
-        $this->streaming = '';
         $this->reload();
+    }
+
+    /**
+     * The person is about to write: the bridge starts the CLI for the next turn now, after this
+     * response has gone, so Enter does not wait for it to boot. Nothing when it could not be used.
+     */
+    public function warm(): void
+    {
+        $this->authorize('update', $this->conversation);
+
+        $conversation = $this->conversation;
+
+        if (! $conversation->workspace->isRunning() || $conversation->isBusy() || ! $conversation->acceptsMessages()) {
+            return;
+        }
+
+        app()->terminating(fn () => rescue(fn () => (new BridgeClient($conversation->workspace))->warm($conversation), report: false));
     }
 
     /**

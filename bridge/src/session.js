@@ -74,12 +74,21 @@ export class Session extends EventEmitter {
   }
 
   /**
-   * @param {{text: string, session_id?: string|null, permission_mode?: string, model?: string|null, effort?: string|null, callback: {url: string, token: string}}} turn
+   * The process of the next turn, started before it is written (the person opened the chat or
+   * began typing), so Enter does not wait for the CLI to boot, resume and connect its MCP servers.
+   * The same process serves the turn when nothing changed meanwhile; unused, it ends like any idle one.
    */
-  sendTurn(turn) {
-    if (!turn || typeof turn.text !== 'string' || turn.text.trim() === '') {
-      throw new BridgeError(422, 'text is required');
-    }
+  warm(turn) {
+    if (this.#process && this.state !== 'idle') return this.snapshot();
+    const started = this.#prepare(turn);
+    // ready and waiting: it ends after the idle time unless a turn comes
+    this.#armIdleTimer();
+    return { ...this.snapshot(), warmed: started };
+  }
+
+  /** Check a turn's settings and have a process for them: true when one had to be started. */
+  #prepare(turn) {
+    if (!turn || typeof turn !== 'object') throw new BridgeError(422, 'a turn is required');
     if (!turn.callback || !turn.callback.url || !turn.callback.token) {
       throw new BridgeError(422, 'callback.url and callback.token are required');
     }
@@ -135,7 +144,19 @@ export class Session extends EventEmitter {
         log: this.#log,
       });
       this.#start();
+      return true;
     }
+    return false;
+  }
+
+  /**
+   * @param {{text: string, session_id?: string|null, permission_mode?: string, model?: string|null, effort?: string|null, callback: {url: string, token: string}}} turn
+   */
+  sendTurn(turn) {
+    if (!turn || typeof turn.text !== 'string' || turn.text.trim() === '') {
+      throw new BridgeError(422, 'text is required');
+    }
+    this.#prepare(turn);
 
     this.state = 'running';
     this.#write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: turn.text }] } });

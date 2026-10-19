@@ -6,7 +6,7 @@ server is in `installer/upgrades/<version>.sh`.
 
 ## 2.3.0
 
-Fewer "Claude wants to run Bash", and a chat input that knows its skills.
+Fewer "Claude wants to run Bash", a chat input that knows its skills, and a faster chat.
 
 - **Always allow** on a permission card: the command runs, and is not asked again on that project, for that person.
   The rule is the one Claude Code suggests (`composer require …`, any package) or, for a plain command, its runner
@@ -25,6 +25,19 @@ Fewer "Claude wants to run Bash", and a chat input that knows its skills.
   their Claude folder on the server, with their description and argument hint; in a sandbox, the sandbox's. Enter or
   a click starts the highlighted one, Tab writes it so a request can follow, Esc closes the list.
 - **Enter sends**, Shift+Enter starts a new line (it was ⌘⏎ / Ctrl+⏎).
+
+### A faster chat
+- **No queue between a message and Claude.** The hand-off to the bridge (and the answer to a permission card) ran on
+  Studio's one queue worker, after up to two seconds of its sleep and behind whatever was there: a workspace being
+  built, a site deploying. It now goes right after the page's response.
+- **Text streams in the browser.** Each slice of text Claude typed made a Livewire round trip that rendered the whole
+  conversation again, five times a second, one after the other: on a long chat the text came late and in jumps. The
+  page now reads the conversation's channel itself, grows the text in place, and asks for one refresh per burst of
+  stored events. The bridge sends text every 100 ms (`BRIDGE_FLUSH_MS`, was 200), and the chat polls only when the
+  websocket is down instead of every four seconds on top of it.
+- **Claude Code is ready before you press Enter.** Focusing the input starts the CLI of the next turn on the bridge
+  (`POST /conversations/{key}/warm`), with the model, mode, account and MCP servers it will run on, so the first
+  message after a pause or a change of settings does not wait for it to boot and resume.
 - The update restarts the workspace bridges, which carry the rules (`installer/upgrades/2.3.0.sh`).
 
 ## 2.2.0

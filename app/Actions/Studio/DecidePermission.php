@@ -40,7 +40,7 @@ final class DecidePermission
             $conversation->setStatus(ConversationStatus::Running);
         }
 
-        AnswerPermission::dispatch($request, $allow, $message, $answers, $allow && $always !== null ? [$always] : null);
+        AnswerPermission::dispatchAfterResponse($request, $allow, $message, $answers, $allow && $always !== null ? [$always] : null);
 
         ConversationUpdated::dispatch($conversation->uuid, 'messages', ['kinds' => ['permission'], 'status' => $conversation->status->value]);
     }

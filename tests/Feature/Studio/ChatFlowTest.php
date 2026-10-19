@@ -395,3 +395,26 @@ test('skipping Claude\'s questions lets it go on with its own judgement', functi
 
     expect($request->refresh()->status)->toBe(PermissionStatus::Denied);
 });
+
+test('about to write, the bridge starts the CLI of the next turn with the turn\'s settings', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['model' => 'claude-opus-5-5']);
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['warmed' => true])]);
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])->call('warm');
+    app()->terminate();
+
+    Http::assertSent(fn (Request $sent) => $sent->url() === "http://bridge.test:4455/conversations/{$conversation->id}/warm"
+        && $sent['model'] === 'claude-opus-5-5' && ! isset($sent['text']) && isset($sent['callback']['token']) && is_array($sent['allowed_tools']));
+});
+
+test('no warming while Claude works', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running]);
+    Http::fake();
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])->call('warm');
+    app()->terminate();
+
+    Http::assertNotSent(fn (Request $sent) => str_ends_with($sent->url(), '/warm'));
+});

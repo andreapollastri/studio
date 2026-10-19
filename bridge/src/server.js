@@ -207,6 +207,12 @@ export function createServer(config, options = {}) {
         return json(res, 202, { accepted: true, ...session.sendTurn(body) });
       }
 
+      if ((match = /^\/conversations\/([^/]+)\/warm$/.exec(path)) && req.method === 'POST') {
+        const body = await readJson(req, config.maxBodyBytes);
+        const session = sessions.getOrCreate(decodeURIComponent(match[1]));
+        return json(res, 200, session.warm(body));
+      }
+
       if ((match = /^\/conversations\/([^/]+)\/permissions\/([^/]+)$/.exec(path)) && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes);
         const session = sessions.get(decodeURIComponent(match[1]));

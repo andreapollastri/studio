@@ -298,3 +298,35 @@ test('the rules Studio allows go to --allowedTools one per argument, not in plan
   delete process.env.FAKE_CLAUDE_ARGS_DIR;
   await studio.close();
 });
+
+test('warming starts the process of the next turn, which then serves it; a change of settings starts another', async () => {
+  const studio = await startCollector();
+  const argsDir = await mkdtemp(join(tmpdir(), 'studio-args-'));
+  process.env.FAKE_CLAUDE_ARGS_DIR = argsDir;
+  const session = new Session('75', testConfig(), { spawn: spawnFake });
+  const turn = { permission_mode: 'acceptEdits', model: 'claude-sonnet-5-5', callback: callback(studio) };
+
+  assert.equal(session.warm(turn).warmed, true);
+  await waitFor(() => readdirSync(argsDir).length === 1);
+  // warm again, nothing changed: the same process
+  assert.equal(session.warm(turn).warmed, false);
+
+  session.sendTurn({ ...turn, text: 'ciao' });
+  await waitFor(() => studio.events().some((e) => e.type === 'result'));
+  assert.equal(readdirSync(argsDir).length, 1);
+
+  // another model: warming starts the process for it
+  assert.equal(session.warm({ ...turn, model: 'claude-opus-5-5' }).warmed, true);
+  await waitFor(() => readdirSync(argsDir).length === 2);
+  assert.equal(flag((await spawned(argsDir)).args, '--model'), 'claude-opus-5-5');
+
+  // while a turn runs, warming leaves it alone
+  session.sendTurn({ ...turn, model: 'claude-opus-5-5', text: 'tool please' });
+  await waitFor(() => studio.events().some((e) => e.type === 'permission_request'));
+  assert.equal(session.warm({ ...turn, model: 'claude-haiku-4-5' }).warmed, undefined);
+  assert.equal(readdirSync(argsDir).length, 2);
+
+  await session.close();
+  delete process.env.FAKE_CLAUDE_ARGS_DIR;
+  await studio.close();
+});
