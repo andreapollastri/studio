@@ -69,7 +69,7 @@
 
             <div class="min-h-0 flex-1 overflow-y-auto pe-1">
                 @if ($tab === 'console')
-                    <div class="flex h-full flex-col gap-2" x-data="{ async send() { const r = await $wire.run(); if (r && r.confirm && confirm(r.confirm)) await $wire.run(true); $nextTick(() => $refs.out.scrollTop = $refs.out.scrollHeight) } }">
+                    <div class="flex h-full flex-col gap-2" x-data="{ async send() { const r = await $wire.run(); if (r && r.confirm && await studioDialog.confirm({ message: r.confirm, confirm: {{ Js::from(__('Run it')) }}, danger: true })) await $wire.run(true); $nextTick(() => $refs.out.scrollTop = $refs.out.scrollHeight) } }">
                         <div x-ref="out" class="min-h-64 flex-1 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-950 p-3 font-mono text-xs text-zinc-100 dark:border-zinc-700">
                             @forelse ($console as $i => $line)
                                 <div wire:key="cl-{{ $i }}" class="mb-2">
@@ -141,7 +141,7 @@
                             <div class="ms-auto flex items-center gap-1">
                                 <flux:button size="xs" variant="ghost" icon="clipboard-document" x-on:click="navigator.clipboard.writeText({{ Js::from($detail['key']) }})">{{ __('Copy key') }}</flux:button>
                                 @if ($writable)
-                                    <flux:button size="xs" variant="ghost" icon="pencil" x-on:click="let n = prompt({{ Js::from(__('New name of the key')) }}, {{ Js::from($detail['key']) }}); if (n) $wire.renameKey(n)">{{ __('Rename') }}</flux:button>
+                                    <flux:button size="xs" variant="ghost" icon="pencil" x-on:click="let n = await studioDialog.prompt({ title: {{ Js::from(__('Rename the key')) }}, label: {{ Js::from(__('New name')) }}, value: {{ Js::from($detail['key']) }}, confirm: {{ Js::from(__('Rename')) }} }); if (n) $wire.renameKey(n)">{{ __('Rename') }}</flux:button>
                                     <flux:button size="xs" variant="ghost" icon="trash" wire:click="deleteKey" wire:confirm="{{ __('Delete this key?') }}">{{ __('Delete') }}</flux:button>
                                 @endif
                             </div>
@@ -225,7 +225,7 @@
                                                     <td class="max-w-xl truncate px-3 py-1" title="{{ Values::display($item, 500) }}">{{ Values::display($item, 300) }}</td>
                                                     <td class="w-20 px-1 text-end">
                                                         @if ($writable)
-                                                            <flux:button size="xs" variant="ghost" icon="pencil" x-on:click="let v = prompt({{ Js::from(__('New value')) }}, {{ Js::from(Values::display($item)) }}); if (v !== null) $wire.setItem({{ $i }}, v)" />
+                                                            <flux:button size="xs" variant="ghost" icon="pencil" x-on:click="let v = await studioDialog.prompt({ title: {{ Js::from(__('Change the value')) }}, label: {{ Js::from(__('New value')) }}, value: {{ Js::from(Values::display($item)) }}, confirm: {{ Js::from(__('Save')) }} }); if (v !== null) $wire.setItem({{ $i }}, v)" />
                                                             <flux:button size="xs" variant="ghost" icon="trash" wire:click="removeItem({{ Js::from((string) $item) }})" />
                                                         @endif
                                                     </td>

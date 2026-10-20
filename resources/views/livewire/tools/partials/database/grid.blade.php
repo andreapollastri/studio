@@ -69,7 +69,7 @@
                 <flux:button size="sm" icon="plus" wire:click="newRow">{{ __('Row') }}</flux:button>
             @endif
             <template x-if="selected.length > 0">
-                <flux:button size="sm" variant="danger" icon="trash" x-on:click="if (confirm({{ Js::from(__('Delete the selected rows?')) }})) { await $wire.deleteRows(selected); selected = [] }">
+                <flux:button size="sm" variant="danger" icon="trash" x-on:click="if (await studioDialog.confirm({ title: {{ Js::from(__('Delete the selected rows?')) }}, body: selected.length + ' ' + {{ Js::from(__('rows, for good: a delete is not undone.')) }}, confirm: {{ Js::from(__('Delete')) }}, danger: true })) { await $wire.deleteRows(selected); selected = [] }">
                     <span x-text="{{ Js::from(__('Delete')) }} + ' ' + selected.length"></span>
                 </flux:button>
             </template>

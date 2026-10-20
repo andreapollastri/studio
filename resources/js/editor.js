@@ -111,10 +111,15 @@ function studioEditor() {
             }
         },
 
-        close(path) {
+        async close(path) {
             const tab = this.tabs.find((candidate) => candidate.path === path);
             if (!tab) return;
-            if (tab.dirty && !window.confirm(`Discard the changes to ${path}?`)) return;
+            if (tab.dirty && !(await window.studioDialog.confirm({
+                title: `Discard the changes to ${path.split('/').pop()}?`,
+                body: `${path} has changes that are not saved; closing the tab loses them.`,
+                confirm: 'Discard',
+                danger: true,
+            }))) return;
             this.drop(path);
         },
 

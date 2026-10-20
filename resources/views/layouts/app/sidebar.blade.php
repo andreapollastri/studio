@@ -150,6 +150,7 @@
             </flux:toast.group>
         @endpersist
 
+        @include('partials.dialog')
         @fluxScripts
     </body>
 </html>

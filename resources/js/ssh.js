@@ -247,9 +247,14 @@ function sshTerminals() {
             });
         },
 
-        close(id) {
+        async close(id) {
             const s = this.find(id);
-            if (s?.status === 'ready' && !window.confirm(`Close the session on ${s.address}?`)) return;
+            if (s?.status === 'ready' && !(await window.studioDialog.confirm({
+                title: `Close the session on ${s.address}?`,
+                body: 'What runs in it stops with it, unless it runs under tmux or screen.',
+                confirm: 'Close',
+                danger: true,
+            }))) return;
 
             this.dispose(id);
             const index = this.sessions.findIndex((x) => x.id === id);

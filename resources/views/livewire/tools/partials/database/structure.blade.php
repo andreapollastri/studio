@@ -44,7 +44,7 @@
                                     <flux:dropdown position="bottom" align="end">
                                         <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                                         <flux:menu>
-                                            <flux:menu.item icon="pencil" x-on:click="let n = prompt({{ Js::from(__('New name of the column')) }}, {{ Js::from($c['name']) }}); if (n) $wire.reviewRenameColumn({{ Js::from($c['name']) }}, n)">{{ __('Rename…') }}</flux:menu.item>
+                                            <flux:menu.item icon="pencil" x-on:click="let n = await studioDialog.prompt({ title: {{ Js::from(__('Rename the column :name', ['name' => $c['name']])) }}, label: {{ Js::from(__('New name')) }}, value: {{ Js::from($c['name']) }}, confirm: {{ Js::from(__('Continue')) }} }); if (n) $wire.reviewRenameColumn({{ Js::from($c['name']) }}, n)">{{ __('Rename…') }}</flux:menu.item>
                                             <flux:menu.item icon="trash" variant="danger" wire:click="reviewDropColumn({{ Js::from($c['name']) }})">{{ __('Drop…') }}</flux:menu.item>
                                         </flux:menu>
                                     </flux:dropdown>

@@ -9,7 +9,7 @@
             this.running = true;
             try {
                 const answer = await $wire.runSql(text);
-                if (answer && answer.confirm && confirm(answer.confirm)) await $wire.runSql(text, true);
+                if (answer && answer.confirm && await studioDialog.confirm({ message: answer.confirm, confirm: {{ Js::from(__('Run it')) }}, danger: true })) await $wire.runSql(text, true);
             } finally { this.running = false }
         },
         indent(event) {

@@ -12,3 +12,4 @@ import './system-watch';
 import './workspace-shell';
 import './chat-composer';
 import './chat-stream';
+import './dialog';

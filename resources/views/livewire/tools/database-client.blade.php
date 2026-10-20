@@ -37,7 +37,7 @@
                             @endforelse
                             @if ($writable)
                                 <flux:menu.separator />
-                                <flux:menu.item icon="plus" x-on:click="let n = prompt({{ Js::from(__('Name of the new database')) }}); if (n) $wire.reviewNewDatabase(n)">{{ __('New database…') }}</flux:menu.item>
+                                <flux:menu.item icon="plus" x-on:click="let n = await studioDialog.prompt({ title: {{ Js::from(__('New database')) }}, label: {{ Js::from(__('Name')) }}, confirm: {{ Js::from(__('Continue')) }} }); if (n) $wire.reviewNewDatabase(n)">{{ __('New database…') }}</flux:menu.item>
                                 @if ($db)
                                     <flux:menu.item icon="trash" variant="danger" wire:click="reviewDropDatabase({{ Js::from($db) }})">{{ __('Drop :name…', ['name' => $db]) }}</flux:menu.item>
                                 @endif
@@ -91,7 +91,7 @@
                                     <flux:menu.item icon="arrow-up-tray" wire:click="exportTable({{ Js::from($item['name']) }})">{{ __('Export…') }}</flux:menu.item>
                                     @if ($writable)
                                         <flux:menu.separator />
-                                        <flux:menu.item icon="pencil" x-on:click="let n = prompt({{ Js::from(__('New name')) }}, {{ Js::from($item['name']) }}); if (n) $wire.reviewRename({{ Js::from($item['name']) }}, n)">{{ __('Rename…') }}</flux:menu.item>
+                                        <flux:menu.item icon="pencil" x-on:click="let n = await studioDialog.prompt({ title: {{ Js::from(__('Rename :name', ['name' => $item['name']])) }}, label: {{ Js::from(__('New name')) }}, value: {{ Js::from($item['name']) }}, confirm: {{ Js::from(__('Continue')) }} }); if (n) $wire.reviewRename({{ Js::from($item['name']) }}, n)">{{ __('Rename…') }}</flux:menu.item>
                                         @if ($type === 'table')
                                             <flux:menu.item icon="backspace" variant="danger" wire:click="reviewTruncate({{ Js::from($item['name']) }})">{{ __('Empty…') }}</flux:menu.item>
                                         @endif

@@ -4,6 +4,17 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.3.5
+
+- **No more browser boxes.** Every confirmation and question is a modal of Studio's own, in its style, light or dark:
+  the 46 `wire:confirm` of the app (deleting a domain, a key, a row, updating Studio…), closing a live SSH session,
+  closing an editor tab with unsaved changes, the destructive statements of the SQL and Redis clients, and the names
+  asked for (a new database, renaming a table, a column or a key, a Redis value). The question is the title and the
+  rest of the message the text; the button says what it does (*Remove*, *Deploy*, *Update to v2.3.5*) and is red when
+  the action destroys something. Esc or a click outside cancels, Enter confirms.
+- For developers: `await studioDialog.confirm({...})` and `await studioDialog.prompt({...})` (`resources/js/dialog.js`),
+  and any new `wire:confirm` opens the same modal.
+
 ## 2.3.4
 
 Long Larapilot runs with subagents in the background, such as an inception reading a legacy codebase.
