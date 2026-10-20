@@ -33,6 +33,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property UserRole $role
  * @property string|null $handle
  * @property int|null $claude_account_id the person's default Claude account
+ * @property string $agent claude or cursor: what a new conversation runs on
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
@@ -43,7 +44,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $updated_at
  * @property-read ProjectMember|null $membership their membership, when read through Project::members()
  */
-#[Fillable(['name', 'email', 'password', 'role', 'handle', 'claude_account_id', 'email_verified_at'])]
+#[Fillable(['name', 'email', 'password', 'role', 'handle', 'claude_account_id', 'agent', 'email_verified_at'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
@@ -238,6 +239,12 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
      * Talks to the agent somewhere: an administrator, a PM or developer by default, or the
      * PM or developer of at least one project (what each project allows is its role's).
      */
+    /** Claude, unless the person chose Cursor for new conversations. */
+    public function preferredAgent(): string
+    {
+        return $this->agent === 'cursor' ? 'cursor' : 'claude';
+    }
+
     public function canChat(): bool
     {
         return $this->isAdmin() || $this->defaultRole()->canChat() || $this->projectIdsAs(UserRole::Pm, UserRole::Dev) !== [];

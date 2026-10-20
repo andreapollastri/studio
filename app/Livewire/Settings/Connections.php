@@ -39,6 +39,9 @@ class Connections extends Component
     #[Url]
     public string $tab = 'claude';
 
+    /** The agent new conversations start on: claude or cursor. */
+    public string $agent = 'claude';
+
     /** The Claude account being added: an API key or a subscription. */
     public string $new_kind = 'api_key';
 
@@ -239,9 +242,7 @@ class Connections extends Component
         $account = $this->cursorAccount($uuid);
 
         if (! CursorLogin::onServer()) {
-            Flux::toast(variant: 'warning', text: __('In development Cursor uses the sign-in of this computer: run agent login in your terminal, then Check.'));
-
-            return null;
+            return ['ticket' => Gateway::issueCursorLogin($account), 'url' => Gateway::url()];
         }
 
         if (! auth()->user()->ensureHandle()) {
@@ -391,6 +392,24 @@ class Connections extends Component
         }
 
         return array_map(fn (array $u) => ['groups' => $u['groups'] ?? [], 'projects' => $u['projects'] ?? 0], $used);
+    }
+
+    public function mount(): void
+    {
+        $this->agent = auth()->user()->preferredAgent();
+    }
+
+    /** The default for this person's new conversations. A conversation can still switch. */
+    public function updatedAgent(string $value): void
+    {
+        if (! in_array($value, ['claude', 'cursor'], true)) {
+            $this->agent = auth()->user()->preferredAgent();
+
+            return;
+        }
+
+        auth()->user()->forceFill(['agent' => $value])->save();
+        Flux::toast(text: __('New conversations start on :agent.', ['agent' => $value === 'cursor' ? 'Cursor' : 'Claude']));
     }
 
     public function render(): View

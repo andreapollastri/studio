@@ -1,8 +1,13 @@
 <section class="w-full">
     @include('partials.settings-heading')
 
-    <x-pages::settings.layout :heading="__('Accounts')" :subheading="__('What you bring to your work: your Claude plans and keys, your Cursor subscriptions, your accounts on the git hosts, your SSH keys. Your workspaces clone and push as you, and run Claude on your own plans.')">
+    <x-pages::settings.layout :heading="__('Accounts')" :subheading="__('What you bring to your work: your Claude plans and keys, your Cursor subscriptions, your accounts on the git hosts, your SSH keys. Your workspaces clone and push as you, and each conversation runs on the agent you choose.')">
         <div class="my-6 w-full space-y-10">
+
+            <flux:radio.group wire:model.live="agent" :label="__('New conversations')" :description="__('Your default. Every person chooses their own, and a conversation can still switch in Model & mode.')">
+                <flux:radio value="claude" label="Claude" />
+                <flux:radio value="cursor" label="Cursor" />
+            </flux:radio.group>
 
             <flux:radio.group wire:model.live="tab" variant="segmented" class="max-sm:w-full">
                 <flux:radio value="claude" label="Claude" icon="sparkles" />
@@ -19,7 +24,7 @@
             @elseif ($tab === 'ssh')
                 <livewire:settings.ssh-keys />
             @elseif ($tab === 'cursor')
-            {{-- Cursor subscriptions: the official CLI, in the person's home. Conversations still run on Claude. --}}
+            {{-- Cursor subscriptions: the official CLI, in the person's home or, in development, on this computer. --}}
             @php($onServer = \App\Cursor\CursorLogin::onServer())
             <div class="space-y-4" x-data="cursorLogin" @if ($onServer && $cursorAccounts->isNotEmpty()) wire:init="refreshCursorSubscriptions" @endif>
                 <div class="flex flex-wrap items-center gap-3">
@@ -27,7 +32,11 @@
                     <flux:badge size="sm" :color="$user->hasCursor() ? 'green' : 'yellow'">{{ trans_choice(':count subscription|:count subscriptions', $cursorAccounts->count()) }}</flux:badge>
                 </div>
                 <flux:text>
-                    {{ __('Your Cursor subscriptions, as many as you have, each one yours alone. Signing in runs Cursor’s own agent login in a folder of your home on this server: Studio never sees or keeps it, and the use is billed to that subscription. A subscription is never shared with a colleague. Conversations in Studio still run on Claude.') }}
+                    @if ($onServer)
+                        {{ __('Your Cursor subscriptions, as many as you have, each one yours alone. Signing in runs Cursor’s own agent login in a folder of your home on this server: Studio never sees or keeps it, and the use is billed to that subscription. A subscription is never shared with a colleague. A conversation runs on Cursor when you choose it.') }}
+                    @else
+                        {{ __('Your Cursor subscriptions, as many as you have, each one yours alone. Signing in runs Cursor’s own agent login in a terminal on this computer, in that subscription’s folder: Studio never sees or keeps it, and the use is billed to that subscription. A subscription is never shared with a colleague.') }}
+                    @endif
                 </flux:text>
 
                 @if ($cursorAccounts->isNotEmpty())
@@ -60,9 +69,7 @@
                                             @endif
                                         </div>
                                         <div class="flex flex-wrap items-center gap-1">
-                                            @if ($onServer)
-                                                <flux:button size="sm" :variant="$account->signed_in ? 'ghost' : 'primary'" icon="command-line" x-on:click="start({{ Js::from($account->uuid) }}); $flux.modal('cursor-login').show()">{{ $account->signed_in ? __('Sign in again') : __('Sign in to Cursor') }}</flux:button>
-                                            @endif
+                                            <flux:button size="sm" :variant="$account->signed_in ? 'ghost' : 'primary'" icon="command-line" x-on:click="start({{ Js::from($account->uuid) }}); $flux.modal('cursor-login').show()">{{ $account->signed_in ? __('Sign in again') : __('Sign in to Cursor') }}</flux:button>
                                             <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="refreshCursor({{ Js::from($account->uuid) }})" :aria-label="__('Check')" />
                                             <flux:dropdown position="bottom" align="end">
                                                 <flux:button size="sm" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('Actions')" />
@@ -88,8 +95,8 @@
                     <flux:heading size="sm">{{ __('Add a Cursor subscription') }}</flux:heading>
                     <flux:input wire:model="new_cursor_name" :label="__('Name')" :placeholder="__('Personal, Work…')" />
                     <flux:text class="text-xs">
-                        {{ __('The official Cursor sign-in runs in your own home on this server, in a folder of its own for this subscription: Studio never sees or keeps it. Your own plan, used by you alone and billed to you. An API key is not this: it is billed apart from the subscription, and Studio does not keep one.') }}
-                        @unless ($onServer){{ __('In development Cursor uses the sign-in of this computer.') }}@endunless
+                        {{ __('The official Cursor sign-in runs in a folder of its own for this subscription: Studio never sees or keeps it. Your own plan, used by you alone and billed to you. An API key is not this: it is billed apart from the subscription, and Studio does not keep one.') }}
+                        @unless ($onServer){{ __('On this computer the terminal below is where agent login runs.') }}@endunless
                     </flux:text>
                     <flux:button type="submit" variant="primary" icon="command-line">{{ __('Add and sign in') }}</flux:button>
                 </form>
@@ -98,7 +105,9 @@
                     <div class="space-y-4">
                         <div>
                             <flux:heading size="lg">{{ __('Sign in to Cursor') }}</flux:heading>
-                            <flux:text class="mt-1">{{ __('This is Cursor’s own agent login, in a terminal in your home on the server. Studio shows the terminal and takes no part in the sign-in: it goes to Cursor, never through Studio.') }}</flux:text>
+                            <flux:text class="mt-1">{{ $onServer
+                                ? __('This is Cursor’s own agent login, in a terminal in your home on the server. Studio shows the terminal and takes no part in the sign-in: it goes to Cursor, never through Studio.')
+                                : __('This is Cursor’s own agent login, in a terminal on this computer, in that subscription’s folder. Studio shows the terminal and takes no part in the sign-in: it goes to Cursor, never through Studio.') }}</flux:text>
                         </div>
                         <ol class="list-decimal space-y-1 ps-5 text-sm text-zinc-600 dark:text-zinc-300">
                             <li>{{ __('Open the sign-in page the terminal prints.') }}</li>

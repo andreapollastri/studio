@@ -1,7 +1,9 @@
 <?php
 
+use App\Actions\Studio\StartConversation;
 use App\Livewire\Studio\Chat;
 use App\Models\Conversation;
+use App\Models\CursorAccount;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
@@ -57,6 +59,35 @@ test('a role may only switch to the modes it is allowed', function () {
         ->assertHasErrors(['mode']);
 
     expect($conversation->fresh()->permission_mode)->toBe('default');
+});
+
+test('a new conversation copies the person\'s agent, and switching to Cursor forgets the other session', function () {
+    [$user, $conversation] = pmWithConversation();
+    $user->forceFill(['agent' => 'cursor'])->save();
+    CursorAccount::factory()->for($user)->create(['name' => 'Work', 'dir' => '.cursor-work', 'signed_in' => true]);
+
+    $started = app(StartConversation::class)->handle($conversation->workspace, $user->fresh());
+    expect($started->agent)->toBe('cursor');
+
+    $conversation->forceFill(['agent_session_id' => 'sess-claude'])->save();
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['accepted' => true], 202)]);
+
+    Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation])
+        ->set('agent', 'cursor')
+        ->call('saveSettings')
+        ->assertHasNoErrors()
+        ->set('draft', 'go')
+        ->call('send');
+
+    expect($conversation->fresh()->agent)->toBe('cursor')
+        ->and($conversation->fresh()->agent_session_id)->toBeNull();
+
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/turns')
+        && $request['agent'] === 'cursor'
+        && $request['cursor_dir'] === '.cursor-work'
+        && $request['session_id'] === null
+        && ! array_key_exists('api_key', $request->data()));
 });
 
 test('an unknown model is refused', function () {

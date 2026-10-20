@@ -140,12 +140,16 @@ final class Gateway
         if (($issued['kind'] ?? null) === 'cursor-login') {
             $cursor = $user?->cursorAccounts()->whereKey($issued['account_id'] ?? 0)->first();
 
-            if ($user === null || $cursor === null || ! $user->canChat() || ! filled($user->handle) || config('studio.driver') !== 'native') {
+            $local = config('studio.driver') !== 'native';
+
+            if ($user === null || $cursor === null || ! $user->canChat() || (! $local && ! filled($user->handle))) {
                 return null;
             }
-            Log::info('Cursor sign-in started', ['user' => $user->email, 'account' => $cursor->name]);
+            Log::info('Cursor sign-in started', ['user' => $user->email, 'account' => $cursor->name, 'local' => $local]);
 
-            return ['kind' => 'cursor-login', 'user_id' => $user->id, 'handle' => $user->handle, 'dir' => $cursor->dir];
+            return $local
+                ? ['kind' => 'cursor-login', 'user_id' => $user->id, 'dir' => $cursor->dir, 'local' => true]
+                : ['kind' => 'cursor-login', 'user_id' => $user->id, 'handle' => $user->handle, 'dir' => $cursor->dir];
         }
 
         if (($issued['kind'] ?? null) === 'site-shell') {

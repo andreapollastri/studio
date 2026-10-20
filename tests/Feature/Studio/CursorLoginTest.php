@@ -42,7 +42,13 @@ test('"Sign in to Cursor" gives a ticket the gateway redeems for the folder of t
     $this->postJson(route('api.ssh.redeem'), ['ticket' => Gateway::issueCursorLogin($clientAccount)], ['Authorization' => 'Bearer '.Gateway::token()])->assertNotFound();
     Livewire::actingAs(User::factory()->create())->test(Connections::class)->call('cursorLoginTicket', $first->uuid)->assertStatus(404);
     config(['studio.driver' => 'local']);
-    Livewire::actingAs($user)->test(Connections::class)->call('cursorLoginTicket', $first->uuid)->assertReturned(null);
+    $local = Livewire::actingAs($user)->test(Connections::class)->call('cursorLoginTicket', $first->uuid)->effects['returns'][0];
+
+    expect($local['ticket'])->not->toBeEmpty();
+
+    $this->postJson(route('api.ssh.redeem'), ['ticket' => $local['ticket']], ['Authorization' => 'Bearer '.Gateway::token()])
+        ->assertOk()
+        ->assertExactJson(['kind' => 'cursor-login', 'user_id' => $user->id, 'dir' => $first->dir, 'local' => true]);
 });
 
 test('after the sign-in, Studio asks the Cursor CLI in that account\'s folder and keeps only whether it is signed in', function () {

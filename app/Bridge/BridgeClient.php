@@ -79,14 +79,19 @@ final class BridgeClient
      */
     private function turn(Conversation $conversation): array
     {
+        $agent = $conversation->agent === 'cursor' ? 'cursor' : 'claude';
+
         return [
+            'agent' => $agent,
             'session_id' => $conversation->agent_session_id,
             'permission_mode' => $conversation->permission_mode,
-            'model' => $conversation->model,
-            'effort' => $conversation->effort,
-            // the Claude account the person works on this project with (the project's, its group's, their
-            // default): even while it looks disconnected, so the CLI never falls back to another login or key
-            ...$this->claudeAccount($conversation),
+            'model' => $agent === 'claude' ? $conversation->model : null,
+            'effort' => $agent === 'claude' ? $conversation->effort : null,
+            // Claude: the account the person works on this project with, even while it looks disconnected,
+            // so the CLI never falls back to another login or key. Cursor: that person's subscription folder.
+            ...($agent === 'cursor'
+                ? ['cursor_dir' => Accounts::cursor($conversation->user)?->dir]
+                : $this->claudeAccount($conversation)),
             'mcp_servers' => $this->mcpServers($conversation),
             'browser' => $this->browser($conversation),
             // a sandboxed conversation runs in its worktree; one whose sandbox is not ready never gets here

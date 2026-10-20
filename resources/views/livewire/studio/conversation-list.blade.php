@@ -42,7 +42,7 @@
                 @endcan
             </div>
         @empty
-            <flux:text class="px-3 py-2 text-xs">{{ auth()->user()->can('chat', $project) ? __('No conversations. Open one to talk to Claude about this project.') : __('Conversations are for the team.') }}</flux:text>
+            <flux:text class="px-3 py-2 text-xs">{{ auth()->user()->can('chat', $project) ? __('No conversations. Open one to talk about this project. It starts on the agent you chose in Settings → Accounts.') : __('Conversations are for the team.') }}</flux:text>
         @endforelse
     </nav>
 

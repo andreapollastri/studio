@@ -2,8 +2,10 @@
 
 @php
     $user = $conversation->user;
-    // what the next message runs on (the project's Claude account), and what the last one really ran on (Claude Code's own word)
+    $onCursor = ($conversation->agent ?? 'claude') === 'cursor';
+    // what the next message runs on (the project's Claude account, or the person's Cursor subscription)
     $choice = \App\Accounts\Accounts::claude($user, $conversation->workspace->project);
+    $cursor = $onCursor ? \App\Accounts\Accounts::cursor($user) : null;
     $claude = $choice?->account;
     $account = $claude?->isUsable() ? $claude->kind->value : null;
     $ran = $conversation->runtime['auth'] ?? null;
@@ -27,6 +29,16 @@
         {{ $conversation->status->label() }}
     </span>
 
+    @if ($onCursor)
+        <a href="{{ route('connections.edit', ['tab' => 'cursor']) }}" wire:navigate @class([
+            $chip,
+            'bg-sky-50 text-sky-800 ring-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-800' => $cursor?->signed_in,
+            'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-800' => ! $cursor?->signed_in,
+        ]) title="{{ $cursor?->signed_in ? __('Your Cursor subscription') : ($cursor ? __(':account is not signed in: check it in Settings → Accounts', ['account' => $cursor->name]) : __('Connect Cursor in Settings → Accounts')) }}">
+            <flux:icon name="command-line" variant="micro" class="size-3" />
+            {{ $cursor ? $cursor->name : __('No Cursor subscription') }}
+        </a>
+    @else
     {{-- Which Claude: an API key is billed by the token, so it shows plainly --}}
     <a href="{{ route('connections.edit') }}" wire:navigate @class([
         $chip,
@@ -37,9 +49,10 @@
         <flux:icon :name="$account === 'api_key' ? 'key' : ($account === 'subscription' ? 'sparkles' : 'exclamation-triangle')" variant="micro" class="size-3" />
         {{ $claude ? $claude->name : __('No Claude account') }}
     </a>
+    @endif
 
     {{-- within limits and no percentage yet: nothing worth a chip --}}
-    @if ($account === 'subscription' && $usage && (isset($usage['percent']) || isset($usage['week_percent']) || in_array($usage['status'] ?? '', ['rejected', 'allowed_warning'], true)))
+    @if (! $onCursor && $account === 'subscription' && $usage && (isset($usage['percent']) || isset($usage['week_percent']) || in_array($usage['status'] ?? '', ['rejected', 'allowed_warning'], true)))
         @php
             // the five-hour window and the week, as /usage shows them; either may be unknown yet
             $percent = $usage['percent'] ?? null;
@@ -90,16 +103,20 @@
     @php($settings = $canChat ? 'button' : 'span')
     <{{ $settings }} @if ($canChat) type="button" x-on:click="$flux.modal('chat-settings').show()" @endif @class([$chip, $plain, 'cursor-pointer hover:ring-zinc-400 dark:hover:ring-zinc-500' => $canChat]) title="{{ __('Model') }}">
         <flux:icon.cpu-chip variant="micro" class="size-3" />
-        @if ($chosen)
+        @if ($onCursor)
+            Cursor
+        @elseif ($chosen)
             {{ $chosen }}
         @else
             {{ __('Default') }}@if ($actual)<span class="text-zinc-400"> · {{ $actual }}</span>@endif
         @endif
     </{{ $settings }}>
+    @unless ($onCursor)
     <{{ $settings }} @if ($canChat) type="button" x-on:click="$flux.modal('chat-settings').show()" @endif @class([$chip, $plain, 'cursor-pointer hover:ring-zinc-400 dark:hover:ring-zinc-500' => $canChat]) title="{{ __('Effort') }}">
         <flux:icon.light-bulb variant="micro" class="size-3" />
         {{ __('effort :level', ['level' => mb_strtolower(__((string) (config('studio.efforts')[(string) $effort] ?? $effort ?: 'Default')))]) }}
     </{{ $settings }}>
+    @endunless
     <{{ $settings }} @if ($canChat) type="button" x-on:click="$flux.modal('chat-settings').show()" @endif @class([
         $chip,
         'cursor-pointer hover:ring-zinc-400 dark:hover:ring-zinc-500' => $canChat,

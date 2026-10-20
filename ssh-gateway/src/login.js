@@ -1,5 +1,10 @@
 import { spawn as spawnProcess } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { fileURLToPath } from 'node:url';
+
+const terminalPy = fileURLToPath(new URL('../../bridge/src/terminal.py', import.meta.url));
 
 /**
  * A person signing in to their own subscription: the official CLI
@@ -53,6 +58,11 @@ export class LoginSession {
   }
 
   start() {
+    if (this.#target.local && this.#target.kind === 'cursor-login') {
+      this.#startLocal();
+      return;
+    }
+
     const handle = String(this.#target.handle ?? '');
     if (!/^[a-z0-9][a-z0-9-]{0,27}$/.test(handle)) {
       this.#send({ type: 'error', message: 'This account has no home on the server yet.' });
@@ -72,17 +82,64 @@ export class LoginSession {
 
     this.#child = this.#spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { PATH: process.env.PATH ?? '/usr/bin:/bin' } });
     this.#log(`${provider.label} login for ${handle} (user ${this.#target.user_id ?? '?'})`);
+    this.#follow();
+  }
+
+  /**
+   * Development has no server home. `agent login` runs on this computer, in the
+   * subscription's folder, on the same terminal the page already shows.
+   */
+  #startLocal() {
+    const provider = PROVIDERS['cursor-login'];
+    const dir = String(this.#target.dir ?? provider.fallback);
+    if (!provider.dir.test(dir)) {
+      this.#send({ type: 'error', message: provider.place });
+      return this.close();
+    }
+
+    const cols = clamp(this.#size.cols, 40, 300);
+    const rows = clamp(this.#size.rows, 10, 100);
+    const home = homedir();
+    const folder = join(home, dir);
+    const path = [join(home, '.local', 'bin'), '/usr/local/bin', process.env.PATH].filter(Boolean).join(':');
+
+    this.#child = this.#spawn('python3', ['-I', terminalPy, String(cols), String(rows), 'agent', 'login'], {
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: path,
+        NO_OPEN_BROWSER: '1',
+        AGENT_CLI_CREDENTIAL_STORE: 'file',
+        CURSOR_CONFIG_DIR: folder,
+        XDG_CONFIG_HOME: folder,
+      },
+      stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+    });
+    this.#log(`cursor login on this computer (user ${this.#target.user_id ?? '?'})`);
+    this.#follow({
+      // exec of a missing program exits 127 and prints nothing, which leaves the page on an empty terminal
+      silentExit: 'Cursor CLI is not installed on this computer (agent was not found). Install it, then sign in again.\n',
+    });
+  }
+
+  #follow({ silentExit = null } = {}) {
     this.#send({ type: 'status', state: 'ready' });
 
     const out = new StringDecoder('utf8');
     const err = new StringDecoder('utf8');
-    this.#child.stdout.on('data', (chunk) => this.#data(out.write(chunk)));
-    this.#child.stderr.on('data', (chunk) => this.#data(err.write(chunk)));
+    let saw = false;
+    const take = (text) => {
+      if (text !== '') saw = true;
+      this.#data(text);
+    };
+    this.#child.stdout.on('data', (chunk) => take(out.write(chunk)));
+    this.#child.stderr.on('data', (chunk) => take(err.write(chunk)));
     this.#child.on('error', (error) => {
       this.#send({ type: 'error', message: `The sign-in could not start: ${error.message}` });
       this.close();
     });
     this.#child.on('close', (code) => {
+      if (!saw && silentExit && code === 127) this.#data(silentExit);
       this.#send({ type: 'exit', code });
       this.close();
     });

@@ -40,6 +40,9 @@ class Chat extends Component
 
     public string $model = '';
 
+    /** claude or cursor, for this conversation. */
+    public string $agent = 'claude';
+
     public string $effort = '';
 
     public string $mode = 'default';
@@ -80,14 +83,16 @@ class Chat extends Component
         $this->model = (string) $conversation->model;
         $this->effort = (string) $conversation->effort;
         $this->mode = $conversation->permission_mode;
+        $this->agent = $conversation->agent === 'cursor' ? 'cursor' : 'claude';
         $this->signal = $conversation->signal();
         $this->sandboxStatus = $conversation->sandboxStatus();
         $this->readSandbox();
     }
 
     /**
-     * Model, effort and permission mode apply from the next message on: the
-     * bridge restarts the agent with the new flags and resumes the session.
+     * Model, effort, mode and agent apply from the next message on. Claude
+     * resumes its session. Switching between Claude and Cursor starts the
+     * other CLI fresh: it cannot resume the session it did not write.
      */
     public function saveSettings(): void
     {
@@ -97,6 +102,7 @@ class Chat extends Component
         $modes = $this->allowedModes();
 
         $this->validate([
+            'agent' => ['required', Rule::in(['claude', 'cursor'])],
             'model' => ['nullable', Rule::in($models)],
             'effort' => ['nullable', Rule::in(array_keys((array) config('studio.efforts', [])))],
             'mode' => ['required', Rule::in($modes)],
@@ -104,10 +110,15 @@ class Chat extends Component
             'mode.in' => __('Your role cannot use this mode.'),
         ]);
 
+        $agent = $this->agent === 'cursor' ? 'cursor' : 'claude';
+        $switching = $agent !== ($this->conversation->agent === 'cursor' ? 'cursor' : 'claude');
+
         $this->conversation->forceFill([
+            'agent' => $agent,
             'model' => $this->model !== '' ? $this->model : null,
             'effort' => $this->effort !== '' ? $this->effort : null,
             'permission_mode' => $this->mode,
+            ...($switching ? ['agent_session_id' => null] : []),
         ])->save();
 
         Flux::modal('chat-settings')->close();

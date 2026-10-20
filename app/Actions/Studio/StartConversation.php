@@ -16,6 +16,7 @@ final class StartConversation
             'title' => $title,
             'status' => ConversationStatus::Idle,
             'permission_mode' => ($user->roleIn($workspace->project) ?? $user->role)->permissionMode(),
+            'agent' => $user->preferredAgent(),
         ]);
     }
 }

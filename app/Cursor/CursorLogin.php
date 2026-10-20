@@ -18,8 +18,9 @@ use Throwable;
  * An API key is a different product: it is billed apart from the subscription
  * and Studio does not keep one.
  *
- * In local development (the "local" driver) the CLI and its login are the
- * developer's own, on this machine, whatever the account.
+ * In local development (the "local" driver) the sign-in terminal runs
+ * `agent login` on this computer, in that subscription's folder, and status
+ * asks the CLI there.
  */
 final class CursorLogin
 {
@@ -39,7 +40,14 @@ final class CursorLogin
     {
         try {
             if (! self::onServer()) {
-                $result = Process::timeout(20)->run(['agent', 'status', '--format', 'json']);
+                $home = getenv('HOME') ?: '';
+                $folder = $home !== '' ? $home.DIRECTORY_SEPARATOR.$account->dir : null;
+                $result = Process::timeout(20)->env(array_filter([
+                    'NO_OPEN_BROWSER' => '1',
+                    'AGENT_CLI_CREDENTIAL_STORE' => 'file',
+                    'CURSOR_CONFIG_DIR' => $folder,
+                    'XDG_CONFIG_HOME' => $folder,
+                ]))->run(['agent', 'status', '--format', 'json']);
                 $read = self::interpret($result->output(), $result->successful());
 
                 return ['logged_in' => $read['logged_in'], 'email' => $read['email'], 'error' => null];

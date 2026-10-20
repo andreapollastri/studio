@@ -9,18 +9,24 @@ import { CallbackPoster } from './callback.js';
 import { BridgeError } from './errors.js';
 import { BROWSER_READ_TOOLS, BROWSER_SERVER, browserServer, normalizeBrowser, removeBrowserFiles } from './browser.js';
 import { studioAgents, studioPrompt, writeAgentsFile } from './agents.js';
+import { CURSOR_DIR, cursorArgs, cursorEnv, normalizeCursor } from './cursor.js';
 
 /**
- * One Claude Code process per conversation.
+ * One agent process per conversation.
  *
- * The CLI is started with `-p` and stream-json on both ends; stdin stays open
+ * Claude Code is started with `-p` and stream-json on both ends; stdin stays open
  * so the next turn is one more line. Between turns the process idles for a
  * while, then is killed: the next turn starts a new process with `--resume`
  * and the session id the result carried.
  *
- * `--permission-prompt-tool stdio` makes the CLI ask before a tool it may
+ * Cursor is print mode (`agent -p`): one process per turn, the prompt as an
+ * argument, no stdin protocol and no permission question. Switching agent
+ * starts that CLI fresh, because the other one's session cannot be resumed.
+ *
+ * `--permission-prompt-tool stdio` makes Claude Code ask before a tool it may
  * not run outright; the question is forwarded to Studio as
  * `permission_request` and the turn waits for `answerPermission`.
+ * Cursor does not ask Studio: its mode comes from the conversation.
  *
  * After a turn the CLI is asked what `/usage` shows (`get_usage`): the plan's
  * windows as percentages, read by Claude Code itself with its own credentials.
@@ -46,7 +52,7 @@ export class Session extends EventEmitter {
   #spawn;
   #log;
   #sandboxes;
-  #turn = null; // { permission_mode, model, effort, auth, account, apiKey, claudeDir, mcp, browser, sandbox, cwd }
+  #turn = null; // { agent, cursorDir, permission_mode, model, effort, auth, account, apiKey, claudeDir, mcp, browser, sandbox, cwd }
   #stderr = ''; // the tail of what the current process said outside stream-json
   #usageRequest = null; // the request_id of the get_usage still unanswered
   #usageAskedAt = 0;
@@ -103,6 +109,15 @@ export class Session extends EventEmitter {
     if (turn.auth != null && !['subscription', 'api_key'].includes(turn.auth)) {
       throw new BridgeError(422, 'unknown auth');
     }
+    const agent = turn.agent == null || turn.agent === 'claude' ? 'claude' : turn.agent;
+    if (agent !== 'claude' && agent !== 'cursor') throw new BridgeError(422, 'unknown agent');
+    let cursorDir = null;
+    if (agent === 'cursor' && turn.cursor_dir != null && turn.cursor_dir !== '') {
+      if (typeof turn.cursor_dir !== 'string' || !CURSOR_DIR.test(turn.cursor_dir)) {
+        throw new BridgeError(422, 'invalid cursor_dir');
+      }
+      cursorDir = turn.cursor_dir;
+    }
     const account = normalizeAccount(turn);
     const allowed = normalizeAllowedTools(turn.allowed_tools);
     // One turn at a time: the CLI would queue a second message and Studio would lose
@@ -119,6 +134,8 @@ export class Session extends EventEmitter {
 
     // A new callback target or a changed mode/model means a fresh process.
     const sameTarget = this.#poster && this.#turn
+      && (this.#turn.agent ?? 'claude') === agent
+      && (this.#turn.cursorDir ?? null) === cursorDir
       && this.#turn.permission_mode === (turn.permission_mode || 'default')
       && this.#turn.model === (turn.model || null)
       && this.#turn.effort === (turn.effort || null)
@@ -136,8 +153,11 @@ export class Session extends EventEmitter {
 
     if (!this.#process || !sameTarget) {
       this.#stopProcess();
-      if (turn.session_id && !this.sessionId) this.sessionId = turn.session_id;
-      this.#turn = { permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, ...account, mcp: mcp.key, mcpServers: mcp.servers, browser, sandbox: sandbox.info, cwd: sandbox.cwd, allowed };
+      // The other CLI cannot resume this session. PHP clears the id when the person switches.
+      const previous = this.#turn?.agent ?? 'claude';
+      if (previous !== agent) this.sessionId = turn.session_id || null;
+      else if (turn.session_id) this.sessionId = turn.session_id;
+      this.#turn = { agent, cursorDir, permission_mode: turn.permission_mode || 'default', model: turn.model || null, effort: turn.effort || null, auth: turn.auth ?? undefined, ...account, mcp: mcp.key, mcpServers: mcp.servers, browser, sandbox: sandbox.info, cwd: sandbox.cwd, allowed };
       this.#poster = new CallbackPoster({
         url: turn.callback.url,
         token: turn.callback.token,
@@ -145,6 +165,8 @@ export class Session extends EventEmitter {
         flushInterval: this.#config.flushInterval,
         log: this.#log,
       });
+      // Cursor's prompt is the turn's text, which warm does not have yet.
+      if (agent === 'cursor') return false;
       this.#start();
       return true;
     }
@@ -161,7 +183,8 @@ export class Session extends EventEmitter {
     this.#prepare(turn);
 
     this.state = 'running';
-    this.#write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: turn.text }] } });
+    if (this.#turn.agent === 'cursor') this.#startCursor(turn.text);
+    else this.#write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: turn.text }] } });
     this.emit('turn', turn.text);
 
     return this.snapshot();
@@ -301,6 +324,26 @@ export class Session extends EventEmitter {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    this.#watch(child);
+  }
+
+  /** Cursor's print mode: the prompt is an argument, and the process ends with the turn. */
+  #startCursor(text) {
+    const bin = this.#config.cursorBin || 'agent';
+    const args = cursorArgs({ text, sessionId: this.sessionId, permissionMode: this.#turn.permission_mode });
+    this.#log(`spawn ${bin} ${args.slice(0, -1).join(' ')}`);
+
+    const child = this.#spawn(bin, args, {
+      cwd: this.#turn.cwd ?? this.#config.workspaceDir,
+      env: cursorEnv(process.env, { cursorDir: this.#turn.cursorDir }),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    this.#watch(child);
+    try { child.stdin.end(); } catch {}
+  }
+
+  #watch(child) {
     this.#process = child;
     this.#stderr = '';
     const parser = new NdjsonParser(
@@ -374,7 +417,7 @@ export class Session extends EventEmitter {
       return;
     }
 
-    const events = normalize(line);
+    const events = this.#turn?.agent === 'cursor' ? normalizeCursor(line) : normalize(line);
 
     for (const event of events) {
       if (event.type === 'init' && event.session_id) this.sessionId = event.session_id;
@@ -392,7 +435,7 @@ export class Session extends EventEmitter {
     }
 
     if (events.length) this.#emitEvents(events);
-    if (events.some((event) => event.type === 'result')) this.#askUsage();
+    if (events.some((event) => event.type === 'result') && this.#turn?.agent !== 'cursor') this.#askUsage();
   }
 
   /** At most once a minute per conversation: the CLI asks claude.ai each time. */
@@ -446,7 +489,7 @@ export class Session extends EventEmitter {
     this.#clearIdleTimer();
 
     if (wasBusy) {
-      const message = explainExit({ code, signal, error, stderr: this.#stderr });
+      const message = explainExit({ code, signal, error, stderr: this.#stderr, name: this.#turn?.agent === 'cursor' ? 'Cursor' : 'Claude Code' });
       this.#log(`claude ended the turn early (code ${code}, signal ${signal}${error ? `, ${error.message}` : ''}): ${message}`);
       this.#emitEvents([
         { type: 'error', code: 'process_exit', message },
@@ -506,11 +549,11 @@ const EXIT_REASONS = [
     'The workspace disk is full, so Claude could not continue.'],
 ];
 
-export function explainExit({ code = null, signal = null, error = null, stderr = '' } = {}) {
+export function explainExit({ code = null, signal = null, error = null, stderr = '', name = 'Claude Code' } = {}) {
   if (error) {
     return error.code === 'ENOENT'
-      ? 'Claude Code is not installed in this workspace.'
-      : `Claude Code could not start: ${error.message}`;
+      ? `${name} is not installed in this workspace.`
+      : `${name} could not start: ${error.message}`;
   }
 
   const said = stripAnsi(stderr).trim();
@@ -518,11 +561,11 @@ export function explainExit({ code = null, signal = null, error = null, stderr =
     if (pattern.test(said)) return sentence;
   }
 
-  if (signal === 'SIGKILL') return 'Claude Code was killed before finishing the turn, most likely because the workspace ran out of memory.';
-  if (signal) return `Claude Code was stopped (${signal}) before finishing the turn.`;
+  if (signal === 'SIGKILL') return `${name} was killed before finishing the turn, most likely because the workspace ran out of memory.`;
+  if (signal) return `${name} was stopped (${signal}) before finishing the turn.`;
 
   const lastWords = said.split('\n').map((l) => l.trim()).filter(Boolean).slice(-3).join(' ').slice(-500);
-  const base = `Claude Code stopped unexpectedly (exit code ${code}) before finishing the turn.`;
+  const base = `${name} stopped unexpectedly (exit code ${code}) before finishing the turn.`;
   return lastWords ? `${base} It said: ${lastWords}` : base;
 }
 

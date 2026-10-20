@@ -91,7 +91,7 @@
                 @can('chat', $project)
                     <flux:heading size="lg">{{ __('Talk to the project') }}</flux:heading>
                     <flux:text class="max-w-md">
-                        {{ __('Every conversation is a Claude Code session in your workspace, with the Larapilot skills. Ask, approve, watch the preview next to it.') }}
+                        {{ __('Every conversation runs in your workspace on the agent you choose, Claude or Cursor, with the Larapilot skills. Ask, approve, watch the preview next to it.') }}
                     </flux:text>
                     <div class="flex flex-wrap justify-center gap-2">
                         <flux:button variant="primary" icon="chat-bubble-left-right" wire:click="newConversation">{{ __('New conversation') }}</flux:button>

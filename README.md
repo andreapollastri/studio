@@ -74,8 +74,9 @@ as they work with, all in *Settings → Accounts*:
 - **Cursor**: subscriptions, each person's own. *Sign in to Cursor* runs the official `agent login` in a terminal
   in the person's own home on the server, in a folder of its own for each subscription (`~/.cursor`,
   `~/.cursor-<slug>`); the person approves in the browser, so the plan is used as their own and Studio never sees
-  or holds the login. An API key is not one of these: it is billed apart from the subscription. Conversations
-  still run on Claude Code. See [Cursor and its terms](#cursor-and-its-terms).
+  or holds the login. An API key is not one of these: it is billed apart from the subscription. Each person
+  chooses Claude or Cursor as the default for new conversations, and can switch a conversation in *Model & mode*.
+  See [Cursor and its terms](#cursor-and-its-terms).
 - **Groups** (*Projects*): each person puts their projects in groups of their own (Personal, Open source, Work,
   Clients…). A group picks the Claude account and the git account its projects use; a project may pick others. Each
   card shows what it runs on and why. A Claude change applies to the next message; a git change restarts only the
@@ -347,7 +348,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Password manager (*Tools → Password manager*): nested personal folders, items encrypted (username, password, notes, TOTP with live codes), password generator; an item is tied to a project for the roles ticked (client, PM, dev) and shared with single people to view or edit, with a table of who sees it and why | done, tested |
 | Drive (*Tools → Drive*): folders and files on Studio's disk, upload by button or drag and drop; a folder tied to a project opens by role to view or to view and edit, down the tree; administrators see everything, clients create nothing; *Copy / Move into the workspace* sends files or whole folders to the person's workspace of that project through the bridge | done, tested (the bridge's `PUT /files/upload` against real directories) |
 | Claude: several accounts per person, subscriptions (the official `claude auth login` in a folder of their own in the person's home, through the SSH gateway) and API keys; a default, a choice per group of projects and per project, sent with every turn | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
-| Cursor: several subscriptions per person, each the official `agent login` in a folder of its own in the person's home, through the SSH gateway; Studio asks only `agent status` | done, tested (helper and gateway with stand-ins for the CLI); not yet run with the real CLI on a live server. Conversations still run on Claude Code |
+| Cursor: several subscriptions per person, each the official `agent login` in a folder of its own; a conversation can run on that CLI, and each person chooses the default | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
 | Groups of projects per person, with their Claude and git accounts; projects on any enabled git host, each workspace with the git account and commit identity of its repository's host | done, tested |
 | Agent browser (Playwright MCP signed in to the preview with the person's pass), screenshots in the chat, subagents as cards, Studio's `code-reviewer` and `browser-qa` | done, tested (bridge against the fake CLI; Playwright MCP 0.0.83 run for real against a site behind a pass cookie: navigate, screenshot, console); not yet run on a live server |
 | Conversations in a sandbox: worktree on its own branch, database copy, build and preview host; merge, push, remove; the side pane follows it | done, tested (bridge against real git repositories, Studio with stand-ins for the bridge and the helper); `sandbox-create`/`sandbox-delete` shellchecked, not yet run on a live server |

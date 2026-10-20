@@ -4,6 +4,7 @@ namespace App\Accounts;
 
 use App\Git\GitAccount;
 use App\Models\ClaudeAccount;
+use App\Models\CursorAccount;
 use App\Models\ConnectorAccount;
 use App\Models\Project;
 use App\Models\ProjectPreference;
@@ -49,6 +50,18 @@ final class Accounts
         $first = $accounts->first(fn (ClaudeAccount $account) => $account->isUsable()) ?? $accounts->first();
 
         return $first ? new Choice($first, Choice::MATCH) : null;
+    }
+
+    /**
+     * The Cursor subscription a conversation runs on: the first one that is
+     * signed in, otherwise the first. A project does not pick one, because
+     * each person chooses their own agent.
+     */
+    public static function cursor(User $user): ?CursorAccount
+    {
+        $accounts = $user->cursorAccounts()->orderBy('id')->get();
+
+        return $accounts->first(fn (CursorAccount $account) => $account->signed_in) ?? $accounts->first();
     }
 
     /** @return Choice<ConnectorAccount>|null */

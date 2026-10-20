@@ -4,6 +4,11 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.3
+
+- **Each person chooses Claude or Cursor.** *Settings → Accounts* sets the default for new conversations (Claude, until you change it). *Model & mode* switches the conversation you are in. The messages stay on the page. The other CLI starts fresh, because it cannot resume a session it did not write. Cursor runs as `agent -p` on that person's subscription: Plan only and Ask before actions are Cursor's plan and ask modes, and the other modes let it act. Studio's permission cards, model list and commit-message wand stay on Claude.
+- **Sign in to Cursor on this computer.** In development the sign-in terminal runs `agent login` here, in that subscription's folder, the same way the server runs it in your home. *Check* asks that folder.
+
 ## 2.4.2
 
 - **Sign in to Cursor shows the terminal.** `cursor-login` was not one of the commands that skip reading stdin, so the helper waited for the end of the input that the terminal keeps open, and `agent login` never started. The page stayed on "the link appears when Cursor prints it" with an empty terminal. It now starts the official login straight away, like the sign-in to Claude Code.

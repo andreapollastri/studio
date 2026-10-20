@@ -244,6 +244,42 @@ test('a cursor-login ticket for the first subscription omits the default folder'
   await s.closed;
 });
 
+test('a cursor-login ticket in development runs agent login on this computer, not the helper', async (t) => {
+  let launched;
+  const spawn = (bin, args, options) => {
+    launched = { bin, args, env: options?.env ?? {} };
+    return spawnReal(process.execPath, ['-e', 'process.stdout.write("Starting login process\\n"); process.exit(0)']);
+  };
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0', SSH_GATEWAY_HELPER: '/usr/local/sbin/studio-admin' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'cursor-login', user_id: 3, dir: '.cursor-work', local: true }), spawn });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until((m) => m.type === 'exit');
+  assert.equal(launched.bin, 'python3');
+  assert.ok(launched.args.includes('agent'));
+  assert.ok(launched.args.includes('login'));
+  assert.equal(launched.args.includes('studio-admin'), false);
+  assert.equal(launched.env.NO_OPEN_BROWSER, '1');
+  assert.match(launched.env.CURSOR_CONFIG_DIR, /\.cursor-work$/);
+  assert.match(s.output(), /Starting login process/);
+  await s.closed;
+});
+
+test('a local cursor-login whose agent is missing says so instead of leaving the terminal empty', async (t) => {
+  const spawn = () => spawnReal(process.execPath, ['-e', 'process.exit(127)']);
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'cursor-login', user_id: 3, dir: '.cursor', local: true }), spawn });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until((m) => m.type === 'exit');
+  assert.match(s.output(), /not installed/);
+  await s.closed;
+});
+
 test('a cursor-login ticket with a folder outside the person\'s Cursor ones is refused before anything runs', async (t) => {
   let ran = false;
   const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0' }), origin: '' };

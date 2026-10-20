@@ -16,6 +16,7 @@ export function loadConfig(env = process.env) {
     token,
     workspaceDir: resolve(env.WORKSPACE_DIR || process.cwd()),
     claudeBin: env.CLAUDE_BIN || 'claude',
+    cursorBin: env.CURSOR_BIN || 'agent',
     // Seconds a finished session keeps its process alive for the next turn.
     idleTtl: Number(env.BRIDGE_IDLE_TTL || 600),
     // Milliseconds to coalesce text deltas before posting them to Studio.

@@ -264,8 +264,13 @@
             <form wire:submit="saveSettings" class="space-y-5">
                 <div>
                     <flux:heading size="lg">{{ __('Model & mode') }}</flux:heading>
-                    <flux:text class="mt-1">{{ __('For this conversation, from the next message on. The session keeps its memory.') }}</flux:text>
+                    <flux:text class="mt-1">{{ __('For this conversation, from the next message on. Claude keeps this conversation’s memory when you change model or mode. Switching between Claude and Cursor starts the other one fresh: the messages stay here.') }}</flux:text>
                 </div>
+                <flux:radio.group wire:model.live="agent" :label="__('Agent')">
+                    <flux:radio value="claude" label="Claude" :description="__('Claude Code, with the model, effort and permission cards below.')" />
+                    <flux:radio value="cursor" label="Cursor" :description="__('Cursor’s CLI, on your Cursor subscription. It does not ask with Studio’s permission cards.')" />
+                </flux:radio.group>
+                @if ($agent === 'claude')
                 <flux:select wire:model="model" :label="__('Model')">
                     @foreach ($models as $option)
                         <flux:select.option value="{{ $option['id'] }}">{{ $option['label'] }}</flux:select.option>
@@ -276,12 +281,16 @@
                         <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
                     @endforeach
                 </flux:select>
+                @else
+                    <flux:text class="text-xs">{{ __('Plan only is Cursor’s plan mode. Ask before actions is Cursor’s ask mode. The other modes let Cursor act, within its own rules. The project’s .cursor settings apply; Studio does not choose a Cursor model.') }}</flux:text>
+                @endif
                 <flux:radio.group wire:model="mode" :label="__('Mode')">
                     @foreach ($modes as $value => $definition)
                         <flux:radio :value="$value" :label="$definition['label']" :description="$definition['hint']" />
                     @endforeach
                 </flux:radio.group>
                 <flux:error name="mode" />
+                @if ($agent === 'claude')
                 <div class="rounded-lg bg-zinc-50 px-3 py-2 text-xs dark:bg-zinc-800">
                     <div class="font-medium">{{ __('Runs without asking') }}</div>
                     @if ($ownRules->isNotEmpty())
@@ -332,6 +341,7 @@
                             : __('The browser is off for this project. Subagents run in parallel; the repository\'s .claude/agents apply too.') }}
                     </div>
                 </div>
+                @endif
                 <div class="flex justify-end gap-2">
                     <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
                     <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>

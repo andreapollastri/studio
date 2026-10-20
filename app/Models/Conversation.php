@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property int $workspace_id
  * @property int $user_id
  * @property string|null $title
+ * @property string $agent claude or cursor
  * @property string|null $agent_session_id
  * @property ConversationStatus $status
  * @property string $permission_mode
@@ -33,7 +34,7 @@ use Illuminate\Support\Carbon;
  * @property-read Workspace $workspace
  * @property-read User $user
  */
-#[Fillable(['workspace_id', 'user_id', 'title', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'sandbox', 'sandbox_host', 'runtime', 'last_result', 'last_activity_at'])]
+#[Fillable(['workspace_id', 'user_id', 'title', 'agent', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'sandbox', 'sandbox_host', 'runtime', 'last_result', 'last_activity_at'])]
 class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */
