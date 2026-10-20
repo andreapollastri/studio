@@ -4,8 +4,8 @@ namespace App\Accounts;
 
 use App\Git\GitAccount;
 use App\Models\ClaudeAccount;
-use App\Models\CursorAccount;
 use App\Models\ConnectorAccount;
+use App\Models\CursorAccount;
 use App\Models\Project;
 use App\Models\ProjectPreference;
 use App\Models\User;
