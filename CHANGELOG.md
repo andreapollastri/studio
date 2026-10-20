@@ -4,6 +4,12 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.4
+
+- **Cipi lists the PHP versions.** *Infrastructure → Cipi → PHP* showed empty rows: the server answers with the versions inside `versions`, and Studio was reading the wrapper. The table now shows each installed version, its status, how many apps use it, and which one is the default.
+- **The SSH tunnel keeps the connection you chose.** Saving a database through an SSH tunnel could answer "Choose the SSH connection the tunnel goes through" after you had picked one: the placeholder stayed selected, and on macOS the menu painted the first connection while the value stayed empty. The choice is kept. When you have only one SSH connection, turning the tunnel on takes it.
+- **A new Cipi app includes its database link.** When the app is created, the result ends with `database_url`, the same `mariadb+ssh://…` (or `postgres+ssh://…`) link Cipi prints, so you can paste it into a database client. An app without a database has none.
+
 ## 2.4.3
 
 - **Each person chooses Claude or Cursor.** *Settings → Accounts* sets the default for new conversations (Claude, until you change it). *Model & mode* switches the conversation you are in. The messages stay on the page. The other CLI starts fresh, because it cannot resume a session it did not write. Cursor runs as `agent -p` on that person's subscription: Plan only and Ask before actions are Cursor's plan and ask modes, and the other modes let it act. Studio's permission cards, model list and commit-message wand stay on Claude.
