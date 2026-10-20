@@ -173,6 +173,9 @@ export class Session extends EventEmitter {
    */
   answerPermission(requestId, behavior, message = null, answers = null, rules = null) {
     const pending = this.#pending.get(requestId);
+    if (!pending && !this.#process) {
+      throw new BridgeError(410, 'Claude Code was restarted since it asked, so this answer has nowhere to go: write it as a message instead.');
+    }
     if (!pending) throw new BridgeError(404, `no pending permission ${requestId}`);
     if (behavior !== 'allow' && behavior !== 'deny') throw new BridgeError(422, 'behavior must be allow or deny');
     if (answers !== null && (typeof answers !== 'object' || Array.isArray(answers) || Object.values(answers).some((a) => typeof a !== 'string'))) {
@@ -200,7 +203,12 @@ export class Session extends EventEmitter {
   }
 
   interrupt() {
-    if (!this.#process) return this.snapshot();
+    if (!this.#process) {
+      // a session left waiting by a process that is gone: free it, so the next turn is taken
+      this.state = 'idle';
+      this.#pending.clear();
+      return this.snapshot();
+    }
     const wasBusy = this.state !== 'idle';
     this.#stopProcess();
     if (wasBusy) {
@@ -327,6 +335,10 @@ export class Session extends EventEmitter {
 
   #stopProcess() {
     this.#clearIdleTimer();
+    // no process, no turn: nothing runs and nothing waits for an answer any more
+    this.state = 'idle';
+    this.#pending.clear();
+    this.#background.clear();
     const child = this.#process;
     if (!child) return;
     this.#process = null;
@@ -408,6 +420,8 @@ export class Session extends EventEmitter {
 
     this.#pending.set(requestId, { tool_name: request.tool_name, input: request.input ?? {} });
     this.state = 'waiting_permission';
+    // a turn Claude started on its own may ask too: the person's answer can take its time
+    this.#clearIdleTimer();
 
     this.#emitEvents([{
       type: 'permission_request',
@@ -444,8 +458,9 @@ export class Session extends EventEmitter {
   #armIdleTimer() {
     this.#clearIdleTimer();
     this.#idleTimer = setTimeout(() => {
-      // subagents or commands still at work in the background: their results would be lost
-      if (this.#background.size > 0) {
+      // subagents or commands still at work in the background, or a question waiting for the person:
+      // releasing the process now would lose them
+      if (this.#background.size > 0 || this.state !== 'idle') {
         this.#armIdleTimer();
         return;
       }

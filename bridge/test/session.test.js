@@ -51,7 +51,8 @@ test('a permission question is forwarded and the answer lets the turn finish', a
   assert.ok(types.includes('permission_resolved'));
   assert.ok(types.includes('tool_result'));
   assert.equal(studio.events().find((e) => e.type === 'result').result, 'Fatto, assets ricompilati.');
-  assert.throws(() => session.answerPermission('req_1', 'allow'), /no pending permission/);
+  // the process is gone with the session closed: the answer has nowhere to go, and says so
+  assert.throws(() => session.answerPermission('req_1', 'allow'), /write it as a message/);
   await studio.close();
 });
 
@@ -409,4 +410,47 @@ test('a subagent still running in the background keeps the CLI past the idle tim
   assert.equal(woken.result, 'woken');
   assert.ok(studio.events().some((e) => e.type === 'text' && e.text === 'Riprendo dal punto in cui ero.'));
   assert.equal(session.state, 'idle');
+});
+
+test('a question a woken turn asks waits for the person past the idle time, and the answer is taken', async (t) => {
+  const studio = await startCollector();
+  const session = new Session('16', testConfig({ idleTtl: 0.2 }), { spawn: spawnFake });
+  t.after(async () => {
+    await session.close();
+    await studio.close();
+  });
+
+  session.sendTurn({ text: 'background ask', permission_mode: 'default', callback: callback(studio) });
+  await waitFor(() => studio.events().find((e) => e.type === 'permission_request' && e.request_id === 'req_woken'));
+  assert.equal(session.state, 'waiting_permission');
+  // the person takes longer than the idle time to answer
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  assert.equal(session.snapshot().alive, true);
+
+  session.answerPermission('req_woken', 'allow');
+  const result = await waitFor(() => studio.events().find((e) => e.type === 'result' && e.result === 'answered'));
+  assert.equal(result.woken, true);
+  assert.equal(session.state, 'idle');
+});
+
+test('a session whose process is gone is free again: no stale wait blocks the next message', async (t) => {
+  const studio = await startCollector();
+  const session = new Session('17', testConfig(), { spawn: spawnFake });
+  t.after(async () => {
+    await session.close();
+    await studio.close();
+  });
+
+  session.sendTurn({ text: 'tool please', permission_mode: 'default', callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'permission_request'));
+  // the process goes away while the question waits (a crash, a restart)
+  await session.close();
+  assert.equal(session.state, 'idle');
+  assert.throws(() => session.answerPermission('req_1', 'allow'), /write it as a message/);
+  assert.equal(session.interrupt().state, 'idle');
+
+  // warming starts a fresh process, and the next message is taken
+  session.warm({ permission_mode: 'default', callback: callback(studio) });
+  session.sendTurn({ text: 'ciao', permission_mode: 'default', callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'result' && e.result === 'Ho letto: ciao'));
 });

@@ -109,6 +109,24 @@ rl.on('line', (line) => {
     if (text.startsWith('exit') || process.env.FAKE_EXIT_AFTER_RESULT === '1') process.exit(0);
   };
 
+  // woken by a background task, Claude asks the person before going on (as an inception does)
+  if (text === 'background ask') {
+    out({ type: 'system', subtype: 'task_started', session_id: sessionId, task_id: 'task_ask', tool_use_id: 'toolu_bg', description: 'Inventory', task_type: 'local_agent', uuid: next() });
+    out({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1, num_turns: 1, session_id: sessionId, result: 'started', uuid: next() });
+    setTimeout(() => {
+      out({ type: 'system', subtype: 'task_notification', session_id: sessionId, task_id: 'task_ask', tool_use_id: 'toolu_bg', status: 'completed', summary: 'done', uuid: next() });
+      pending = {
+        requestId: 'req_woken',
+        finish: (allowed) => {
+          say(allowed ? 'Greenfield, allora.' : 'Va bene.', 'msg_after');
+          out({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1, num_turns: 1, session_id: sessionId, result: 'answered', origin: { kind: 'task-notification' }, uuid: next() });
+        },
+      };
+      out({ type: 'control_request', request_id: 'req_woken', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'php artisan larapilot:prd-write' }, tool_use_id: 'toolu_w' } });
+    }, 200);
+    return;
+  }
+
   // a subagent left running in the background: the turn ends, the task finishes later and wakes the session
   if (text === 'background') {
     out({ type: 'system', subtype: 'task_started', session_id: sessionId, task_id: 'task_bg', tool_use_id: 'toolu_bg', description: 'Inventory of the legacy', task_type: 'local_agent', uuid: next() });

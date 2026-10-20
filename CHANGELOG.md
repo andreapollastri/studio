@@ -14,6 +14,12 @@ server is in `installer/upgrades/<version>.sh`.
   the action destroys something. Esc or a click outside cancels, Enter confirms.
 - For developers: `await studioDialog.confirm({...})` and `await studioDialog.prompt({...})` (`resources/js/dialog.js`),
   and any new `wire:confirm` opens the same modal.
+- **Answering after a long think works.** When a turn Claude started on its own (background subagents finishing)
+  asked a question, the bridge released Claude Code after `BRIDGE_IDLE_TTL` while the question waited: the answer then
+  failed with "409: no running process", and every message after with "409: a turn is still running". The bridge now
+  keeps Claude Code while a question waits; a session whose process is gone is free again (Interrupt and the next
+  message work); an answer to a question whose process is gone says to write it as a message.
+- The update restarts the workspace bridges (`installer/upgrades/2.3.5.sh`).
 
 ## 2.3.4
 
