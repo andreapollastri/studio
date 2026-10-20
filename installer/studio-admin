@@ -80,8 +80,9 @@ BROWSERS=/usr/local/lib/studio/browsers
 
 # ---------------------------------------------------------------- plumbing --
 
-# claude-login and site-shell talk to a person on stdin: nothing to read as JSON there
-if [ "${1:-}" = claude-login ] || [ "${1:-}" = site-shell ]; then INPUT='{}'; else INPUT=$(cat || true); fi
+# claude-login, cursor-login and site-shell talk to a person on stdin: nothing to read as JSON
+# there. Reading it would wait until the terminal closes, and the sign-in would never start.
+if [ "${1:-}" = claude-login ] || [ "${1:-}" = cursor-login ] || [ "${1:-}" = site-shell ]; then INPUT='{}'; else INPUT=$(cat || true); fi
 [ -n "$INPUT" ] || INPUT='{}'
 
 # The answer goes to fd 3, the helper's own stdout, also from inside $(…) (require_field):

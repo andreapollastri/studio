@@ -21,6 +21,12 @@ ok() { printf '\033[32mok\033[0m   %s\n' "$*"; }
 bash -n "$ADMIN" || fail "bash -n installer/studio-admin"
 ok "the helper parses"
 
+# A live terminal keeps stdin open. Reading it as the JSON input waits forever, and the
+# command never starts: the sign-in page stays on an empty terminal.
+grep -F '[ "${1:-}" = claude-login ] || [ "${1:-}" = cursor-login ] || [ "${1:-}" = site-shell ]' "$ADMIN" >/dev/null \
+    || fail "cursor-login must not read stdin"
+ok "cursor-login does not read stdin"
+
 # extract NAME — the definition of one function of the helper, as written there (a here-document
 # inside it is skipped over: its closing brace is not the function's)
 extract() {

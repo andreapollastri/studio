@@ -4,6 +4,10 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.2
+
+- **Sign in to Cursor shows the terminal.** `cursor-login` was not one of the commands that skip reading stdin, so the helper waited for the end of the input that the terminal keeps open, and `agent login` never started. The page stayed on "the link appears when Cursor prints it" with an empty terminal. It now starts the official login straight away, like the sign-in to Claude Code.
+
 ## 2.4.1
 
 - **The Cursor CLI is installed where every account can run it.** 2.4.0's system step set `HOME` only on `curl`, so the official installer ran as root and wrote `agent` under `/root/.local`. Nothing linked it into `/usr/local/bin`, and *Check* failed with "Cursor CLI is not installed on this server". The installer now runs with the shared directory as its home (`/usr/local/lib/cursor-agent`) and links `agent` onto the PATH. The next update does this again.
