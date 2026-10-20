@@ -1,4 +1,6 @@
 import { spawn as spawnProcess } from 'node:child_process';
+import { lstatSync, realpathSync, symlinkSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StringDecoder } from 'node:string_decoder';
 import { NdjsonParser } from './ndjson.js';
@@ -19,14 +21,16 @@ export class ShellSession {
   #child = null;
   #closed = false;
 
-  constructor(socket, { cwd, cols = 80, rows = 24, shell = null, spawn = spawnProcess, onClose = () => {} }) {
+  constructor(socket, { cwd, cols = 80, rows = 24, shell = null, home = null, spawn = spawnProcess, onClose = () => {} }) {
     this.#socket = socket;
     this.onClose = onClose;
 
     const program = shell || process.env.SHELL || '/bin/bash';
+    // the workspace through its link in the home: the prompt reads ~/<workspace>, not /srv/studio/…
+    const start = home ? homeLink(cwd, home) : cwd;
     this.#child = spawn('python3', ['-I', TERMINAL, String(cols), String(rows), program, '-l'], {
-      cwd,
-      env: shellEnv(process.env),
+      cwd: start,
+      env: { ...shellEnv(process.env), PWD: start },
       stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     });
 
@@ -86,4 +90,25 @@ export class ShellSession {
 export function shellEnv(env) {
   const out = Object.fromEntries(Object.entries(env).filter(([key]) => !key.startsWith('BRIDGE_') && !['STUDIO_ANTHROPIC_API_KEY', 'CI', 'NO_COLOR', 'COMPOSER_NO_INTERACTION'].includes(key)));
   return { ...out, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: env.LANG || 'C.UTF-8' };
+}
+
+/**
+ * ~/<name of the workspace>, a link to it, made the first time: the shell starts there, so the
+ * prompt and pwd read ~/loy-ezrvu7, and the same short path works over SSH. Something else of
+ * that name in the home is left alone, and the shell starts at the full path instead.
+ */
+export function homeLink(dir, home) {
+  const link = join(home, basename(dir));
+  try {
+    const found = lstatSync(link);
+    return found.isSymbolicLink() && realpathSync(link) === realpathSync(dir) ? link : dir;
+  } catch (error) {
+    if (error.code !== 'ENOENT') return dir;
+  }
+  try {
+    symlinkSync(dir, link);
+    return link;
+  } catch {
+    return dir;
+  }
 }

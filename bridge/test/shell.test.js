@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtemp, realpath } from 'node:fs/promises';
+import { lstat, mkdtemp, readlink, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from '../src/server.js';
-import { shellEnv } from '../src/shell.js';
+import { homeLink, shellEnv } from '../src/shell.js';
 import { testConfig, listen } from './helpers.js';
 
 /** Open GET /shell as the gateway does; resolves to { socket, messages, until } or the refusal's status. */
@@ -104,4 +104,34 @@ test('closing the socket hangs the shell up; the token, the protocol and the san
 test("the shell's environment leaves the bridge's secrets out and is a colour terminal", () => {
   const env = shellEnv({ PATH: '/usr/bin', BRIDGE_TOKEN: 't', BRIDGE_PORT: '4455', STUDIO_ANTHROPIC_API_KEY: 'k', CI: '1', GIT_ASKPASS: '/usr/local/bin/askpass', HOME: '/home/ws-ada' });
   assert.deepEqual(env, { PATH: '/usr/bin', GIT_ASKPASS: '/usr/local/bin/askpass', HOME: '/home/ws-ada', TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'C.UTF-8' });
+});
+
+test('the workspace shell starts at ~/<workspace>, a link made in the home, so the prompt is short', async (t) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'studio-ws-')));
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'studio-home-')));
+  const server = createServer(testConfig({ workspaceDir: root, shell: '/bin/sh', home }));
+  const base = await listen(server);
+  t.after(() => server.shutdown());
+
+  const shell = await openShell(base);
+  shell.send({ type: 'data', data: 'echo "at:$(pwd)"\r' });
+  const name = root.split('/').pop();
+  await shell.until(({ screen }) => screen.includes(`at:${home}/${name}`));
+  assert.equal(await readlink(join(home, name)), root);
+  shell.send({ type: 'data', data: 'exit\r' });
+  await shell.until(({ messages }) => messages.find((m) => m.type === 'exit'));
+});
+
+test('a link already there is used again; anything else of that name keeps the full path', async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'studio-ws-')));
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'studio-home-')));
+  const name = dir.split('/').pop();
+
+  assert.equal(homeLink(dir, home), join(home, name));
+  assert.ok((await lstat(join(home, name))).isSymbolicLink());
+  assert.equal(homeLink(dir, home), join(home, name));
+
+  const other = await realpath(await mkdtemp(join(tmpdir(), 'studio-home-')));
+  await writeFile(join(other, name), 'mine');
+  assert.equal(homeLink(dir, other), dir);
 });

@@ -266,6 +266,8 @@ export function createServer(config, options = {}) {
     socket.write('HTTP/1.1 101 Switching Protocols\r\nupgrade: studio-shell\r\nconnection: Upgrade\r\n\r\n');
     const shell = new ShellSession(socket, {
       cwd,
+      // the workspace itself starts at ~/<name>; a sandbox's worktree keeps its full path
+      home: req.headers['x-studio-sandbox'] ? null : config.home,
       cols: Number(url.searchParams.get('cols')) || 80,
       rows: Number(url.searchParams.get('rows')) || 24,
       shell: config.shell,

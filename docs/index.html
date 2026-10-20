@@ -3660,7 +3660,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </figure>
 
         <p>It is your login shell on a real terminal, in the workspace directory (or the sandbox's worktree of the open
-          conversation), as the workspace's Linux user: the same user Claude Code runs as and SSH reaches. Prompts and
+          conversation), as the workspace's Linux user. The workspace opens as <code>~/&lt;workspace&gt;</code>, a link
+          the bridge makes in your home, so the prompt stays short and the same path works over SSH. It is the same user Claude Code runs as and SSH reaches. Prompts and
           passwords, colours, <kbd>Ctrl</kbd>+<kbd>C</kbd>, <code>tinker</code>, <code>vim</code>, <code>htop</code> and pipes
           work. The workspace's bridge runs it (on a terminal of Python's standard library, so nothing native is installed)
           and the SSH gateway carries it to the browser over its WebSocket, with a ticket Studio gives for one session and
