@@ -8,10 +8,14 @@ test('every page with confirmations carries Studio\'s own dialog, in place of th
 
     $this->actingAs($admin)->get(route('admin.domains'))
         ->assertOk()
-        ->assertSee('x-show="$store.dialog.shown"', false);
+        ->assertSee('x-show="$store.dialog.shown"', false)
+        ->assertSee('studioDialog.sync(', false)
+        ->assertSee('x-on:cancel.prevent', false);
 
     $workspace = Workspace::factory()->running()->create(['user_id' => $admin->id]);
     $this->actingAs($admin)->get(route('studio.show', $workspace->project))
         ->assertOk()
-        ->assertSee('x-show="$store.dialog.shown"', false);
+        ->assertSee('x-show="$store.dialog.shown"', false)
+        ->assertSee('studioDialog.sync(', false)
+        ->assertSee('x-on:cancel.prevent', false);
 });

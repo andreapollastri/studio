@@ -434,7 +434,15 @@ final class Hetzner extends Connector
     {
         return Section::make('images', __('Snapshots & backups'))
             ->icon('camera')
-            ->list(fn (ApiClient $api) => self::every($api, '/images', 'images', ['type' => 'snapshot,backup']))
+            ->list(function (ApiClient $api) {
+                // type takes one value; snapshot,backup is refused with 422 invalid type value.
+                $images = [
+                    ...self::every($api, '/images', 'images', ['type' => 'snapshot']),
+                    ...self::every($api, '/images', 'images', ['type' => 'backup']),
+                ];
+
+                return collect($images)->sortByDesc('created')->values()->all();
+            })
             ->columns([
                 Column::make('description', __('Description')),
                 Column::make('type', __('Type'))->badge(['snapshot' => 'blue', 'backup' => 'purple']),

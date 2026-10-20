@@ -9,6 +9,12 @@
  * element's action fires, and the hook below replaces Livewire's (window.confirm) with this modal. The
  * message's question is the title and the rest the text; the trigger's own label names the button (else
  * the question's verb), and a red trigger (or a message about deleting) makes it a red one.
+ *
+ * The panel is a native <dialog> opened with showModal() (resources/views/partials/dialog.blade.php).
+ * Flux modals are native dialogs too, and the browser paints those above every z-index, so a confirm
+ * asked from inside one (removing an account, detaching a row) has to join that same top layer or it
+ * opens behind the window and cannot be answered. Escape is handled on the dialog's cancel event, not
+ * on the window: closing during the key itself would let it fall through and close the modal underneath.
  */
 const DESTRUCTIVE = /\b(delete|remove|forget|discard|wipe|destroy|drop|truncate|revoke|cannot be undone)\b/i;
 
@@ -53,7 +59,46 @@ function open(options) {
     });
 }
 
+const LEAVE_MS = 120;
+const closers = new WeakMap();
+
+/**
+ * Open or close the panel. `shown` is passed in so Alpine's effect tracks it.
+ * Closing waits out the leave transition, and happens after the key event that asked, so Escape
+ * does not also dismiss the Flux modal the question was asked from.
+ */
+function syncPanel(el, shown) {
+    const pending = closers.get(el);
+
+    if (shown) {
+        clearTimeout(pending);
+        closers.delete(el);
+        if (!el.open) openPanel(el);
+        return;
+    }
+
+    if (!el.open) return;
+
+    clearTimeout(pending);
+    closers.set(el, setTimeout(() => {
+        closers.delete(el);
+        if (!store().shown && el.isConnected && el.open) el.close();
+    }, LEAVE_MS));
+}
+
+function openPanel(el) {
+    try {
+        el.showModal();
+    } catch {
+        requestAnimationFrame(() => {
+            if (store().shown && el.isConnected && !el.open) el.showModal();
+        });
+    }
+}
+
 window.studioDialog = {
+    sync: syncPanel,
+
     /** @returns {Promise<boolean>} */
     async confirm({ message = '', title = null, body = null, confirm = null, cancel = null, danger = null, trigger = null } = {}) {
         const parts = split(message);

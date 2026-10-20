@@ -247,9 +247,67 @@ final class Cipi extends Connector
                 ],
                 __('Services') => (array) data_get($status, 'services', []),
                 __('PHP') => collect((array) data_get($status, 'php', []))->mapWithKeys(fn ($php) => ['PHP '.$php['version'] => ($php['status'] ?? '').' · '.trans_choice(':count pool|:count pools', (int) ($php['pools'] ?? 0))])->all(),
-                ...(is_array($disk) ? [__('Disk by app') => collect((array) ($disk['apps'] ?? []))->mapWithKeys(fn ($app) => [(string) ($app['app'] ?? $app['name'] ?? '?') => ($app['total_human'] ?? $app['total'] ?? '').(isset($app['share']) ? ' · '.$app['share'].'%' : '')])->all()] : []),
+                ...(is_array($disk) ? [__('Disk by app') => collect((array) ($disk['apps'] ?? []))->mapWithKeys(function ($app) {
+                    if (! is_array($app)) {
+                        return [];
+                    }
+
+                    return [(string) ($app['app'] ?? $app['name'] ?? '?') => $this->diskLine($app)];
+                })->all()] : []),
             ];
         });
+    }
+
+    /**
+     * One app from GET /api/disk. Cipi sends files_gb, database_gb, total_gb and
+     * percent (and the KiB figures): a size under 0.01 GB is shown in MB, as
+     * `cipi disk` prints it.
+     *
+     * @param  array<string, mixed>  $app
+     */
+    private function diskLine(array $app): string
+    {
+        $parts = [];
+        $total = $this->diskSize($app['total_gb'] ?? $app['total'] ?? null, $app['total_kb'] ?? null)
+            ?? (is_string($app['total_human'] ?? null) && $app['total_human'] !== '' ? $app['total_human'] : null);
+
+        if ($total !== null) {
+            $parts[] = $total;
+        }
+
+        foreach (['files' => __('files'), 'database' => __('database')] as $key => $label) {
+            $size = $this->diskSize($app[$key.'_gb'] ?? null, $app[$key.'_kb'] ?? null);
+
+            if ($size !== null) {
+                $parts[] = $size.' '.$label;
+            }
+        }
+
+        $percent = $app['percent'] ?? $app['share'] ?? null;
+
+        if (is_numeric($percent)) {
+            $parts[] = rtrim(rtrim(number_format((float) $percent, 1, '.', ''), '0'), '.').'%';
+        }
+
+        if (! empty($app['over_limit'])) {
+            $parts[] = __('over :limit GB', ['limit' => $app['limit_gb'] ?? '?']);
+        }
+
+        return $parts === [] ? '—' : implode(' · ', $parts);
+    }
+
+    /** A gigabyte figure, or megabytes when Cipi rounded it below 0.01 GB. */
+    private function diskSize(mixed $gb, mixed $kb): ?string
+    {
+        if (is_numeric($kb) && (! is_numeric($gb) || abs((float) $gb) < 0.01)) {
+            return rtrim(rtrim(number_format((float) $kb / 1024, 1, '.', ''), '0'), '.').' MB';
+        }
+
+        if (! is_numeric($gb)) {
+            return is_string($gb) && $gb !== '' ? $gb : null;
+        }
+
+        return rtrim(rtrim(number_format((float) $gb, 2, '.', ''), '0'), '.').' GB';
     }
 
     private function apps(): Section

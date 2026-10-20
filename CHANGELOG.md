@@ -4,6 +4,12 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.5
+
+- **A confirmation asked from a window stays in front of it.** Removing an account (and every other confirmation opened from inside a window) drew "Remove … from Studio?" behind that window, so it could not be answered and the account stayed. The question is now its own window and opens on top.
+- **Hetzner lists snapshots and backups.** *Infrastructure → Hetzner → Snapshots & backups* answered "422: invalid type value": the image list was asked for `type=snapshot,backup`, and Hetzner accepts one type at a time. Snapshots and backups are read separately and shown together, newest first.
+- **Disk by app shows the size.** *Infrastructure → Cipi → Server* listed each app and left the value blank: Cipi sends `total_gb`, the files, the database and `percent`, and Studio was reading fields the API does not send. The line now shows the total (in MB under 0.01 GB), what it is made of, and its share of the disk.
+
 ## 2.4.4
 
 - **Cipi lists the PHP versions.** *Infrastructure → Cipi → PHP* showed empty rows: the server answers with the versions inside `versions`, and Studio was reading the wrapper. The table now shows each installed version, its status, how many apps use it, and which one is the default.

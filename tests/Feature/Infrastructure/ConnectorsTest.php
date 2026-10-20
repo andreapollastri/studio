@@ -185,6 +185,37 @@ test('droplets are listed and driven from the page', function () {
     Http::assertNotSent(fn (Request $r) => ($r->data()['type'] ?? null) === 'power_on');
 });
 
+test('Hetzner snapshots and backups are listed as two image types', function () {
+    enable('hetzner');
+    ConnectorAccount::factory()->of('hetzner', ['token' => 'hcloud'])->create();
+
+    $type = function (Request $request): ?string {
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return isset($query['type']) ? (string) $query['type'] : null;
+    };
+
+    Http::fake([
+        'api.hetzner.cloud/v1/images*' => function (Request $request) use ($type) {
+            return Http::response(['images' => match ($type($request)) {
+                'snapshot' => [['id' => 1, 'description' => 'web-before-upgrade', 'type' => 'snapshot', 'image_size' => 4.2, 'created' => '2026-10-01T10:00:00Z', 'created_from' => ['name' => 'web-1']]],
+                'backup' => [['id' => 2, 'description' => 'web-nightly', 'type' => 'backup', 'image_size' => 4.5, 'created' => '2026-10-18T03:00:00Z', 'created_from' => ['name' => 'web-1']]],
+                default => [],
+            }, 'meta' => ['pagination' => ['next_page' => null]]]);
+        },
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'hetzner', 'tab' => 'images'])
+        ->assertSee('web-before-upgrade')
+        ->assertSee('web-nightly')
+        ->assertSee('snapshot')
+        ->assertSee('backup');
+
+    Http::assertSent(fn (Request $request) => $type($request) === 'snapshot');
+    Http::assertSent(fn (Request $request) => $type($request) === 'backup');
+    Http::assertNotSent(fn (Request $request) => $type($request) === 'snapshot,backup');
+});
+
 test('a refusal of the provider shows on the page', function () {
     enable('hetzner');
     ConnectorAccount::factory()->of('hetzner', ['token' => 'bad'])->create();
@@ -365,6 +396,34 @@ test('a Cipi app created without the link in the output still gets one', functio
         ->call('submit')
         ->assertHasNoErrors()
         ->assertSee('mariadb+ssh://billing:ssh%2Fsecret@203.0.113.9/billing:db%40secret@127.0.0.1/billing');
+});
+
+test('the Cipi server tab shows each app\'s disk', function () {
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/status' => Http::response(['data' => [
+            'system' => ['hostname' => 'web1'],
+            'resources' => ['disk' => ['display' => '40G / 100G']],
+            'services' => [],
+            'php' => [],
+        ]]),
+        'https://api.server.acme.test/api/disk' => Http::response(['data' => ['apps' => [
+            ['app' => 'secyapit5098', 'files_gb' => 6.4, 'database_gb' => 1.9, 'total_gb' => 8.3, 'percent' => 5.2],
+            ['app' => 'infrasyp2534', 'files_gb' => 0, 'files_kb' => 4300, 'database_gb' => 0, 'database_kb' => 0, 'total_gb' => 0, 'total_kb' => 4300, 'percent' => 0, 'over_limit' => true, 'limit_gb' => 1],
+        ]]]),
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'status'])
+        ->assertSee('secyapit5098')
+        ->assertSee('8.3 GB')
+        ->assertSee('6.4 GB files')
+        ->assertSee('1.9 GB database')
+        ->assertSee('5.2%')
+        ->assertSee('infrasyp2534')
+        ->assertSee('4.2 MB')
+        ->assertSee('over 1 GB');
 });
 
 test('the Cipi PHP tab lists the installed versions', function () {
