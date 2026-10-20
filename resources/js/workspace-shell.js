@@ -17,7 +17,8 @@ const CLOSE_REASONS = {
     1006: 'The terminal service cannot be reached. Is the studio-ssh service running?',
 };
 
-function workspaceShell() {
+/** @param {string} ticketMethod the Livewire method that hands out the gateway ticket: the workspace's shell, or the site's (Develop) */
+function workspaceShell(ticketMethod = 'shellTicket') {
     // xterm and the socket stay out of Alpine's reactive proxy
     let term = null;
     let fit = null;
@@ -59,7 +60,7 @@ function workspaceShell() {
             this.exitCode = null;
             try { fit.fit(); } catch {}
 
-            const info = await this.$wire.shellTicket();
+            const info = await this.$wire[ticketMethod]();
             if (!info?.ticket) {
                 this.state = 'stopped';
                 return;

@@ -264,3 +264,38 @@ test('a workspace-shell ticket is followed to a loopback bridge only, and a refu
   assert.match((await r.until((m) => m.type === 'error')).message, /refused the terminal \(401\)/);
   await r.closed;
 });
+
+test('a site-shell ticket runs the helper\'s site shell for that project on a real terminal, with its size', async (t) => {
+  const { mkdtemp, writeFile, chmod } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'gw-site-'));
+  const helper = join(dir, 'studio-admin');
+  // a stand-in for the helper: says what it was asked, the terminal it got, and what is typed
+  await writeFile(helper, '#!/bin/sh\necho "args:$*"\nstty size\nread line\necho "got:$line"\nstty size\nexit 4\n');
+  await chmod(helper, 0o755);
+
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0', SSH_GATEWAY_HELPER: helper, SSH_GATEWAY_HELPER_SUDO: '0' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'site-shell', user_id: 3, key: 'shop-acme', php: '8.4' }) });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until(() => s.output().includes('30 100'));
+  assert.match(s.output(), /args:site-shell shop-acme 8\.4/);
+  s.send({ type: 'resize', cols: 120, rows: 40 });
+  s.send({ type: 'data', data: 'hello\r' });
+  const exit = await s.until((m) => m.type === 'exit');
+  assert.equal(exit.code, 4);
+  assert.match(s.output(), /got:hello/);
+  assert.match(s.output(), /40 120/);
+  await s.closed;
+});
+
+test('a site-shell ticket without a valid project key or PHP is refused before anything runs', async (t) => {
+  const gw = await gateway(() => ({ kind: 'site-shell', user_id: 3, key: '../root', php: '8.4' }));
+  t.after(() => gw.close());
+  const s = open(gw, 'good');
+  assert.match((await s.until((m) => m.type === 'error')).message, /no site/);
+  await s.closed;
+});

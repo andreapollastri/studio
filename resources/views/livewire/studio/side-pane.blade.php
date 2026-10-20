@@ -41,17 +41,7 @@
             {{-- The workspace's shell, on a real terminal through the gateway, kept alive while the pane shows something else. --}}
             <div x-data="workspaceShell" @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'terminal' || $terminalMode !== 'local'])>
                 <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
-                    @if ($canUseRemote)
-                        <div class="mb-2 inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs dark:bg-zinc-800">
-                            @foreach (['local' => [__('Local'), 'computer-desktop'], 'remote' => [__('Remote (SSH)'), 'globe-alt']] as $mode => [$modeLabel, $modeIcon])
-                                <button type="button" wire:click="setTerminalMode('{{ $mode }}')" @class([
-                                    'flex items-center gap-1 rounded-md px-2.5 py-1 transition',
-                                    'bg-white font-medium shadow-sm dark:bg-zinc-700' => $terminalMode === $mode,
-                                    'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $terminalMode !== $mode,
-                                ])><flux:icon :name="$modeIcon" variant="micro" class="size-3.5" />{{ $modeLabel }}</button>
-                            @endforeach
-                        </div>
-                    @endif
+                    @include('livewire.studio.partials.terminal-modes')
                     <div class="flex flex-wrap gap-1.5">
                         @foreach ($shortcuts as $shortcut)
                             <flux:button size="xs" variant="filled" x-on:click="type({{ \Illuminate\Support\Js::from($shortcut['command']) }})" :title="$shortcut['command']">{{ $shortcut['label'] }}</flux:button>
@@ -76,21 +66,46 @@
                 @include('livewire.ssh.partials.keybar', ['visible' => "state === 'ready'"])
             </div>
         @endif
+        @if ($developMounted && $canUseDevelop)
+            {{-- The project's own site (the deploy branch's), as its user: a shell through the gateway and the helper --}}
+            <div @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'terminal' || $terminalMode !== 'develop'])>
+                <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
+                    @include('livewire.studio.partials.terminal-modes')
+                    @if (! $this->remoteConfirmed())
+                        <div class="flex flex-wrap items-center gap-2 text-sm">
+                            <flux:text>{{ __('As for the SSH hosts, confirm your password to open a shell on the site.') }}</flux:text>
+                            <flux:button size="xs" variant="primary" icon="lock-closed" wire:click="confirmPassword">{{ __('Confirm') }}</flux:button>
+                        </div>
+                    @else
+                        <flux:text class="text-xs">
+                            {{ __('A shell on the site of :project, :host, as its user :user, in its app, with its PHP :php. What changes here is live for whoever opens the site; your own workspace is Local.', ['project' => $workspace->project->name, 'host' => $workspace->project->siteHost(), 'user' => 'prj-'.$workspace->project->slug, 'php' => $workspace->project->php_version]) }}
+                        </flux:text>
+                    @endif
+                </div>
+                @if ($this->remoteConfirmed())
+                    <div x-data="workspaceShell('developTicket')" class="flex min-h-0 flex-1 flex-col">
+                        <div class="relative min-h-0 flex-1 bg-zinc-950">
+                            <div wire:ignore x-ref="box" class="absolute inset-0 p-2"></div>
+                            <div x-show="state === 'connecting'" x-cloak class="absolute inset-x-0 top-3 text-center text-xs text-zinc-500">{{ __('Opening a shell on the site…') }}</div>
+                            <div x-show="['ended', 'stopped', 'error'].includes(state)" x-cloak class="absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-2 border-t border-zinc-800 bg-zinc-900/95 px-3 py-2 text-xs text-zinc-300">
+                                <span class="min-w-0 flex-1">
+                                    <span x-show="state === 'ended'">{{ __('The shell ended') }}<span x-show="exitCode !== null" x-text="' (exit ' + exitCode + ')'"></span>.</span>
+                                    <span x-show="state === 'stopped'">{{ __('Confirm your password again to open a shell on the site.') }}</span>
+                                    <span x-show="state === 'error'" class="text-red-400" x-text="error"></span>
+                                </span>
+                                <flux:button size="xs" variant="primary" icon="command-line" x-on:click="restart()">{{ __('New shell') }}</flux:button>
+                            </div>
+                        </div>
+                        @include('livewire.ssh.partials.keybar', ['visible' => "state === 'ready'"])
+                    </div>
+                @endif
+            </div>
+        @endif
         @if ($remoteMounted && $canUseRemote)
             {{-- The remote terminals: the project's SSH hosts through the gateway, kept alive while the pane shows something else. --}}
             <div x-data="sshTerminals" @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'terminal' || $terminalMode !== 'remote'])>
                 <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
-                    @if ($canUseRemote)
-                        <div class="mb-2 inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs dark:bg-zinc-800">
-                            @foreach (['local' => [__('Local'), 'computer-desktop'], 'remote' => [__('Remote (SSH)'), 'globe-alt']] as $mode => [$modeLabel, $modeIcon])
-                                <button type="button" wire:click="setTerminalMode('{{ $mode }}')" @class([
-                                    'flex items-center gap-1 rounded-md px-2.5 py-1 transition',
-                                    'bg-white font-medium shadow-sm dark:bg-zinc-700' => $terminalMode === $mode,
-                                    'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $terminalMode !== $mode,
-                                ])><flux:icon :name="$modeIcon" variant="micro" class="size-3.5" />{{ $modeLabel }}</button>
-                            @endforeach
-                        </div>
-                    @endif
+                    @include('livewire.studio.partials.terminal-modes')
                     @if (! $this->remoteConfirmed())
                         <div class="flex flex-wrap items-center gap-2 text-sm">
                             <flux:text>{{ __('As on the SSH page, confirm your password to open a session.') }}</flux:text>

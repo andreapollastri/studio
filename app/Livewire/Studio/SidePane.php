@@ -109,8 +109,14 @@ class SidePane extends Component
     /** The Files tab mounts on first use and then stays alive, hidden, so open editors survive tab switches. */
     public bool $filesMounted = false;
 
-    /** The terminal is a shell in the workspace (local) or opens the project's SSH hosts (remote). */
+    /**
+     * The terminal is a shell in the workspace (local), on the project's own site (develop: the deploy
+     * branch's, not the person's preview), or opens the project's SSH hosts (remote).
+     */
     public string $terminalMode = 'local';
+
+    /** The site's shell mounts on first use and stays, hidden, so its session survives tab switches. */
+    public bool $developMounted = false;
 
     /** The workspace's shell mounts on first use and stays, hidden, so its session survives tab switches. */
     public bool $shellMounted = false;
@@ -788,13 +794,41 @@ class SidePane extends Component
 
     public function setTerminalMode(string $mode): void
     {
-        $this->terminalMode = $mode === 'remote' && $this->canUseRemote() ? 'remote' : 'local';
+        $this->terminalMode = match (true) {
+            $mode === 'remote' && $this->canUseRemote() => 'remote',
+            $mode === 'develop' && $this->canUseDevelop() => 'develop',
+            default => 'local',
+        };
 
-        if ($this->terminalMode === 'remote') {
-            $this->remoteMounted = true;
-        } else {
-            $this->shellMounted = true;
+        match ($this->terminalMode) {
+            'remote' => $this->remoteMounted = true,
+            'develop' => $this->developMounted = true,
+            default => $this->shellMounted = true,
+        };
+    }
+
+    /** A shell on the project's own site: its administrators and developers, on a server Studio manages. */
+    public function canUseDevelop(): bool
+    {
+        return $this->canUseTerminal() && Gateway::canDevelop(auth()->user(), $this->workspace->project);
+    }
+
+    /**
+     * A one-time ticket for the gateway to open a shell on the project's site, as its user
+     * (resources/js/workspace-shell.js asks for it). The password first, as for the remote hosts:
+     * what changes there is live for whoever opens the site.
+     *
+     * @return array{ticket: string, url: string}|null
+     */
+    public function developTicket(): ?array
+    {
+        abort_unless($this->canUseDevelop(), 403);
+
+        if (! $this->remoteConfirmed()) {
+            return null;
         }
+
+        return ['ticket' => Gateway::issueSiteShell($this->workspace->project, auth()->user()), 'url' => Gateway::url()];
     }
 
     /** SSH from the pane, as on the SSH page: who may use SSH at all. */
@@ -891,6 +925,7 @@ class SidePane extends Component
         return view('livewire.studio.side-pane', [
             'canUseTerminal' => $this->canUseTerminal(),
             'canUseRemote' => $this->canUseRemote(),
+            'canUseDevelop' => $this->canUseDevelop(),
             'hasWorkspace' => auth()->user()->can('chat', $this->workspace->project),
             'shortcuts' => (array) config('studio.terminal', []),
             // Without a running workspace the staging site is the next best thing to look at.

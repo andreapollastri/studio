@@ -3674,6 +3674,11 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <kbd>Ctrl</kbd>+<kbd>D</kbd>), <em>New shell</em> starts another. A phone gets the keys its keyboard lacks above the
           keyboard, as on the SSH page. At most <code>BRIDGE_MAX_SHELLS</code> (8) shells are open in a workspace at a time.
           The shortcuts come from <code>config/studio.php</code>. Clients have no terminal.</p>
+        <p><strong>Develop.</strong> For the project's administrators and developers, the switch at the top opens a shell
+          on the project's own site, the deploy branch's at <code>&lt;key&gt;.&lt;domain&gt;</code>, not your workspace:
+          as the site's user (<code>prj-&lt;key&gt;</code>), in its app, with the site's PHP version first in the path, so
+          <code>php artisan</code> and Composer run as they do for the site. What changes there is live for whoever opens
+          the site. As for the SSH hosts, your password is asked again first; every shell opened is in the security log.</p>
         <p><strong>Remote.</strong> The switch at the top turns the tab into a shell on the project's SSH hosts: each
           SSH connection tied to the project (the app's user on its Cipi server, a staging box) is a button, and opens a
           terminal through the SSH gateway, as on the <a href="#tools-ssh">SSH page</a>, with your own key or password and

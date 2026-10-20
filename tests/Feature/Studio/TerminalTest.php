@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Studio\SidePane;
+use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Ssh\Gateway;
@@ -72,4 +73,56 @@ test('a client has no terminal', function () {
         ->assertSet('tab', 'preview')
         ->call('shellTicket')
         ->assertForbidden();
+});
+
+test('Develop opens a shell on the project\'s own site for its developers and admins, after the password', function () {
+    config(['studio.driver' => 'native', 'app.url' => 'https://studio.example.com']);
+    $project = Project::factory()->online()->create(['slug' => 'shop-acme', 'php_version' => '8.4']);
+    $dev = User::factory()->create();
+    $project->syncMembers([$dev->id => 'dev']);
+    $workspace = Workspace::factory()->running()->create(['user_id' => $dev->id, 'project_id' => $project->id]);
+
+    $pane = Livewire::actingAs($dev)->test(SidePane::class, ['workspace' => $workspace])
+        ->call('setTab', 'terminal')
+        ->assertSee('Develop')
+        ->call('setTerminalMode', 'develop')
+        ->assertSet('terminalMode', 'develop')
+        ->assertSet('developMounted', true)
+        ->assertSee('confirm your password to open a shell on the site');
+
+    // no ticket before the password
+    $pane->call('developTicket')->assertReturned(null);
+
+    session()->put('auth.password_confirmed_at', time());
+    $info = Livewire::actingAs($dev)->test(SidePane::class, ['workspace' => $workspace])
+        ->call('setTerminalMode', 'develop')
+        ->assertSee('as its user prj-shop-acme')
+        ->assertSee("workspaceShell('developTicket')", false)
+        ->call('developTicket')
+        ->effects['returns'][0];
+
+    $this->postJson(route('api.ssh.redeem'), ['ticket' => $info['ticket']], ['Authorization' => 'Bearer '.Gateway::token()])
+        ->assertOk()
+        ->assertExactJson(['kind' => 'site-shell', 'user_id' => $dev->id, 'key' => 'shop-acme', 'php' => '8.4']);
+});
+
+test('no Develop for a PM, for a project without a site, or outside a server Studio manages', function () {
+    config(['studio.driver' => 'native']);
+    $project = Project::factory()->online()->create();
+    $pm = User::factory()->create();
+    $project->syncMembers([$pm->id => 'pm']);
+    $workspace = Workspace::factory()->running()->create(['user_id' => $pm->id, 'project_id' => $project->id]);
+
+    Livewire::actingAs($pm)->test(SidePane::class, ['workspace' => $workspace])
+        ->call('setTab', 'terminal')
+        ->assertDontSee('Develop')
+        ->call('setTerminalMode', 'develop')
+        ->assertSet('terminalMode', 'local');
+    $this->postJson(route('api.ssh.redeem'), ['ticket' => Gateway::issueSiteShell($project, $pm)], ['Authorization' => 'Bearer '.Gateway::token()])->assertNotFound();
+
+    $admin = User::factory()->admin()->create();
+    expect(Gateway::canDevelop($admin, $project))->toBeTrue()
+        ->and(Gateway::canDevelop($admin, Project::factory()->create()))->toBeFalse();
+    config(['studio.driver' => 'local']);
+    expect(Gateway::canDevelop($admin, $project))->toBeFalse();
 });

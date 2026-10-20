@@ -36,6 +36,8 @@
 #                                      CLI, as the person, on a pseudo-terminal wired to stdin/stdout (the SSH
 #                                      gateway relays it to the browser). The login lands in their own
 #                                      ~/<dir>/.credentials.json; Studio never sees or keeps it.
+#   site-shell       <key> <php>       interactive, no JSON: a login shell on the project's site, as its user, in its
+#                                      app, with the site's PHP first in PATH (the Terminal's Develop mode)
 #   claude-forget    <handle> <dir>    signs out of that subscription and removes ~/<dir> (never .claude)
 #                                      [dir]: the Claude Code config directory of one of the person's
 #                                      subscriptions, .claude (the default) or .claude-<[a-z0-9]{1,40}>; the
@@ -69,8 +71,8 @@ BROWSERS=/usr/local/lib/studio/browsers
 
 # ---------------------------------------------------------------- plumbing --
 
-# claude-login talks to a person on stdin: nothing to read as JSON there
-if [ "${1:-}" = claude-login ]; then INPUT='{}'; else INPUT=$(cat || true); fi
+# claude-login and site-shell talk to a person on stdin: nothing to read as JSON there
+if [ "${1:-}" = claude-login ] || [ "${1:-}" = site-shell ]; then INPUT='{}'; else INPUT=$(cat || true); fi
 [ -n "$INPUT" ] || INPUT='{}'
 
 # The answer goes to fd 3, the helper's own stdout, also from inside $(…) (require_field):
@@ -812,6 +814,22 @@ cmd_claude_login() { # handle cols rows [dir]
     claude_as "$handle" "$dir" script -qfec "stty cols $cols rows $rows 2>/dev/null; exec claude auth login" /dev/null
 }
 
+cmd_site_shell() { # key php — the Terminal's Develop mode: a shell on the project's own site, as its user
+    local slug=$1 php=$2
+    valid_name "$slug"; valid_php "$php"; project_paths "$slug"
+    id "$P_USER" >/dev/null 2>&1 && [ -d "$P_APP" ] || fail "the site of $slug is not created on this server"
+    # `php` (and Composer through it) is the site's own version, not Studio's
+    local bin="/run/studio/site-php/$php"
+    mkdir -p "$bin"; ln -sfn "/usr/bin/php$php" "$bin/php"; chmod 755 /run/studio /run/studio/site-php "$bin"
+    trap - EXIT
+    exec 3>&-
+    cd "$P_APP"
+    # the gateway's terminal (bridge/src/terminal.py) is this shell's; sudo keeps it and passes on its size
+    exec sudo -u "$P_USER" env -i HOME="$P_HOME" USER="$P_USER" LOGNAME="$P_USER" SHELL=/bin/bash \
+        PATH="$bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" LANG=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor \
+        /bin/bash --login
+}
+
 # git-cli: the agents' command-line tool for the forge of a person's git account, when it is not
 # the installation's own (the system step installs that one). ensure_git_cli of the live release's
 # installer/lib/system.sh does it; what it says goes to stderr, the answer stays alone on stdout.
@@ -1199,6 +1217,7 @@ case "$cmd" in
     claude-logout)    [ $# -eq 1 ] || [ $# -eq 2 ] || fail "usage: claude-logout <handle> [dir]"; cmd_claude_logout "$1" "${2:-.claude}" ;;
     claude-forget)    [ $# -eq 2 ] || fail "usage: claude-forget <handle> <dir>"; cmd_claude_forget "$1" "$2" ;;
     claude-login)     [ $# -eq 3 ] || [ $# -eq 4 ] || fail "usage: claude-login <handle> <cols> <rows> [dir]"; cmd_claude_login "$1" "$2" "$3" "${4:-.claude}" ;;
+    site-shell)       [ $# -eq 2 ] || fail "usage: site-shell <key> <php>"; cmd_site_shell "$1" "$2" ;;
     git-cli)          [ $# -eq 1 ] || fail "usage: git-cli <provider>"; cmd_git_cli "$1" ;;
     update-check)     cmd_update_check ;;
     update-start)     [ $# -le 1 ] && [[ "${1:-}" =~ ^(force)?$ ]] || fail "usage: update-start [force]"; cmd_update_start "${1:-}" ;;

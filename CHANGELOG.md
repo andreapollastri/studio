@@ -4,6 +4,19 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.3.6
+
+- **A wand writes the commit message.** In *Changes*, the sparkles button in the message field has Claude write it
+  from what would be committed (the staged changes, or every change with the new files), in the style of the latest
+  commits: a quick model (`STUDIO_COMMIT_MESSAGE_MODEL`, Haiku) on your Claude account, apart from the conversation.
+  The message lands in the field to edit; when Claude cannot write it, the field stays as it was and the reason shows.
+- **Develop in the Terminal tab**, next to Local and Remote: a shell on the project's own site (the deploy branch's,
+  not your workspace), as the site's user `prj-<key>`, in its app, with the site's PHP first in the path. For the
+  project's administrators and developers, after the password, as for the SSH hosts; each shell opened goes to the
+  security log. The SSH gateway runs it through the helper (`studio-admin site-shell`), on the same terminal as the
+  workspace's shell, so the size follows the window.
+- The update restarts the workspace bridges (`installer/upgrades/2.3.6.sh`).
+
 ## 2.3.5
 
 - **No more browser boxes.** Every confirmation and question is a modal of Studio's own, in its style, light or dark:

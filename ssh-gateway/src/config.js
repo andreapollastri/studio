@@ -22,6 +22,8 @@ export function loadConfig(env = process.env) {
     // The person's `claude auth login` goes through the privileged helper, as their Linux user.
     loginCommand: loginCommand(env.SSH_GATEWAY_HELPER || '/usr/local/sbin/studio-admin', env.SSH_GATEWAY_HELPER_SUDO !== '0'),
     loginTimeout: Number(env.SSH_GATEWAY_LOGIN_TIMEOUT || 600) * 1000,
+    // The Terminal's Develop mode: a shell on a project's site, as its user, through the same helper.
+    siteShellCommand: siteShellCommand(env.SSH_GATEWAY_HELPER || '/usr/local/sbin/studio-admin', env.SSH_GATEWAY_HELPER_SUDO !== '0'),
   };
 }
 
@@ -36,6 +38,10 @@ function originOf(url) {
   } catch {
     return '';
   }
+}
+
+function siteShellCommand(helper, sudo) {
+  return (key, php) => [...(sudo ? ['sudo', '-n', helper] : [helper]), 'site-shell', key, php];
 }
 
 function loginCommand(helper, sudo) {

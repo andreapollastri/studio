@@ -5,6 +5,7 @@ import { redeem as redeemTicket } from './redeem.js';
 import { LoginSession } from './login.js';
 import { SshSession } from './session.js';
 import { WorkspaceShellSession } from './workspace-shell.js';
+import { SiteShellSession } from './site-shell.js';
 
 export const VERSION = createRequire(import.meta.url)('../package.json').version;
 
@@ -17,7 +18,8 @@ export const CLOSE = { badTicket: 4401, forbiddenOrigin: 4403, tooMany: 4429, st
  * permission for this one session; nothing else authenticates the socket.
  * A ticket stands for an SSH connection, (kind: claude-login) for a person's
  * sign-in to Claude Code in their own home, or (kind: workspace-shell) for the
- * shell of a workspace, which its bridge runs.
+ * shell of a workspace, which its bridge runs, or (kind: site-shell) for a shell on a project's own
+ * site, as its user, through the helper.
  */
 export function createGateway(config, { redeem = (ticket) => redeemTicket(config, ticket), ClientImpl, spawn } = {}) {
   const log = config.log ? (message) => console.log(`[ssh-gateway] ${message}`) : () => {};
@@ -80,6 +82,8 @@ export function createGateway(config, { redeem = (ticket) => redeemTicket(config
       new LoginSession(ws, target, config, { size, log, ...(spawn ? { spawn } : {}) }).start();
     } else if (target.kind === 'workspace-shell') {
       new WorkspaceShellSession(ws, target, { size, log }).start();
+    } else if (target.kind === 'site-shell') {
+      new SiteShellSession(ws, target, config, { size, log, ...(spawn ? { spawn } : {}) }).start();
     } else {
       new SshSession(ws, target, config, { size, log, ...(ClientImpl ? { ClientImpl } : {}) }).start();
     }

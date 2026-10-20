@@ -2,11 +2,14 @@
 
 namespace App\Ssh;
 
+use App\Enums\UserRole;
 use App\Livewire\Studio\Files;
 use App\Models\ClaudeAccount;
+use App\Models\Project;
 use App\Models\SshConnection;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\SecurityLog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -71,6 +74,25 @@ final class Gateway
     }
 
     /**
+     * A ticket for the Terminal's Develop mode: a shell on the project's own site, as its user.
+     */
+    public static function issueSiteShell(Project $project, User $user): string
+    {
+        $ticket = Str::random(48);
+        Cache::put(self::key($ticket), ['kind' => 'site-shell', 'user_id' => $user->id, 'project_id' => $project->id], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
+
+        return $ticket;
+    }
+
+    /** Who may open a shell on a project's site: its administrators and developers, on a server Studio manages. */
+    public static function canDevelop(User $user, Project $project): bool
+    {
+        return config('studio.driver') === 'native'
+            && $project->isOnline()
+            && ($user->isAdmin() || $user->roleIn($project) === UserRole::Dev);
+    }
+
+    /**
      * The connection behind a ticket, with the secret of the person it was
      * issued to; null when the ticket is unknown, spent or expired, or that
      * person may no longer use the terminal or see the connection.
@@ -99,6 +121,18 @@ final class Gateway
             Log::info('Claude sign-in started', ['user' => $user->email, 'account' => $account->name]);
 
             return ['kind' => 'claude-login', 'user_id' => $user->id, 'handle' => $user->handle, 'dir' => $account->dir ?? ClaudeAccount::DEFAULT_DIR];
+        }
+
+        if (($issued['kind'] ?? null) === 'site-shell') {
+            $project = Project::query()->whereKey($issued['project_id'] ?? 0)->first();
+
+            if ($user === null || $project === null || ! self::canDevelop($user, $project)) {
+                return null;
+            }
+            Log::info('Site terminal opened', ['user' => $user->email, 'project' => $project->slug]);
+            SecurityLog::record('site.shell', ['user' => $user->email, 'project' => $project->slug], 'notice');
+
+            return ['kind' => 'site-shell', 'user_id' => $user->id, 'key' => $project->slug, 'php' => (string) $project->php_version];
         }
 
         if (($issued['kind'] ?? null) === 'workspace-shell') {
