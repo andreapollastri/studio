@@ -87,7 +87,18 @@
     {{-- Commit --}}
     @if ($canUseTerminal && ($files->isNotEmpty() || $operation || $last))
         <form wire:submit="commitChanges(@js($staged->isNotEmpty() ? 'staged' : 'all'))" class="mb-3 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
-            <flux:textarea wire:model="commitMessage" rows="2" resize="vertical" :placeholder="__('Commit message: the first line is the title')" class="font-mono! text-xs!" />
+            <div class="relative">
+                <flux:textarea wire:model="commitMessage" rows="2" resize="vertical" :placeholder="__('Commit message: the first line is the title')" class="font-mono! text-xs! pe-9!" />
+                {{-- the wand: Claude writes the message from what would be committed --}}
+                <div class="absolute end-1.5 top-1.5">
+                    <flux:tooltip :content="$staged->isNotEmpty() ? __('Write it with Claude, from the staged changes') : __('Write it with Claude, from the changes')">
+                        <flux:button size="xs" variant="ghost" icon="sparkles" wire:click="suggestCommitMessage('{{ $staged->isNotEmpty() ? 'staged' : 'all' }}')" wire:loading.attr="disabled" wire:target="suggestCommitMessage" :aria-label="__('Write it with Claude')" class="text-violet-600! dark:text-violet-300!" />
+                    </flux:tooltip>
+                </div>
+                <div wire:loading.flex wire:target="suggestCommitMessage" class="absolute inset-0 items-center justify-center gap-2 rounded-lg bg-white/80 text-xs text-zinc-500 dark:bg-zinc-900/80">
+                    <flux:icon.loading class="size-4" /> {{ __('Claude is reading the changes…') }}
+                </div>
+            </div>
             <div class="mt-2 flex flex-wrap items-center gap-2">
                 @if ($last)
                     <flux:checkbox wire:model.live="amend" :label="__('Amend last commit')" />

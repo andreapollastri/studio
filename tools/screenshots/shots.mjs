@@ -13,9 +13,13 @@ await mkdir(outDir, { recursive: true });
 const port = 9333;
 const profile = join(tmpdir(), `studio-shots-${Date.now()}`);
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--hide-scrollbars', '--disable-gpu', 'about:blank'], { stdio: 'ignore' });
-await new Promise((r) => setTimeout(r, 1200));
-
-const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+// Chrome takes its time to open the debugging port, more on a busy machine: ask until it answers
+let targets = null;
+for (let tries = 0; targets === null && tries < 60; tries++) {
+  await new Promise((r) => setTimeout(r, 250));
+  targets = await fetch(`http://127.0.0.1:${port}/json`).then((r) => r.json()).catch(() => null);
+}
+if (targets === null) throw new Error(`Chrome did not open its debugging port ${port}`);
 const page = targets.find((t) => t.type === 'page');
 const ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((r) => (ws.onopen = r));

@@ -48,6 +48,7 @@ import { CommandError, RunManager } from './commands.js';
 import { FileError, Files } from './files.js';
 import { Sandboxes } from './sandboxes.js';
 import { ShellSession } from './shell.js';
+import { suggestCommitMessage } from './commit-message.js';
 
 export const VERSION = createRequire(import.meta.url)('../package.json').version;
 
@@ -313,6 +314,7 @@ async function gitRoute(req, res, path, url, config, dir) {
       case '/git/stage': return json(res, 200, await gitStage(dir, body.paths ?? null));
       case '/git/unstage': return json(res, 200, await gitUnstage(dir, body.paths ?? null));
       case '/git/commit': return json(res, 200, await gitCommitAll(dir, body.message, { all: body.all !== false, amend: body.amend === true }));
+      case '/git/commit-message': return json(res, 200, await suggestCommitMessage(dir, body, config));
       case '/git/resolve': return json(res, 200, await gitResolve(dir, body.path, body.side));
       case '/git/discard': return json(res, 200, await gitDiscard(dir, body.path ?? null));
       case '/git/pull': return json(res, 200, await gitPull(dir));

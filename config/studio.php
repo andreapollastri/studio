@@ -259,6 +259,9 @@ return [
         ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku 4.5'],
     ],
 
+    // the quick model that writes a commit message from the changes (the wand of the Changes tab)
+    'commit_message_model' => env('STUDIO_COMMIT_MESSAGE_MODEL', 'claude-haiku-4-5'),
+
     'efforts' => ['' => 'Default', 'low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'max' => 'Max'],
 
     /*

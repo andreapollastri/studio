@@ -184,6 +184,27 @@ export async function gitDiffFile(workspaceDir, path) {
   return { path: name, staged: bounded(staged), unstaged: bounded(unstaged), untracked: false };
 }
 
+/**
+ * What a commit would hold, for Claude to describe: the staged changes, or every change ("all", new
+ * files included), with the stat, and the subjects of the latest commits for the house style. Kept
+ * to a size a quick model reads in a moment.
+ */
+export async function gitChangesForMessage(workspaceDir, { all = true } = {}) {
+  const head = await hasHead(workspaceDir);
+  const base = all ? (head ? ['HEAD'] : []) : ['--cached'];
+  const stat = (await git(workspaceDir, ['diff', ...base, '--stat=100']).catch(() => '')).trimEnd();
+  let diff = await git(workspaceDir, ['diff', ...base]).catch(() => '');
+  const untracked = all ? (await git(workspaceDir, ['ls-files', '--others', '--exclude-standard']).catch(() => '')).split('\n').filter((f) => f !== '') : [];
+  for (const name of untracked.slice(0, 15)) {
+    const { stdout } = await gitWithCode(workspaceDir, ['diff', '--no-index', '--', '/dev/null', name]).catch(() => ({ stdout: '' }));
+    diff += stdout.length > 4000 ? stdout.slice(0, 4000) + '\n… (truncated)\n' : stdout;
+  }
+  if (untracked.length > 15) diff += `\n… and ${untracked.length - 15} more new files: ${untracked.slice(15, 40).join(', ')}\n`;
+  const recent = head ? (await git(workspaceDir, ['log', '--format=%s', '-12']).catch(() => '')).trimEnd() : '';
+
+  return { stat, diff: diff.length > 60000 ? diff.slice(0, 60000) + '\n… (truncated)' : diff, untracked, recent };
+}
+
 function parseCommits(raw) {
   return raw
     .split('\x1e')

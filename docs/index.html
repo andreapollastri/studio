@@ -3629,7 +3629,10 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <dl><dt>Working tree</dt><dd>What is not committed yet: each file with an icon in the colour of its kind (PHP, Blade,
             JS/TS, CSS, config, docs, images, data, scripts…), its name in the colour of what happened to it (modified, new,
             deleted and struck through, renamed, in conflict), and the lines it adds and removes with a five-block bar, as on
-            GitHub. Stage and unstage, discard, commit (or <em>Commit &amp; push</em>), amend the last commit. During a merge,
+            GitHub. Stage and unstage, discard, commit (or <em>Commit &amp; push</em>), amend the last commit. The wand in the
+            message field has Claude write the message from the staged changes, or from every change: a quick model
+            (<code>STUDIO_COMMIT_MESSAGE_MODEL</code>, Haiku) on your Claude account, apart from the conversation, in the
+            style of the latest commits; edit it before committing. During a merge,
             pick a side for each conflicting file or edit it and mark it resolved, then commit to conclude or abort.</dd></dl>
           <dl><dt>History</dt><dd>The commits of all branches in date order, drawn as lanes the way editors do: a branch opens
             a lane, a merge closes it. Refs show as badges (branches, <code>origin/…</code>, tags); search by message, author

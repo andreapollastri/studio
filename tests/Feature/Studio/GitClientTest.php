@@ -39,6 +39,7 @@ function fakeGitClient(array $state = []): void
 
         return match (true) {
             $path === '/git' => Http::response($state),
+            $path === '/git/commit-message' => Http::response(['message' => "Add a date range filter to orders\n\nThe back office lists orders between two dates.", 'model' => 'claude-haiku-4-5']),
             $path === '/git/diff' => Http::response(['path' => $request['path'] ?? 'app/Models/Order.php', 'staged' => "diff --git a/app/Models/Order.php\n@@ -1 +1 @@\n-old\n+new", 'unstaged' => '', 'untracked' => false]),
             $path === '/git/log' => Http::response(['branch' => 'develop', 'head' => 'm000000', 'commits' => [
                 ['sha' => 'm000000aaaa', 'short' => 'm000000', 'parents' => ['a000000'], 'author' => 'Maria', 'date' => now()->toIso8601String(), 'subject' => 'Add the export', 'refs' => ['develop'], 'head' => true],
@@ -312,4 +313,27 @@ test('a client can open none of the git dialogs nor change the repository', func
     foreach ([['askMerge', 'x'], ['askDeleteBranch', 'x'], ['askRenameBranch', 'x'], ['askTag'], ['askDeleteTag', 'v1'], ['askStash'], ['stage'], ['unstage'], ['commitChanges'], ['resolve', 'a', 'ours'], ['cherryPick', 'abcd'], ['forcePush'], ['pushTags'], ['stashDrop', 0], ['deleteRemoteBranch', 'origin/x']] as $call) {
         Livewire::actingAs($client)->test(SidePane::class, ['workspace' => $workspace])->set('commitMessage', 'x')->call(...$call)->assertForbidden();
     }
+});
+
+test('the wand fills the message with what Claude writes from the staged changes, or says why it could not', function () {
+    fakeGitClient();
+
+    gitPane()
+        ->assertSee('Write it with Claude, from the staged changes')
+        ->call('suggestCommitMessage', 'staged')
+        ->assertSet('gitError', null)
+        ->assertSet('commitMessage', "Add a date range filter to orders\n\nThe back office lists orders between two dates.");
+
+    Http::assertSent(fn (Request $r) => $r->url() === BRIDGE.'/git/commit-message' && $r['all'] === false && $r['model'] === 'claude-haiku-4-5' && array_key_exists('auth', $r->data()));
+});
+
+test('when Claude cannot write it, the wand leaves the message alone and says why', function () {
+    Http::fake([BRIDGE.'/git/commit-message' => Http::response(['error' => 'Claude could not write the message: Invalid API key.'], 502)]);
+    fakeGitClient();
+
+    gitPane()
+        ->set('commitMessage', 'mine')
+        ->call('suggestCommitMessage', 'all')
+        ->assertSet('commitMessage', 'mine')
+        ->assertSee('Invalid API key');
 });

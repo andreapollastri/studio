@@ -307,6 +307,22 @@ class SidePane extends Component
         $this->changeGit(fn (BridgeClient $bridge) => $bridge->gitUnstage($path === null ? null : [$path]), null);
     }
 
+    /**
+     * The wand next to the message: Claude writes it from what would be committed (the staged
+     * changes, or every change), in the field, to edit before committing.
+     */
+    public function suggestCommitMessage(string $what = 'all'): void
+    {
+        $this->authorizeGit();
+        $this->gitError = null;
+
+        try {
+            $this->commitMessage = $this->bridge()->gitCommitMessage(auth()->user(), $what !== 'staged')['message'];
+        } catch (BridgeException $e) {
+            $this->gitError = $e->getMessage();
+        }
+    }
+
     /** Stage every change and commit it; while a merge is open this concludes it. */
     public function commitAll(): void
     {

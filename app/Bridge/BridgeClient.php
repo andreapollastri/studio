@@ -7,7 +7,9 @@ use App\Claude\AllowRules;
 use App\Mcp\NativeServers;
 use App\Models\Conversation;
 use App\Models\PermissionRequest;
+use App\Models\Project;
 use App\Models\ProjectMcpServer;
+use App\Models\User;
 use App\Models\Workspace;
 use App\Server\SiteAccess;
 use App\Server\SitePass;
@@ -132,9 +134,34 @@ final class BridgeClient
      */
     private function claudeAccount(Conversation $conversation): array
     {
-        $choice = Accounts::claude($conversation->user, $conversation->workspace->project);
+        return $this->claudeAccountOf($conversation->user, $conversation->workspace->project);
+    }
+
+    /**
+     * @return array{auth: string|null, account?: string, api_key?: string|null, claude_dir?: string|null}
+     */
+    private function claudeAccountOf(User $user, Project $project): array
+    {
+        $choice = Accounts::claude($user, $project);
 
         return $choice ? $choice->account->forTurn() : ['auth' => null];
+    }
+
+    /**
+     * A commit message for the staged changes, or for every change ($all), written by Claude through the
+     * bridge: one quick turn of its own on the person's Claude account, with a small model.
+     *
+     * @return array{message: string, model?: string}
+     */
+    public function gitCommitMessage(User $user, bool $all): array
+    {
+        $data = $this->request(fn (PendingRequest $http) => $http->timeout(150)->post('/git/commit-message', [
+            'all' => $all,
+            'model' => config('studio.commit_message_model'),
+            ...$this->claudeAccountOf($user, $this->workspace->project),
+        ]));
+
+        return ['message' => (string) ($data['message'] ?? ''), 'model' => (string) ($data['model'] ?? '')];
     }
 
     /**
