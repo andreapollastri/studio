@@ -269,20 +269,12 @@ return [
     | workspace's shell and runs it, as if typed by hand.
     */
     'terminal' => [
-        ['label' => 'Doctor', 'command' => 'php artisan larapilot:doctor --human'],
         ['label' => 'Backlog', 'command' => 'php artisan larapilot:spec-list'],
         ['label' => 'Quality', 'command' => 'php artisan larapilot:quality'],
         ['label' => 'Tests', 'command' => 'php artisan test --compact'],
         ['label' => 'Migrate', 'command' => 'php artisan migrate --force'],
         ['label' => 'Fresh + seed', 'command' => 'php artisan migrate:fresh --seed'],
-        ['label' => 'Routes', 'command' => 'php artisan route:list'],
-        ['label' => 'About', 'command' => 'php artisan about'],
-        ['label' => 'Composer install', 'command' => 'composer install'],
-        ['label' => 'Build assets', 'command' => 'npm run build'],
-        ['label' => 'Git status', 'command' => 'git status --short --branch'],
-        ['label' => 'Git log', 'command' => 'git log --oneline -20'],
-        ['label' => 'Pull', 'command' => 'git pull --rebase'],
-        ['label' => 'Clear caches', 'command' => 'php artisan optimize:clear'],
+        ['label' => 'Optimize Clear', 'command' => 'php artisan optimize:clear'],
     ],
 
 ];

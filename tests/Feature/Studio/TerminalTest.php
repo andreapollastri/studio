@@ -16,8 +16,10 @@ test('the Terminal tab mounts a shell and stays mounted; a shortcut is typed int
         ->call('setTab', 'terminal')
         ->assertSet('shellMounted', true)
         ->assertSee('x-data="workspaceShell"', false)
-        ->assertSee('Doctor')
-        ->assertSee("type('php artisan larapilot:doctor --human')", false)
+        ->assertSee('Backlog')
+        ->assertSee('Optimize Clear')
+        ->assertDontSee('Git status')
+        ->assertSee("type('php artisan larapilot:spec-list')", false)
         ->assertSee('prompts, passwords and Ctrl-C work as over SSH')
         ->call('setTab', 'files')
         ->assertSet('shellMounted', true);

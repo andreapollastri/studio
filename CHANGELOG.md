@@ -22,6 +22,8 @@ Long Larapilot runs with subagents in the background, such as an inception readi
   in the person's home the first time (`ws-ada@lab:~/loy-ezrvu7$` instead of the full `/srv/studio/workspaces/…`
   path); the link works over SSH too. Something else of that name in the home is left alone. A sandbox's shell keeps
   its full path.
+- **Six shortcuts** above the Terminal: Backlog, Quality, Tests, Migrate, Fresh + seed and Optimize Clear
+  (`optimize:clear`); the git, Composer, npm and inspection ones go, the shell has them all.
 - The update restarts the workspace bridges (`installer/upgrades/2.3.4.sh`).
 
 ## 2.3.3
