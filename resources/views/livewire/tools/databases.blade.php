@@ -215,9 +215,12 @@
                         <flux:callout.text>{{ __('Add the host on the SSH page with your key or password, or paste a +ssh link above: it creates one.') }}</flux:callout.text>
                     </flux:callout>
                 @else
-                    <flux:select wire:model.live="ssh" :label="__('SSH connection')" :placeholder="__('Choose…')">
+                    <flux:select wire:model.live="ssh" :label="__('SSH connection')">
+                        @if ($this->sshConnections->count() !== 1)
+                            <flux:select.option value="" :selected="blank($ssh)">{{ __('Choose…') }}</flux:select.option>
+                        @endif
                         @foreach ($this->sshConnections as $candidate)
-                            <flux:select.option :value="$candidate->uuid">{{ $candidate->name }} · {{ $candidate->address() }}{{ $candidate->host_key ? '' : ' · '.__('key not accepted yet') }}</flux:select.option>
+                            <flux:select.option :value="$candidate->uuid" :selected="$ssh === $candidate->uuid">{{ $candidate->name }} · {{ $candidate->address() }}{{ $candidate->host_key ? '' : ' · '.__('key not accepted yet') }}</flux:select.option>
                         @endforeach
                     </flux:select>
                 @endif

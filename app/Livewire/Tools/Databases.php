@@ -261,6 +261,24 @@ class Databases extends Component
 
         $this->port = null;
         $this->testResult = null;
+        $this->pickOnlySsh();
+    }
+
+    public function updatedVia(): void
+    {
+        $this->pickOnlySsh();
+    }
+
+    /**
+     * One connection is the tunnel: take it. A disabled "Choose…" option stays
+     * selected in the markup, and macOS then paints the first real connection
+     * while the value stays empty, so saving says nothing was chosen.
+     */
+    private function pickOnlySsh(): void
+    {
+        if ($this->via === 'ssh' && blank($this->ssh) && $this->sshConnections->count() === 1) {
+            $this->ssh = $this->sshConnections->first()->uuid;
+        }
     }
 
     public function pickProject(?string $id): void

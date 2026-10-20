@@ -302,6 +302,94 @@ test('a Cipi job is followed until it completes', function () {
     Http::assertSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer cipi-token'));
 });
 
+test('creating a Cipi app appends the database link', function () {
+    Sleep::fake();
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    $created = [
+        'app' => 'shop',
+        'domain' => 'shop.acme.test',
+        'ssh' => ['user' => 'shop', 'password' => 'ssh-secret'],
+        'database' => ['user' => 'shop', 'password' => 'db-secret'],
+    ];
+
+    Http::fake([
+        'https://api.server.acme.test/api/jobs/job-1' => Http::response(['data' => [
+            'id' => 'job-1', 'type' => 'app-create', 'status' => 'completed', 'result' => $created,
+            'output' => "APP CREATED: shop\n  IP:         203.0.113.8\n  mariadb+ssh://shop:ssh-secret@203.0.113.8/shop:db-secret@127.0.0.1/shop\n",
+        ]]),
+        'https://api.server.acme.test/api/apps' => function (Request $r) {
+            return $r->method() === 'POST'
+                ? Http::response(['job_id' => 'job-1', 'status' => 'pending'], 202)
+                : Http::response(['data' => []]);
+        },
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'apps'])
+        ->call('start', 'create')
+        ->set('form.user', 'shop')
+        ->set('form.domain', 'shop.acme.test')
+        ->call('submit')
+        ->assertHasNoErrors()
+        ->assertSee('mariadb+ssh://shop:ssh-secret@203.0.113.8/shop:db-secret@127.0.0.1/shop');
+});
+
+test('a Cipi app created without the link in the output still gets one', function () {
+    Sleep::fake();
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/status' => Http::response(['data' => ['system' => ['ip' => '203.0.113.9']]]),
+        'https://api.server.acme.test/api/jobs/job-2' => Http::response(['data' => [
+            'id' => 'job-2', 'type' => 'app-create', 'status' => 'completed',
+            'result' => [
+                'app' => 'billing',
+                'ssh' => ['user' => 'billing', 'password' => 'ssh/secret'],
+                'database' => ['user' => 'billing', 'password' => 'db@secret'],
+            ],
+            'output' => "APP CREATED: billing\n",
+        ]]),
+        'https://api.server.acme.test/api/apps' => function (Request $r) {
+            return $r->method() === 'POST'
+                ? Http::response(['job_id' => 'job-2', 'status' => 'pending'], 202)
+                : Http::response(['data' => []]);
+        },
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'apps'])
+        ->call('start', 'create')
+        ->set('form.user', 'billing')
+        ->set('form.domain', 'billing.acme.test')
+        ->call('submit')
+        ->assertHasNoErrors()
+        ->assertSee('mariadb+ssh://billing:ssh%2Fsecret@203.0.113.9/billing:db%40secret@127.0.0.1/billing');
+});
+
+test('the Cipi PHP tab lists the installed versions', function () {
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/php' => Http::response(['data' => [
+            'default' => '8.4',
+            'installable' => ['8.3', '8.4', '8.5'],
+            'versions' => [
+                ['version' => '8.4', 'status' => 'running', 'apps' => 2, 'default' => true],
+                ['version' => '8.3', 'status' => 'stopped', 'apps' => 0, 'default' => false],
+            ],
+        ]]),
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'php'])
+        ->assertSee('8.4')
+        ->assertSee('8.3')
+        ->assertSee('running')
+        ->assertSee('stopped')
+        ->assertSee('2 items');
+});
+
 test('Boogle exceptions and Hackly findings are triaged from Studio', function () {
     enable('boogle');
     enable('hackly');

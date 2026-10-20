@@ -226,3 +226,23 @@ test('a tunnel goes only through an SSH connection the person may use', function
 
     expect($user->databaseConnections()->sole()->ssh_connection_id)->toBe($mine->id);
 });
+
+test('turning on the tunnel takes the only SSH connection', function () {
+    $user = User::factory()->create();
+    $mine = SshConnection::factory()->for($user)->create(['name' => 'box', 'host_key' => 'SHA256:'.str_repeat('a', 43)]);
+
+    $page = Livewire::actingAs($user)->test(Databases::class)
+        ->call('newConnection')
+        ->set('via', 'ssh')
+        ->assertSet('ssh', $mine->uuid);
+
+    expect($page->html())
+        ->not->toContain('disabled selected')
+        ->toContain('value="'.$mine->uuid.'"');
+
+    $page->set('name', 'via the only one')
+        ->call('saveConnection')
+        ->assertHasNoErrors();
+
+    expect($user->databaseConnections()->sole()->ssh_connection_id)->toBe($mine->id);
+});

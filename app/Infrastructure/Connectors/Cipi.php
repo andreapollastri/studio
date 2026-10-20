@@ -99,10 +99,94 @@ final class Cipi extends Connector
         $title = __('Job :type', ['type' => $job['type'] ?? $token]);
 
         return match ($status) {
-            'completed' => Outcome::show($title, $job['result'] ?? __('Completed.'), __('Completed.')),
+            'completed' => Outcome::show($title, $this->withDatabaseUrl($api, $job), __('Completed.')),
             'failed' => Outcome::show($title, $job['result'] ?? __('Failed.'), __('The job failed on the server.')),
             default => Outcome::pending($title.' · '.$status, $token, __('Still running on the server.')),
         };
+    }
+
+    /**
+     * An app just created: the database link Cipi prints (mariadb+ssh://ssh_user:ssh_password@server/user:password@127.0.0.1/database),
+     * taken from the command's own output or built from the credentials when that line is missing.
+     *
+     * @param  array<string, mixed>  $job
+     */
+    private function withDatabaseUrl(ApiClient $api, array $job): mixed
+    {
+        $result = $job['result'] ?? null;
+
+        if (($job['type'] ?? '') !== 'app-create' || ! is_array($result) || filled($result['database_url'] ?? null)) {
+            return $result ?? __('Completed.');
+        }
+
+        $url = $this->databaseUrl($api, $result, (string) ($job['output'] ?? ''));
+
+        return $url === null ? $result : [...$result, 'database_url' => $url];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function databaseUrl(ApiClient $api, array $result, string $output): ?string
+    {
+        $plain = (string) preg_replace("/\x1b\[[0-9;]*m/", '', $output);
+
+        if (preg_match('~[a-z][a-z0-9]*\+ssh://\S+~i', $plain, $found)) {
+            return rtrim($found[0], " \t.,)");
+        }
+
+        $database = (array) ($result['database'] ?? []);
+        $dbUser = is_string($database['user'] ?? null) ? $database['user'] : '';
+        $dbPassword = is_string($database['password'] ?? null) ? $database['password'] : '';
+
+        if ($dbUser === '' || $dbPassword === '') {
+            return null;
+        }
+
+        $ssh = (array) ($result['ssh'] ?? []);
+        $sshUser = is_string($ssh['user'] ?? null) && $ssh['user'] !== '' ? $ssh['user'] : (is_string($result['app'] ?? null) ? $result['app'] : $dbUser);
+        $sshPassword = is_string($ssh['password'] ?? null) && $ssh['password'] !== '' ? $ssh['password'] : null;
+        $name = is_string($result['app'] ?? null) && $result['app'] !== '' ? $result['app'] : $dbUser;
+        $host = null;
+
+        if (preg_match('/IP:\s*(\S+)/', $plain, $ip)) {
+            $host = $ip[1];
+        }
+
+        $host ??= $this->serverHost($api);
+
+        if ($host === null || $sshUser === '') {
+            return null;
+        }
+
+        $engine = strtolower((string) ($result['engine'] ?? ''));
+        $scheme = in_array($engine, ['pgsql', 'postgres', 'postgresql'], true) || preg_match('/\b(?:postgres(?:ql)?|pgsql)\b/i', $plain) ? 'postgres' : 'mariadb';
+        $sshPart = rawurlencode($sshUser).($sshPassword !== null ? ':'.rawurlencode($sshPassword) : '');
+
+        return $scheme.'+ssh://'.$sshPart.'@'.$this->linkHost($host).'/'.rawurlencode($dbUser).':'.rawurlencode($dbPassword).'@127.0.0.1/'.rawurlencode($name);
+    }
+
+    /** The address an SSH tunnel reaches: the server's IP, or the API host when status cannot be read. */
+    private function serverHost(ApiClient $api): ?string
+    {
+        try {
+            $ip = data_get($api->get('/status'), 'data.system.ip');
+
+            if (is_string($ip) && $ip !== '') {
+                return $ip;
+            }
+        } catch (\Throwable) {
+            // A token without status-view still gets the host of the API address.
+        }
+
+        $host = parse_url($api->baseUrl, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '' ? $host : null;
+    }
+
+    private function linkHost(string $host): string
+    {
+        return str_contains($host, ':') && ! str_starts_with($host, '[') ? '['.$host.']' : $host;
     }
 
     /**
@@ -393,7 +477,15 @@ final class Cipi extends Connector
         return Section::make('php', __('PHP'))
             ->icon('code-bracket')
             ->id('version')
-            ->list(fn (ApiClient $api) => array_values((array) ($api->get('/php')['data'] ?? [])))
+            ->list(function (ApiClient $api) {
+                // GET /api/php answers { default, installable, versions }, not a flat list.
+                $data = (array) ($api->get('/php')['data'] ?? []);
+
+                return array_values(array_filter(
+                    (array) ($data['versions'] ?? $data),
+                    fn ($row) => is_array($row) && isset($row['version']),
+                ));
+            })
             ->columns([
                 Column::make('version', __('Version'))->mono(),
                 Column::make('status', __('Status'))->badge(['installed' => 'green', 'running' => 'green', '*' => 'zinc']),
