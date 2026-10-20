@@ -141,6 +141,12 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(ClaudeAccount::class);
     }
 
+    /** @return HasMany<CursorAccount, $this> */
+    public function cursorAccounts(): HasMany
+    {
+        return $this->hasMany(CursorAccount::class);
+    }
+
     /** @return BelongsTo<ClaudeAccount, $this> */
     public function defaultClaudeAccount(): BelongsTo
     {
@@ -277,6 +283,12 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function hasClaude(): bool
     {
         return $this->claudeAccounts()->get()->contains(fn (ClaudeAccount $account) => $account->isUsable());
+    }
+
+    /** A Cursor subscription signed in on this server. */
+    public function hasCursor(): bool
+    {
+        return $this->cursorAccounts()->where('signed_in', true)->exists();
     }
 
     /**

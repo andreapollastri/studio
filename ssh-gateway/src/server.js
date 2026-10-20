@@ -17,7 +17,8 @@ export const CLOSE = { badTicket: 4401, forbiddenOrigin: 4403, tooMany: 4429, st
  * Caddy forwards from https://studio.<domain>/ssh/ws. The ticket is Studio's
  * permission for this one session; nothing else authenticates the socket.
  * A ticket stands for an SSH connection, (kind: claude-login) for a person's
- * sign-in to Claude Code in their own home, or (kind: workspace-shell) for the
+ * sign-in to Claude Code in their own home, (kind: cursor-login) for their
+ * sign-in to Cursor in that same home, or (kind: workspace-shell) for the
  * shell of a workspace, which its bridge runs, or (kind: site-shell) for a shell on a project's own
  * site, as its user, through the helper.
  */
@@ -78,7 +79,7 @@ export function createGateway(config, { redeem = (ticket) => redeemTicket(config
     ws.once('close', () => clearInterval(ping));
 
     const size = { cols: Number(url.searchParams.get('cols')) || 80, rows: Number(url.searchParams.get('rows')) || 24 };
-    if (target.kind === 'claude-login') {
+    if (target.kind === 'claude-login' || target.kind === 'cursor-login') {
       new LoginSession(ws, target, config, { size, log, ...(spawn ? { spawn } : {}) }).start();
     } else if (target.kind === 'workspace-shell') {
       new WorkspaceShellSession(ws, target, { size, log }).start();

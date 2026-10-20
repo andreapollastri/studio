@@ -20,8 +20,14 @@ case "$cmd" in
     printf '{"ok":true,"app_url":"https://%s","path":"/srv/studio/workspaces/%s/.sandboxes/%s/c%s"}\n' "$host" "$1" "$2" "$3" ;;
   sandbox-delete)
     printf '{"ok":true}\n' ;;
-  person-ensure|claude-logout|claude-forget|git-cli)
+  person-ensure|claude-logout|claude-forget|cursor-logout|cursor-forget|git-cli)
     printf '{"ok":true}\n' ;;
+  cursor-status)
+    if [ "${FAKE_CURSOR_LOGGED_IN:-0}" = 1 ]; then
+      printf '{"ok":true,"logged_in":true,"email":"%s"}\n' "${FAKE_CURSOR_EMAIL:-maria@cursor.test}"
+    else
+      printf '{"ok":true,"logged_in":false,"email":null}\n'
+    fi ;;
   claude-status)
     if [ "${FAKE_CLAUDE_METHOD:-none}" = none ]; then
       printf '{"ok":true,"logged_in":false,"auth_method":"none","status":{"authMethod":"none"}}\n'

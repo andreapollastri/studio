@@ -19,8 +19,9 @@ export function loadConfig(env = process.env) {
     readyTimeout: Number(env.SSH_GATEWAY_READY_TIMEOUT || 20) * 1000,
     hostKeyTimeout: Number(env.SSH_GATEWAY_HOST_KEY_TIMEOUT || 120) * 1000,
     log: env.SSH_GATEWAY_LOG !== '0',
-    // The person's `claude auth login` goes through the privileged helper, as their Linux user.
+    // The person's `claude auth login` and `agent login` go through the privileged helper, as their Linux user.
     loginCommand: loginCommand(env.SSH_GATEWAY_HELPER || '/usr/local/sbin/studio-admin', env.SSH_GATEWAY_HELPER_SUDO !== '0'),
+    cursorLoginCommand: cursorLoginCommand(env.SSH_GATEWAY_HELPER || '/usr/local/sbin/studio-admin', env.SSH_GATEWAY_HELPER_SUDO !== '0'),
     loginTimeout: Number(env.SSH_GATEWAY_LOGIN_TIMEOUT || 600) * 1000,
     // The Terminal's Develop mode: a shell on a project's site, as its user, through the same helper.
     siteShellCommand: siteShellCommand(env.SSH_GATEWAY_HELPER || '/usr/local/sbin/studio-admin', env.SSH_GATEWAY_HELPER_SUDO !== '0'),
@@ -47,4 +48,9 @@ function siteShellCommand(helper, sudo) {
 function loginCommand(helper, sudo) {
   // dir: the config folder of one of the person's Claude accounts (.claude, .claude-<slug>); the default one goes unsaid
   return (handle, cols, rows, dir = '.claude') => [...(sudo ? ['sudo', '-n', helper] : [helper]), 'claude-login', handle, String(cols), String(rows), ...(dir === '.claude' ? [] : [dir])];
+}
+
+function cursorLoginCommand(helper, sudo) {
+  // dir: the config folder of one of the person's Cursor subscriptions (.cursor, .cursor-<slug>); the default one goes unsaid
+  return (handle, cols, rows, dir = '.cursor') => [...(sudo ? ['sudo', '-n', helper] : [helper]), 'cursor-login', handle, String(cols), String(rows), ...(dir === '.cursor' ? [] : [dir])];
 }

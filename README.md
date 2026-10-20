@@ -53,7 +53,8 @@ both have an "API".
 
 **Any git host, everyone's own accounts.** Projects live on GitHub, GitLab (gitlab.com or self-managed),
 Bitbucket Cloud or Azure DevOps, the same remote forges Larapilot integrates with; all four are always there. A project
-is an existing repository, or one Studio creates on the spot with the latest Laravel, Laravel Boost and Larapilot. A
+is an existing repository, or one Studio creates on the spot with the latest Laravel, Laravel Boost and Larapilot,
+with Boost's skills, guidelines and MCP server published for Claude Code and for Cursor. A
 *service account* of the team (*Administration → Connectors → Git hosting*: a bot's token) or an administrator's own
 account creates or reads it, registers the webhook and deploys the site; a service account keeps deploying when an
 administrator leaves. People sign in with email and password (plus two-factor), then bring their own accounts, as many
@@ -70,6 +71,11 @@ as they work with, all in *Settings → Accounts*:
   pastes Anthropic's code into that terminal, so a Pro, Max or Team plan is used the way Anthropic allows on hosted
   platforms and Studio never sees or holds it; a key is stored encrypted and goes with each message. One account is
   the default. See [Claude Code and Anthropic's terms](#claude-code-and-anthropics-terms).
+- **Cursor**: subscriptions, each person's own. *Sign in to Cursor* runs the official `agent login` in a terminal
+  in the person's own home on the server, in a folder of its own for each subscription (`~/.cursor`,
+  `~/.cursor-<slug>`); the person approves in the browser, so the plan is used as their own and Studio never sees
+  or holds the login. An API key is not one of these: it is billed apart from the subscription. Conversations
+  still run on Claude Code. See [Cursor and its terms](#cursor-and-its-terms).
 - **Groups** (*Projects*): each person puts their projects in groups of their own (Personal, Open source, Work,
   Clients…). A group picks the Claude account and the git account its projects use; a project may pick others. Each
   card shows what it runs on and why. A Claude change applies to the next message; a git change restarts only the
@@ -156,6 +162,29 @@ Claude Code on a hosted platform. In short:
   trademarks of Anthropic, PBC, named here to say what Studio runs.
 
 Not legal advice: for an installation others will use, read Anthropic's page and, in doubt, ask them.
+
+## Cursor and its terms
+
+Studio runs the unmodified Cursor CLI that Cursor publishes (`agent login`, `agent status`, `agent logout`), and
+nothing stands between the person, that binary and Cursor. In short:
+
+- **Each person authenticates with their own account, billed to them.** The sign-in is their own `agent login` in
+  their own home. Studio never pays for, resells or brokers Cursor on anyone's behalf, and it holds no subscription
+  and no API key.
+- **A subscription is personal.** One plan shared by several people through Studio would be sharing the login.
+  For a team, a seat per person.
+- **Nothing in the CLI is modified.** The server installs it from Cursor's own installer, and the login files in
+  `~/.cursor*` are read by the CLI alone (denied to the agent, never read, copied or logged by Studio, its bridge
+  or its root helper; Studio only asks `agent status`).
+- **Studio is an independent project**, not affiliated with or endorsed by Anysphere. Cursor is a trademark of
+  Anysphere, Inc., named here to say what Studio runs.
+
+Cursor has not published a page that says, as Anthropic does for Claude Code, that the CLI may run on a hosted
+platform. The CLI is documented for the machine it runs on, including a remote one, and its use draws on the
+subscription. That is the shape Studio follows.
+
+Not legal advice: for an installation others will use, read [Cursor's terms](https://cursor.com/terms-of-service)
+and, in doubt, ask them.
 
 ## Screenshots
 
@@ -310,7 +339,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Changes tab: working tree, history graph, branches with switch and fetch | done, tested (`bridge/src/git.js` against real repositories) |
 | MCP servers per project: remote servers added in the project settings, by role, header stored encrypted, connection test; each chat gets them from the next message | done, tested |
 | Project settings: scheduler and queues on every host by default, extra queues, Horizon, Reverb, Pulse; every project host behind the Studio login and the project assignment (a per-host pass) unless made public (the site, or the site and the previews; /larapilot never), narrowed by address lists per site, previews and branch | done in Studio and the helper, tested with stand-ins; the helper's services block exercised in a sandbox with systemctl stubbed; units, cron and Caddy `forward_auth` not yet run on a live server |
-| New project from scratch: repository created on the git provider, latest Laravel + Laravel Boost + Larapilot (with its forge integration on) pushed by the server | done, tested with stand-ins for the provider and the helper |
+| New project from scratch: repository created on the git provider, latest Laravel + Laravel Boost + Larapilot (with its forge integration on, and Boost's skills, guidelines and MCP server for Claude Code and Cursor) pushed by the server | done, tested with stand-ins for the provider and the helper |
 | Bridge (Node, `bridge/`): drives `claude -p` stream-json, permissions, resume, skills, git | done, tested with a fake CLI |
 | Updater (`installer/studio-update`): stable and beta channels, force, system step, upgrade scripts, dump, migrate, switch, health check, rollback, signatures; nightly server update (`studio-update system`) | done, tested end to end in a sandbox with a real git repository and stubbed system commands (`tests/installer/`, 24 checks); the server update's apt run not yet on a live server |
 | Installer (`installer/install.sh`), system steps (`installer/lib/system.sh`) and helper (`installer/studio-admin`) | written for Ubuntu 24.04/26.04 and shellchecked, **not yet run on a live server** |
@@ -318,6 +347,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Password manager (*Tools → Password manager*): nested personal folders, items encrypted (username, password, notes, TOTP with live codes), password generator; an item is tied to a project for the roles ticked (client, PM, dev) and shared with single people to view or edit, with a table of who sees it and why | done, tested |
 | Drive (*Tools → Drive*): folders and files on Studio's disk, upload by button or drag and drop; a folder tied to a project opens by role to view or to view and edit, down the tree; administrators see everything, clients create nothing; *Copy / Move into the workspace* sends files or whole folders to the person's workspace of that project through the bridge | done, tested (the bridge's `PUT /files/upload` against real directories) |
 | Claude: several accounts per person, subscriptions (the official `claude auth login` in a folder of their own in the person's home, through the SSH gateway) and API keys; a default, a choice per group of projects and per project, sent with every turn | done, tested (helper, gateway and bridge with stand-ins for the CLI); not yet run with the real CLI on a live server |
+| Cursor: several subscriptions per person, each the official `agent login` in a folder of its own in the person's home, through the SSH gateway; Studio asks only `agent status` | done, tested (helper and gateway with stand-ins for the CLI); not yet run with the real CLI on a live server. Conversations still run on Claude Code |
 | Groups of projects per person, with their Claude and git accounts; projects on any enabled git host, each workspace with the git account and commit identity of its repository's host | done, tested |
 | Agent browser (Playwright MCP signed in to the preview with the person's pass), screenshots in the chat, subagents as cards, Studio's `code-reviewer` and `browser-qa` | done, tested (bridge against the fake CLI; Playwright MCP 0.0.83 run for real against a site behind a pass cookie: navigate, screenshot, console); not yet run on a live server |
 | Conversations in a sandbox: worktree on its own branch, database copy, build and preview host; merge, push, remove; the side pane follows it | done, tested (bridge against real git repositories, Studio with stand-ins for the bridge and the helper); `sandbox-create`/`sandbox-delete` shellchecked, not yet run on a live server |

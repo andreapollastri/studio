@@ -7,7 +7,7 @@
 # new PHP, a newer Node, another package or a changed service with it:
 #
 #   ensure_system RELEASE_DIR      packages, PHP, Composer, Node, Claude Code, the
-#                                  provider's CLI, databases, users and directories
+#                                  Cursor CLI, the provider's CLI, databases, users and directories
 #   install_release_files RELEASE_DIR
 #                                  the root helper, the updater, templates, sudoers,
 #                                  Studio's services, its PHP-FPM pool and the Caddyfile
@@ -223,6 +223,25 @@ ensure_claude_code() { # the newest Claude Code; workspaces have DISABLE_AUTOUPD
     npm install -g @anthropic-ai/claude-code@latest >/dev/null 2>&1 || sys_warn "Claude Code could not be installed with npm; workspaces fail until it is"
 }
 
+# ensure_cursor_cli — Cursor's official installer, which puts `agent` in $HOME/.local/bin.
+# Installed under /usr/local/lib so every person's sign-in can run it (the helper's PATH),
+# not under root's home, which they cannot read. The newest build, the way Claude Code is.
+ensure_cursor_cli() {
+    local home=/usr/local/lib/cursor-agent
+    mkdir -p "$home"
+    chmod 755 /usr/local/lib "$home"
+    if ! HOME="$home" curl -fsSL https://cursor.com/install | bash >>"$STUDIO_APT_LOG" 2>&1; then
+        sys_warn "Cursor CLI could not be installed; signing in to a Cursor subscription waits until it is"
+        return 0
+    fi
+    chmod -R a+rX "$home"
+    if [ -x "$home/.local/bin/agent" ]; then
+        ln -sfn "$home/.local/bin/agent" /usr/local/bin/agent
+    else
+        sys_warn "Cursor CLI installed but agent is not at $home/.local/bin/agent"
+    fi
+}
+
 # ensure_agent_browser — the agents' browser: Playwright MCP at the version this release was tested
 # with, and the Chromium its Playwright wants (with the libraries it needs), in one place every
 # workspace reads. Without it the chats work as before, without screenshots.
@@ -355,6 +374,8 @@ ensure_system() {
     ensure_node
     sys_note "· Claude Code (npm; a minute or two)"
     ensure_claude_code
+    sys_note "· Cursor CLI"
+    ensure_cursor_cli
     sys_note "· the agents' browser: Playwright MCP and Chromium (a minute or two)"
     ensure_agent_browser
     sys_note "· the ${provider} command-line tool"
@@ -379,6 +400,8 @@ package_versions() {
     [ -n "$v" ] && echo "composer-phar $v"
     v=$(claude --version 2>/dev/null | awk '{print $1}') || true
     [ -n "$v" ] && echo "claude-code $v"
+    v=$(agent --version 2>/dev/null | awk '{print $NF}') || true
+    [ -n "$v" ] && echo "cursor-agent $v"
     v=$(playwright-mcp --version 2>/dev/null | awk '{print $NF}') || true
     [ -n "$v" ] && echo "playwright-mcp $v"
     v=$(az extension show --name azure-devops --query version -o tsv 2>/dev/null) || true

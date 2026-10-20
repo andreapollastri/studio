@@ -206,6 +206,57 @@ test('a claude-login ticket with a folder outside the person\'s Claude ones is r
   assert.equal(ran, false);
 });
 
+test('a cursor-login ticket runs the helper\'s sign-in for that subscription\'s folder and relays the terminal', async (t) => {
+  let launched;
+  const spawn = (bin, args) => {
+    launched = [bin, ...args];
+    return spawnReal(process.execPath, ['-e', `
+      process.stdout.write('Open https://cursor.com/loginDeepControl?challenge=abc123def456 to sign in\\n');
+      setTimeout(() => process.exit(0), 20);
+    `]);
+  };
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0', SSH_GATEWAY_HELPER: '/usr/local/sbin/studio-admin' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'cursor-login', user_id: 3, handle: 'ada', dir: '.cursor-work' }), spawn });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until((m) => m.type === 'exit');
+  assert.deepEqual(launched, ['sudo', '-n', '/usr/local/sbin/studio-admin', 'cursor-login', 'ada', '100', '30', '.cursor-work']);
+  assert.match(s.output(), /cursor\.com\/loginDeepControl/);
+  await s.closed;
+});
+
+test('a cursor-login ticket for the first subscription omits the default folder', async (t) => {
+  let launched;
+  const spawn = (bin, args) => {
+    launched = [bin, ...args];
+    return spawnReal(process.execPath, ['-e', 'process.exit(0)']);
+  };
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0', SSH_GATEWAY_HELPER: '/usr/local/sbin/studio-admin' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'cursor-login', user_id: 3, handle: 'ada' }), spawn });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  await s.until((m) => m.type === 'exit');
+  assert.deepEqual(launched, ['sudo', '-n', '/usr/local/sbin/studio-admin', 'cursor-login', 'ada', '100', '30']);
+  await s.closed;
+});
+
+test('a cursor-login ticket with a folder outside the person\'s Cursor ones is refused before anything runs', async (t) => {
+  let ran = false;
+  const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0' }), origin: '' };
+  const gw = createGateway(config, { redeem: async () => ({ kind: 'cursor-login', user_id: 3, handle: 'ada', dir: '../.ssh' }), spawn: () => { ran = true; } });
+  await new Promise((resolve) => gw.listen(0, '127.0.0.1', resolve));
+  t.after(() => gw.close());
+
+  const s = open(gw, 'good');
+  assert.match((await s.until((m) => m.type === 'error')).message, /no place/);
+  await s.closed;
+  assert.equal(ran, false);
+});
+
 test('a claude-login ticket without a valid home name is refused before anything runs', async (t) => {
   let ran = false;
   const config = { ...loadConfig({ SSH_GATEWAY_TOKEN: 't', SSH_GATEWAY_LOG: '0' }), origin: '' };

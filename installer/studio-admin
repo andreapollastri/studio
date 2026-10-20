@@ -42,6 +42,15 @@
 #                                      [dir]: the Claude Code config directory of one of the person's
 #                                      subscriptions, .claude (the default) or .claude-<[a-z0-9]{1,40}>; the
 #                                      others share .claude's transcripts, agents, skills, commands, settings
+#   cursor-status    <handle> [dir]    {ok, logged_in, email}: `agent status` in their home. The CLI's own
+#                                      object is not forwarded.
+#   cursor-logout    <handle> [dir]    `agent logout` in their home
+#   cursor-login     <handle> <cols> <rows> [dir]
+#                                      interactive, no JSON: the official `agent login` of the unmodified
+#                                      CLI, as the person, on a pseudo-terminal wired to stdin/stdout (the SSH
+#                                      gateway relays it). The login lands in their own ~/<dir>; Studio never
+#                                      sees or keeps it. [dir] is .cursor or .cursor-<[a-z0-9]{1,40}>.
+#   cursor-forget    <handle> <dir>    signs out of that subscription and removes ~/<dir> (never .cursor)
 #   git-cli          <provider>        github|gitlab|bitbucket|azure: the agents' CLI for that forge, installed
 #                                      when missing (ensure_git_cli of the release's installer/lib/system.sh)
 #   update-check | update-start [force] | update-auto <on|off> | update-channel <stable|beta>
@@ -561,17 +570,24 @@ cmd_project_bootstrap() {
     run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" /usr/local/bin/composer require laravel/boost andreapollastri/larapilot --dev --no-progress --quiet \
         || fail "composer require laravel/boost andreapollastri/larapilot failed"
     run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan larapilot:install --no-interaction >/dev/null 2>&1 || log "larapilot:install reported a problem; continuing"
+    # A non-interactive boost:install configures only the agents it finds on the machine. The server has
+    # Claude Code and not the Cursor app, so Cursor's skills, guidelines and MCP server would never be
+    # written. Name both agents before the install; the install keeps the ones boost.json already lists.
+    jq -n '{"agents":["claude_code","cursor"]}' > "$tmp/boost.json" \
+        && install -o "$P_USER" -g "$P_USER" -m 644 "$tmp/boost.json" "$tmp/app/boost.json" || fail "boost.json could not name claude_code and cursor"
     run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan boost:install --no-interaction >"$tmp/boost.log" 2>&1 \
         || fail "boost:install failed: $(tail -n 5 "$tmp/boost.log" | tr '\n' ' ')"
     grep -q '"laravel/boost"' "$tmp/app/composer.json" || fail "laravel/boost is missing from composer.json after the install"
     # Boost publishes a package's skills and guidelines only when boost.json lists it under "packages", and
     # a non-interactive boost:install lists none: Larapilot's /larapilot-* skills would never reach
-    # .claude/skills (and its questions with them). List it, and publish again.
-    jq '.packages = ((.packages // []) + ["andreapollastri/larapilot"] | unique)' "$tmp/app/boost.json" > "$tmp/boost.json" \
-        && install -o "$P_USER" -g "$P_USER" -m 644 "$tmp/boost.json" "$tmp/app/boost.json" || fail "boost.json could not list andreapollastri/larapilot"
+    # .claude/skills or .cursor/skills (and its questions with them). List it, keep both agents, and publish again.
+    jq '.agents = ((.agents // []) + ["claude_code", "cursor"] | unique) | .packages = ((.packages // []) + ["andreapollastri/larapilot"] | unique)' "$tmp/app/boost.json" > "$tmp/boost.json" \
+        && install -o "$P_USER" -g "$P_USER" -m 644 "$tmp/boost.json" "$tmp/app/boost.json" || fail "boost.json could not list andreapollastri/larapilot for claude_code and cursor"
     run_as "$P_USER" "$tmp/app" "$P_ENV" "php$php" artisan boost:update --no-interaction >>"$tmp/boost.log" 2>&1 \
         || fail "boost:update failed: $(tail -n 5 "$tmp/boost.log" | tr '\n' ' ')"
     [ -f "$tmp/app/.claude/skills/larapilot-inception/SKILL.md" ] || fail "Larapilot's skills were not published to .claude/skills"
+    [ -f "$tmp/app/.cursor/skills/larapilot-inception/SKILL.md" ] || fail "Larapilot's skills were not published to .cursor/skills"
+    grep -q 'boost:mcp' "$tmp/app/.cursor/mcp.json" || fail "Cursor's MCP server was not published to .cursor/mcp.json"
     # Larapilot's remote forge integration: the same provider as this Studio, committed in .larapilot/config.yaml
     case "$provider" in
         github|gitlab|bitbucket|azure)
@@ -659,7 +675,8 @@ cmd_project_delete() {
 # ---------------------------------------------------------------- people ----
 
 # One Linux user per person, ws-<handle>, whose home every workspace of theirs shares: their
-# Claude Code login (~/.claude) is there, once for all their projects, readable by them alone.
+# Claude Code login (~/.claude) and, when they sign in, their Cursor login (~/.cursor) are there,
+# readable by them alone.
 ensure_person() { # handle
     local user="ws-$1" home="$HOMES/ws-$1"
     id "$user" >/dev/null 2>&1 || useradd --create-home --home-dir "$home" --shell /bin/bash "$user"
@@ -725,19 +742,51 @@ claude_dir_remove() {
     rm -rf -- "${home:?}/${dir:?}"
 }
 
+# A person may sign in to several Cursor subscriptions: each one is a config directory of its own
+# in their home, .cursor (the first) or .cursor-<slug>. Nothing is shared between them, and nothing
+# in them is read by Studio: the CLI writes the login, `agent status` is the only question asked.
+valid_cursor_dir() { [[ "$1" =~ ^\.cursor(-[a-z0-9]{1,40})?$ ]] || fail "invalid Cursor directory: $1"; }
+
+# cursor_dir_layout HOME DIR — run as the person. A link is removed: the login must be a real
+# directory they own, not a pointer at somewhere else.
+cursor_dir_layout() {
+    local home=${1:?} dir=${2:?}
+    umask 077
+    if [ -L "$home/$dir" ]; then rm -f -- "${home:?}/${dir:?}"; fi
+    mkdir -p "$home/$dir"
+    chmod 700 "$home/$dir"
+}
+
+ensure_cursor_dir() {
+    local user="ws-$1" home="$HOMES/ws-$1" dir=$2
+    valid_cursor_dir "$dir"
+    sudo -u "$user" env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        bash -c "set -eu; $(declare -f cursor_dir_layout); cd /; cursor_dir_layout \"\$@\"" cursor_dir_layout "$home" "$dir" >&2 \
+        || fail "could not prepare $home/$dir"
+}
+
+# cursor_dir_remove HOME DIR — as the person. Never .cursor itself.
+cursor_dir_remove() {
+    local home=${1:?} dir=${2:?}
+    [[ "$dir" =~ ^\.cursor-[a-z0-9]{1,40}$ ]] || return 1
+    rm -rf -- "${home:?}/${dir:?}"
+}
+
 # Claude Code policy for every workspace on this server, read as the workspace user (umask 027
 # would leave it to root alone). No forceLoginMethod: it would refuse the API key a person may
 # choose (ANTHROPIC_API_KEY "cannot be checked against that policy"); a build of 1.1 set it, so
 # it is taken out here. The subscription sign-in is the person's own `claude auth login` anyway.
-# The agents read nobody's Claude login: not .claude, not the other subscriptions' .claude-<slug>
-# (a policy an older build wrote gets that rule once).
+# The agents read nobody's Claude login and nobody's Cursor login: not .claude, not the other
+# subscriptions' .claude-<slug>, not .cursor, not .cursor-<slug> (a policy an older build wrote
+# gets each rule it is missing, once).
 ensure_claude_policy() {
-    local f=${CLAUDE_POLICY:?} rule='Read(/home/*/.claude-*/**)'
+    local f=${CLAUDE_POLICY:?} rule
+    local -a rules=('Read(/home/*/.claude-*/**)' 'Read(/home/*/.cursor/**)' 'Read(/home/*/.cursor-*/**)')
     mkdir -p "$(dirname "$f")"; chmod 755 "$(dirname "$f")"
     [ -f "$f" ] || cat > "$f" <<'JSON'
 {
   "permissions": {
-    "deny": ["Read(/etc/studio/**)", "Read(/home/*/.claude/**)", "Read(/home/*/.claude-*/**)", "Read(/srv/studio/projects/**)"],
+    "deny": ["Read(/etc/studio/**)", "Read(/home/*/.claude/**)", "Read(/home/*/.claude-*/**)", "Read(/home/*/.cursor/**)", "Read(/home/*/.cursor-*/**)", "Read(/srv/studio/projects/**)"],
     "disableBypassPermissionsMode": "disable"
   },
   "enableAllProjectMcpServers": true
@@ -746,9 +795,11 @@ JSON
     if jq -e 'has("forceLoginMethod")' "$f" >/dev/null 2>&1; then
         jq 'del(.forceLoginMethod)' "$f" > "$f.new" && mv -f "$f.new" "$f"
     fi
-    if jq -e . "$f" >/dev/null 2>&1 && ! jq -e --arg r "$rule" '(.permissions.deny // []) | index($r) != null' "$f" >/dev/null 2>&1; then
-        jq --arg r "$rule" '.permissions.deny = ((.permissions.deny // []) + [$r])' "$f" > "$f.new" && mv -f "$f.new" "$f"
-    fi
+    for rule in "${rules[@]}"; do
+        if jq -e . "$f" >/dev/null 2>&1 && ! jq -e --arg r "$rule" '(.permissions.deny // []) | index($r) != null' "$f" >/dev/null 2>&1; then
+            jq --arg r "$rule" '.permissions.deny = ((.permissions.deny // []) + [$r])' "$f" > "$f.new" && mv -f "$f.new" "$f"
+        fi
+    done
     chmod 644 "$f"
 }
 
@@ -812,6 +863,94 @@ cmd_claude_login() { # handle cols rows [dir]
     # script(1) gives the CLI a real terminal; stdin and stdout stay pipes to the gateway
     exec 3>&-
     claude_as "$handle" "$dir" script -qfec "stty cols $cols rows $rows 2>/dev/null; exec claude auth login" /dev/null
+}
+
+# cursor_as HANDLE DIR ARGS… — the person's own Cursor CLI in their home. The login stays in
+# ~/DIR (CURSOR_CONFIG_DIR, and XDG_CONFIG_HOME so the file store lands there too): Studio's
+# environment is not passed on, and nothing of the login is read back.
+cursor_as() {
+    local user="ws-$1" home="$HOMES/ws-$1" dir=$2; shift 2
+    valid_cursor_dir "$dir"
+    cd /
+    sudo -u "$user" env -i HOME="$home" USER="$user" LOGNAME="$user" \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        CURSOR_CONFIG_DIR="$home/$dir" XDG_CONFIG_HOME="$home/$dir" AGENT_CLI_CREDENTIAL_STORE=file \
+        NO_OPEN_BROWSER=1 LANG=C.UTF-8 TERM=xterm-256color \
+        bash -c 'cd "$HOME" && exec "$@"' cursor "$@"
+}
+
+# cursor_read_status RAW RC — {logged_in, email} from `agent status --format json`. The CLI's
+# object is not returned: only whether it is signed in, and an e-mail address when it gave one.
+cursor_read_status() {
+    local raw=$1 rc=$2 obj
+    obj=$(printf '%s' "$raw" | jq -c 'if type == "object" then . else empty end' 2>/dev/null || true)
+    if [ -z "$obj" ]; then
+        obj=$(printf '%s\n' "$raw" | awk '/^\{/ {s=$0} END {print s}')
+        obj=$(printf '%s' "$obj" | jq -c 'if type == "object" then . else empty end' 2>/dev/null || true)
+    fi
+    [ -n "$obj" ] || obj='{}'
+    jq -n --argjson s "$obj" --argjson rc "$rc" '
+        def flag:
+            if ($s.authenticated | type) == "boolean" then $s.authenticated
+            elif ($s.loggedIn | type) == "boolean" then $s.loggedIn
+            elif ($s.logged_in | type) == "boolean" then $s.logged_in
+            elif ($s.isAuthenticated | type) == "boolean" then $s.isAuthenticated
+            else null end;
+        def denied: ($s.status == "not_authenticated" or $s.status == "logged_out" or $s.status == "unauthenticated");
+        def email:
+            [ $s.email, ($s.user.email // null), ($s.account.email // null) ]
+            | map(select(type == "string" and test("^[^[:space:]@]+@[^[:space:]@]+$") and (length < 200)))
+            | first // null;
+        (if flag != null then flag elif ($rc == 0 and (denied | not)) then true else false end) as $in
+        | {logged_in: $in, email: (if $in then email else null end)}
+    '
+}
+
+cmd_cursor_status() { # handle [dir]
+    local handle=$1 dir=${2:-.cursor} out rc=0 read
+    valid_name "$handle"; valid_cursor_dir "$dir"
+    command -v agent >/dev/null 2>&1 || fail "Cursor CLI is not installed on this server"
+    ensure_person "$handle"; ensure_cursor_dir "$handle" "$dir"
+    out=$(cursor_as "$handle" "$dir" agent status --format json 2>/dev/null) || rc=$?
+    read=$(cursor_read_status "$out" "$rc")
+    jq -n --argjson r "$read" '{ok:true, logged_in:$r.logged_in, email:$r.email}'
+}
+
+cmd_cursor_logout() { # handle [dir]
+    local handle=$1 dir=${2:-.cursor}
+    valid_name "$handle"; valid_cursor_dir "$dir"
+    command -v agent >/dev/null 2>&1 || fail "Cursor CLI is not installed on this server"
+    ensure_person "$handle"; ensure_cursor_dir "$handle" "$dir"
+    cursor_as "$handle" "$dir" agent logout >/dev/null 2>&1 || true
+    echo '{"ok":true}'
+}
+
+# cursor-forget: a subscription the person removed. Signed out first, then its directory goes.
+# The first one (.cursor) stays, signed out.
+cmd_cursor_forget() { # handle dir
+    local handle=$1 dir=$2 user="ws-$1" home="$HOMES/ws-$1"
+    valid_name "$handle"; valid_cursor_dir "$dir"
+    [ "$dir" != .cursor ] || fail "the first Cursor directory (.cursor) is never removed: sign out instead"
+    if id "$user" >/dev/null 2>&1 && { [ -e "$home/$dir" ] || [ -L "$home/$dir" ]; }; then
+        if [ -d "$home/$dir" ] && [ ! -L "$home/$dir" ] && command -v agent >/dev/null 2>&1; then
+            cursor_as "$handle" "$dir" agent logout >/dev/null 2>&1 || true
+        fi
+        sudo -u "$user" env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            bash -c "set -eu; $(declare -f cursor_dir_remove); cd /; cursor_dir_remove \"\$@\"" cursor_dir_remove "$home" "$dir" >&2 \
+            || fail "could not remove $home/$dir"
+    fi
+    echo '{"ok":true}'
+}
+
+cmd_cursor_login() { # handle cols rows [dir]
+    local handle=$1 cols=$2 rows=$3 dir=${4:-.cursor}
+    valid_name "$handle"; valid_cursor_dir "$dir"
+    [[ "$cols" =~ ^[0-9]{2,3}$ ]] && [[ "$rows" =~ ^[0-9]{1,3}$ ]] || fail "invalid terminal size"
+    command -v agent >/dev/null 2>&1 || fail "Cursor CLI is not installed on this server"
+    ensure_person "$handle"; ensure_cursor_dir "$handle" "$dir"
+    trap - EXIT
+    exec 3>&-
+    cursor_as "$handle" "$dir" script -qfec "stty cols $cols rows $rows 2>/dev/null; exec agent login" /dev/null
 }
 
 cmd_site_shell() { # key php — the Terminal's Develop mode: a shell on the project's own site, as its user
@@ -1217,6 +1356,10 @@ case "$cmd" in
     claude-logout)    [ $# -eq 1 ] || [ $# -eq 2 ] || fail "usage: claude-logout <handle> [dir]"; cmd_claude_logout "$1" "${2:-.claude}" ;;
     claude-forget)    [ $# -eq 2 ] || fail "usage: claude-forget <handle> <dir>"; cmd_claude_forget "$1" "$2" ;;
     claude-login)     [ $# -eq 3 ] || [ $# -eq 4 ] || fail "usage: claude-login <handle> <cols> <rows> [dir]"; cmd_claude_login "$1" "$2" "$3" "${4:-.claude}" ;;
+    cursor-status)    [ $# -eq 1 ] || [ $# -eq 2 ] || fail "usage: cursor-status <handle> [dir]"; cmd_cursor_status "$1" "${2:-.cursor}" ;;
+    cursor-logout)    [ $# -eq 1 ] || [ $# -eq 2 ] || fail "usage: cursor-logout <handle> [dir]"; cmd_cursor_logout "$1" "${2:-.cursor}" ;;
+    cursor-forget)    [ $# -eq 2 ] || fail "usage: cursor-forget <handle> <dir>"; cmd_cursor_forget "$1" "$2" ;;
+    cursor-login)     [ $# -eq 3 ] || [ $# -eq 4 ] || fail "usage: cursor-login <handle> <cols> <rows> [dir]"; cmd_cursor_login "$1" "$2" "$3" "${4:-.cursor}" ;;
     site-shell)       [ $# -eq 2 ] || fail "usage: site-shell <key> <php>"; cmd_site_shell "$1" "$2" ;;
     git-cli)          [ $# -eq 1 ] || fail "usage: git-cli <provider>"; cmd_git_cli "$1" ;;
     update-check)     cmd_update_check ;;

@@ -8,6 +8,7 @@ import './echo';
 import './ssh';
 import './search-picker';
 import './claude-login';
+import './cursor-login';
 import './system-watch';
 import './workspace-shell';
 import './chat-composer';

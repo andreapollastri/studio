@@ -3,8 +3,10 @@
 namespace App\Livewire\Settings;
 
 use App\Claude\ClaudeLogin;
+use App\Cursor\CursorLogin;
 use App\Enums\ClaudeAuthMode;
 use App\Models\ClaudeAccount;
+use App\Models\CursorAccount;
 use App\Models\ProjectGroup;
 use App\Models\ProjectPreference;
 use App\Ssh\Gateway;
@@ -24,13 +26,16 @@ use Livewire\Component;
  * encrypted, and subscriptions, each a sign-in to Claude Code in a folder of
  * its own in the person's home on the server, through Anthropic's own flow
  * (ClaudeLogin): Studio never holds them. One is the default; a group of
- * projects or a single project may use another (Projects).
+ * projects or a single project may use another (Projects). Cursor
+ * subscriptions sit beside them: each is the person's own `agent login` in a
+ * folder of their home (CursorLogin). Studio never holds that login either,
+ * and a Cursor API key is not one of these accounts.
  */
 #[Layout('layouts::app')]
 #[Title('Accounts')]
 class Connections extends Component
 {
-    /** claude, git or ssh */
+    /** claude, cursor, git or ssh */
     #[Url]
     public string $tab = 'claude';
 
@@ -41,6 +46,14 @@ class Connections extends Component
 
     /** An Anthropic API key, the only Claude credential Studio keeps. */
     public string $new_token = '';
+
+    /** Name of a Cursor subscription being added. */
+    public string $new_cursor_name = '';
+
+    /** uuid of the Cursor subscription being renamed */
+    public ?string $editing_cursor = null;
+
+    public string $edit_cursor_name = '';
 
     /** uuid of the Claude account being edited */
     public ?string $editing = null;
@@ -215,6 +228,128 @@ class Connections extends Component
         Flux::toast(text: __(':account removed.', ['account' => $account->name]));
     }
 
+    /**
+     * A one-time ticket for the person's own `agent login` in their home on
+     * the server, in the folder of one of their Cursor subscriptions.
+     *
+     * @return array{ticket: string, url: string}|null
+     */
+    public function cursorLoginTicket(?string $uuid = null): ?array
+    {
+        $account = $this->cursorAccount($uuid);
+
+        if (! CursorLogin::onServer()) {
+            Flux::toast(variant: 'warning', text: __('In development Cursor uses the sign-in of this computer: run agent login in your terminal, then Check.'));
+
+            return null;
+        }
+
+        if (! auth()->user()->ensureHandle()) {
+            Flux::toast(variant: 'danger', text: __('No free name could be found for your home on the server: ask an administrator.'));
+
+            return null;
+        }
+
+        return ['ticket' => Gateway::issueCursorLogin($account), 'url' => Gateway::url()];
+    }
+
+    /** Ask the Cursor CLI whether a subscription is signed in, and keep the answer. */
+    public function refreshCursor(CursorLogin $login, ?string $uuid = null, bool $quiet = false): void
+    {
+        $account = $this->cursorAccount($uuid);
+        $status = $login->refresh($account);
+
+        if ($quiet) {
+            return;
+        }
+
+        match (true) {
+            $status['error'] !== null => Flux::toast(variant: 'danger', text: $status['error']),
+            $status['logged_in'] && filled($status['email']) => Flux::toast(variant: 'success', text: __(':account is signed in as :email.', ['account' => $account->name, 'email' => $status['email']])),
+            $status['logged_in'] => Flux::toast(variant: 'success', text: __(':account is signed in with your Cursor subscription.', ['account' => $account->name])),
+            default => Flux::toast(variant: 'warning', text: __('Not signed in to Cursor yet.')),
+        };
+    }
+
+    /** Check every Cursor subscription on page load, without a word. */
+    public function refreshCursorSubscriptions(CursorLogin $login): void
+    {
+        auth()->user()->cursorAccounts()->get()
+            ->each(fn (CursorAccount $account) => $login->refresh($account));
+    }
+
+    public function logoutCursor(CursorLogin $login, string $uuid): void
+    {
+        $account = $this->cursorAccount($uuid);
+        $login->logout($account);
+
+        Flux::toast(text: __('Signed out of :account.', ['account' => $account->name]));
+    }
+
+    /** Add a Cursor subscription and hand its uuid back so the page opens the sign-in. */
+    public function addCursor(): ?string
+    {
+        $user = auth()->user();
+
+        $this->validate([
+            'new_cursor_name' => ['required', 'string', 'max:80', Rule::unique('cursor_accounts', 'name')->where('user_id', $user->id)],
+        ]);
+
+        $account = $user->cursorAccounts()->create([
+            'name' => trim($this->new_cursor_name),
+            'dir' => CursorAccount::freeDir($user),
+        ]);
+
+        $this->reset('new_cursor_name');
+
+        return $account->uuid;
+    }
+
+    public function editCursor(string $uuid): void
+    {
+        $account = $this->cursorAccount($uuid);
+
+        $this->editing_cursor = $account->uuid;
+        $this->edit_cursor_name = $account->name;
+        $this->resetValidation();
+    }
+
+    public function saveCursor(): void
+    {
+        $account = $this->cursorAccount($this->editing_cursor);
+
+        $this->validate([
+            'edit_cursor_name' => ['required', 'string', 'max:80', Rule::unique('cursor_accounts', 'name')->where('user_id', $account->user_id)->ignore($account->id)],
+        ]);
+
+        $account->name = trim($this->edit_cursor_name);
+        $account->save();
+        $this->cancelCursor();
+
+        Flux::toast(variant: 'success', text: __('Saved.'));
+    }
+
+    public function cancelCursor(): void
+    {
+        $this->reset('editing_cursor', 'edit_cursor_name');
+        $this->resetValidation();
+    }
+
+    /** Remove a Cursor subscription: signed out, and its folder goes (the first one stays, signed out). */
+    public function removeCursor(CursorLogin $login, string $uuid): void
+    {
+        $account = $this->cursorAccount($uuid);
+        $login->forget($account);
+        $account->delete();
+
+        Flux::toast(text: __(':account removed.', ['account' => $account->name]));
+    }
+
+    private function cursorAccount(?string $uuid): CursorAccount
+    {
+        return auth()->user()->cursorAccounts()->where('uuid', (string) $uuid)->firstOrFail();
+    }
+
     private function account(?string $uuid): ClaudeAccount
     {
         return auth()->user()->claudeAccounts()->where('uuid', (string) $uuid)->firstOrFail();
@@ -261,12 +396,13 @@ class Connections extends Component
     public function render(): View
     {
         $user = auth()->user();
-        $this->tab = in_array($this->tab, ['claude', 'git', 'ssh'], true) ? $this->tab : 'claude';
+        $this->tab = in_array($this->tab, ['claude', 'cursor', 'git', 'ssh'], true) ? $this->tab : 'claude';
 
         return view('livewire.settings.connections', [
             'user' => $user,
             'claudeAccounts' => $user->claudeAccounts()->orderBy('id')->get(),
             'claudeUsage' => $this->usage('claude_account_id'),
+            'cursorAccounts' => $user->cursorAccounts()->orderBy('id')->get(),
         ]);
     }
 }

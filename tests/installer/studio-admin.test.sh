@@ -30,7 +30,7 @@ extract() {
         on { print; if (match($0, /<<.?[A-Z]+/)) { doc = substr($0, RSTART + 2, RLENGTH - 2); gsub(/[^A-Z]/, "", doc) } else if ($0 == "}") exit }
     ' "$ADMIN"
 }
-for fn in valid_host site_hosts valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir ensure_claude_policy field has_field git_identity cmd_git_cli set_env unset_env write_workspace_env workspace_agent_env; do
+for fn in valid_host site_hosts valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir valid_cursor_dir cursor_dir_layout cursor_dir_remove ensure_cursor_dir cursor_read_status ensure_claude_policy field has_field git_identity cmd_git_cli set_env unset_env write_workspace_env workspace_agent_env; do
     def=$(extract "$fn"); [ -n "$def" ] || fail "no function $fn in studio-admin"
     eval "$def"
 done
@@ -108,21 +108,58 @@ out=$( ( HOMES="$T/people"; sudo() { shift 2; "$@"; }; fail() { admin_fail "$@";
 case "$out" in *'"ok":false'*) ;; *) fail "ensure_claude_dir took ../etc: $out" ;; esac
 ok "ensure_claude_dir lays the directory out in a clean shell as the person"
 
+# ---------------------------------------------------------------- the Cursor directories
+
+for d in .cursor .cursor-work .cursor-a1 ".cursor-$(printf 'a%.0s' $(seq 40))"; do
+    ( fail() { admin_fail "$@"; }; valid_cursor_dir "$d" ) >/dev/null || fail "valid_cursor_dir refused $d"
+done
+for d in .cursor- .cursor-Work cursor ../.cursor .cursor/x .cursorx .cursor-a.b ".cursor-$(printf 'a%.0s' $(seq 41))" ""; do
+    if ( fail() { admin_fail "$@"; }; valid_cursor_dir "$d" ) >/dev/null 2>&1; then fail "valid_cursor_dir accepted '$d'"; fi
+done
+ok "a Cursor directory is .cursor or .cursor- and lowercase letters and digits"
+
+H3="$T/people/ws-ada"
+out=$( ( HOMES="$T/people"; sudo() { shift 2; "$@"; }; fail() { admin_fail "$@"; }; ensure_cursor_dir ada .cursor-work ) 2>&1 )
+[ -z "$out" ] || fail "ensure_cursor_dir said: $out"
+[ -d "$H3/.cursor-work" ] && [ ! -L "$H3/.cursor-work" ] || fail "ensure_cursor_dir did not make .cursor-work"
+ln -s /tmp "$H3/.cursor-link"
+out=$( ( HOMES="$T/people"; sudo() { shift 2; "$@"; }; fail() { admin_fail "$@"; }; ensure_cursor_dir ada .cursor-link ) 2>&1 )
+[ -d "$H3/.cursor-link" ] && [ ! -L "$H3/.cursor-link" ] || fail "ensure_cursor_dir followed a link"
+ok "ensure_cursor_dir makes a real directory, never a link"
+
+status_of() { cursor_read_status "$1" "$2"; }
+got=$(status_of '{"authenticated":true,"email":"maria@cursor.test","accessToken":"secret"}' 0)
+printf '%s' "$got" | jq -e '.logged_in == true and .email == "maria@cursor.test" and (has("accessToken") | not) and (has("authenticated") | not)' >/dev/null || fail "status kept a token: $got"
+got=$(status_of '{"loggedIn":false,"email":"maria@cursor.test"}' 0)
+printf '%s' "$got" | jq -e '.logged_in == false and .email == null' >/dev/null || fail "a false flag is signed out: $got"
+got=$(status_of '{"user":{"email":"ada@cursor.test"}}' 0)
+printf '%s' "$got" | jq -e '.logged_in == true and .email == "ada@cursor.test"' >/dev/null || fail "exit 0 with no flag is signed in: $got"
+got=$(status_of '{"status":"not_authenticated"}' 0)
+printf '%s' "$got" | jq -e '.logged_in == false' >/dev/null || fail "not_authenticated is signed out: $got"
+got=$(status_of '{"authenticated":true}' 1)
+printf '%s' "$got" | jq -e '.logged_in == true and .email == null' >/dev/null || fail "a true flag wins over the exit code: $got"
+got=$(status_of 'not json' 1)
+printf '%s' "$got" | jq -e '.logged_in == false and .email == null' >/dev/null || fail "a failed status with no JSON is signed out: $got"
+ok "agent status answers only signed-in and an e-mail, never the CLI's own object"
+
 # ---------------------------------------------------------------- the policy
 
 CLAUDE_POLICY="$T/etc/claude-code/managed-settings.json"
 ensure_claude_policy
 jq -e '.permissions.deny | index("Read(/home/*/.claude-*/**)") != null' "$CLAUDE_POLICY" >/dev/null || fail "a new policy denies the other subscriptions"
 jq -e '.permissions.deny | index("Read(/home/*/.claude/**)") != null' "$CLAUDE_POLICY" >/dev/null || fail "a new policy denies .claude"
+jq -e '.permissions.deny | index("Read(/home/*/.cursor/**)") != null' "$CLAUDE_POLICY" >/dev/null || fail "a new policy denies .cursor"
+jq -e '.permissions.deny | index("Read(/home/*/.cursor-*/**)") != null' "$CLAUDE_POLICY" >/dev/null || fail "a new policy denies the other Cursor subscriptions"
 cat > "$CLAUDE_POLICY" <<'JSON'
 {"forceLoginMethod":"claudeai","permissions":{"deny":["Read(/etc/studio/**)","Read(/home/*/.claude/**)"],"disableBypassPermissionsMode":"disable"}}
 JSON
 ensure_claude_policy; ensure_claude_policy
 [ "$(jq '[.permissions.deny[] | select(. == "Read(/home/*/.claude-*/**)")] | length' "$CLAUDE_POLICY")" = 1 ] || fail "the rule is added to an older policy, once"
-[ "$(jq '.permissions.deny | length' "$CLAUDE_POLICY")" = 3 ] || fail "the other rules stay"
+[ "$(jq '[.permissions.deny[] | select(. == "Read(/home/*/.cursor/**)")] | length' "$CLAUDE_POLICY")" = 1 ] || fail "the Cursor rule is added once"
+[ "$(jq '.permissions.deny | length' "$CLAUDE_POLICY")" = 5 ] || fail "the other rules stay"
 jq -e 'has("forceLoginMethod") | not' "$CLAUDE_POLICY" >/dev/null || fail "forceLoginMethod is still taken out"
 [ ! -e "$CLAUDE_POLICY.new" ] || fail "a temporary file is left behind"
-ok "the policy denies reading every Claude directory, an older one patched once"
+ok "the policy denies reading every Claude and Cursor directory, an older one patched once"
 
 # ---------------------------------------------------------------- git identity
 
@@ -159,7 +196,7 @@ out=$( ( STUDIO_DIR="$T/release"; fail() { admin_fail "$@"; }; cmd_git_cli azure
 case "$out" in *'"ok":false'*'azure'*) ;; *) fail "a failed install is an error: $out" ;; esac
 ok "git-cli installs the forge's CLI through the release's ensure_git_cli and answers {\"ok\":true}"
 
-grep -qE '^    git-cli\)' "$ADMIN" && grep -qE '^    claude-forget\)' "$ADMIN" || fail "git-cli and claude-forget are dispatched"
+grep -qE '^    git-cli\)' "$ADMIN" && grep -qE '^    claude-forget\)' "$ADMIN" && grep -qE '^    cursor-login\)' "$ADMIN" || fail "git-cli, claude-forget and cursor-login are dispatched"
 ok "the new commands are dispatched"
 
 # ---------------------------------------------------------------- the workspace's environment

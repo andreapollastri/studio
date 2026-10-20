@@ -5,6 +5,7 @@ namespace App\Ssh;
 use App\Enums\UserRole;
 use App\Livewire\Studio\Files;
 use App\Models\ClaudeAccount;
+use App\Models\CursorAccount;
 use App\Models\Project;
 use App\Models\SshConnection;
 use App\Models\User;
@@ -57,6 +58,19 @@ final class Gateway
     {
         $ticket = Str::random(48);
         Cache::put(self::key($ticket), ['kind' => 'claude-login', 'user_id' => $account->user_id, 'account_id' => $account->id], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
+
+        return $ticket;
+    }
+
+    /**
+     * A ticket for the person's own `agent login`, in their home on this
+     * server, in the folder of one of their Cursor subscriptions: the gateway
+     * runs the official CLI on a terminal and relays it.
+     */
+    public static function issueCursorLogin(CursorAccount $account): string
+    {
+        $ticket = Str::random(48);
+        Cache::put(self::key($ticket), ['kind' => 'cursor-login', 'user_id' => $account->user_id, 'account_id' => $account->id], now()->addSeconds(config('studio.ssh.ticket_ttl', 60)));
 
         return $ticket;
     }
@@ -121,6 +135,17 @@ final class Gateway
             Log::info('Claude sign-in started', ['user' => $user->email, 'account' => $account->name]);
 
             return ['kind' => 'claude-login', 'user_id' => $user->id, 'handle' => $user->handle, 'dir' => $account->dir ?? ClaudeAccount::DEFAULT_DIR];
+        }
+
+        if (($issued['kind'] ?? null) === 'cursor-login') {
+            $cursor = $user?->cursorAccounts()->whereKey($issued['account_id'] ?? 0)->first();
+
+            if ($user === null || $cursor === null || ! $user->canChat() || ! filled($user->handle) || config('studio.driver') !== 'native') {
+                return null;
+            }
+            Log::info('Cursor sign-in started', ['user' => $user->email, 'account' => $cursor->name]);
+
+            return ['kind' => 'cursor-login', 'user_id' => $user->id, 'handle' => $user->handle, 'dir' => $cursor->dir];
         }
 
         if (($issued['kind'] ?? null) === 'site-shell') {
