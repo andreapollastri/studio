@@ -53,6 +53,28 @@ FAKE_PHP_VERSIONS=8.3,8.4 load_requirements "$T/rel"
 [ "$STUDIO_PHP" = 8.4 ] || fail "a PHP that is not installed falls back to the newest one that is, got $STUDIO_PHP"
 ok "a PHP the server does not have falls back to the newest it has"
 
+# The official installer trusts HOME of the shell that runs it. A prefix on curl alone
+# would install into this process's home and never link agent.
+mkdir -p "$T/path" "$T/bin"
+cat > "$T/path/curl" <<'EOF'
+#!/bin/sh
+printf 'installer\n'
+EOF
+cat > "$T/path/bash" <<'EOF'
+#!/bin/sh
+cat >/dev/null
+mkdir -p "$HOME/.local/bin"
+printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/agent"
+chmod +x "$HOME/.local/bin/agent"
+printf '%s\n' "$HOME" > "$HOME/seen-home"
+EOF
+chmod +x "$T/path/curl" "$T/path/bash"
+STUDIO_APT_LOG="$T/apt.log" CURSOR_CLI_HOME="$T/cli" CURSOR_CLI_BIN="$T/bin/agent" PATH="$T/path:$PATH" ensure_cursor_cli
+[ "$(cat "$T/cli/seen-home")" = "$T/cli" ] || fail "the installer ran with HOME=$(cat "$T/cli/seen-home" 2>/dev/null || echo missing), not the shared directory"
+[ -x "$T/cli/.local/bin/agent" ] || fail "agent was not installed in the shared directory"
+[ -L "$T/bin/agent" ] && [ "$(readlink "$T/bin/agent")" = "$T/cli/.local/bin/agent" ] || fail "agent was not linked onto the PATH"
+ok "the Cursor CLI installs into the shared directory and is linked onto the PATH"
+
 printf 'caddy 2.10.0\nlinux-image-6.8.0-85 6.8.0-85.85\nphp8.4-fpm 8.4.12-1\nredis-server 7.0.15\n' > "$T/before"
 printf 'caddy 2.10.2\nlinux-image-6.8.0-90 6.8.0-90.90\nphp8.4-fpm 8.4.13-1\nredis-server 7.0.15\n' > "$T/after"
 changes=$(changed_versions "$T/before" "$T/after")

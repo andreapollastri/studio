@@ -226,17 +226,22 @@ ensure_claude_code() { # the newest Claude Code; workspaces have DISABLE_AUTOUPD
 # ensure_cursor_cli — Cursor's official installer, which puts `agent` in $HOME/.local/bin.
 # Installed under /usr/local/lib so every person's sign-in can run it (the helper's PATH),
 # not under root's home, which they cannot read. The newest build, the way Claude Code is.
+# CURSOR_CLI_HOME and CURSOR_CLI_BIN are the shared directory and the PATH symlink; tests
+# point them at a temporary directory.
 ensure_cursor_cli() {
-    local home=/usr/local/lib/cursor-agent
-    mkdir -p "$home"
-    chmod 755 /usr/local/lib "$home"
-    if ! HOME="$home" curl -fsSL https://cursor.com/install | bash >>"$STUDIO_APT_LOG" 2>&1; then
+    local home=${CURSOR_CLI_HOME:-/usr/local/lib/cursor-agent} link=${CURSOR_CLI_BIN:-/usr/local/bin/agent}
+    mkdir -p "$home" "$(dirname "$link")"
+    chmod 755 "$(dirname "$home")" "$home"
+    # HOME has to be the shell that runs the installer. A prefix on curl alone leaves
+    # bash as root, and the script writes ~/.local under /root: workspace users cannot
+    # read it, and `command -v agent` never sees it.
+    if ! curl -fsSL https://cursor.com/install | HOME="$home" bash >>"$STUDIO_APT_LOG" 2>&1; then
         sys_warn "Cursor CLI could not be installed; signing in to a Cursor subscription waits until it is"
         return 0
     fi
     chmod -R a+rX "$home"
     if [ -x "$home/.local/bin/agent" ]; then
-        ln -sfn "$home/.local/bin/agent" /usr/local/bin/agent
+        ln -sfn "$home/.local/bin/agent" "$link"
     else
         sys_warn "Cursor CLI installed but agent is not at $home/.local/bin/agent"
     fi

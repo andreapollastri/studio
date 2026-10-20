@@ -4,6 +4,10 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.1
+
+- **The Cursor CLI is installed where every account can run it.** 2.4.0's system step set `HOME` only on `curl`, so the official installer ran as root and wrote `agent` under `/root/.local`. Nothing linked it into `/usr/local/bin`, and *Check* failed with "Cursor CLI is not installed on this server". The installer now runs with the shared directory as its home (`/usr/local/lib/cursor-agent`) and links `agent` onto the PATH. The next update does this again.
+
 ## 2.4.0
 
 - **Sign in to Cursor with your own subscription.** *Settings → Accounts → Cursor* adds a subscription and runs Cursor’s official `agent login` in a terminal in your home on the server, in a folder of its own for each one (`~/.cursor`, `~/.cursor-<slug>`). You open the page Cursor prints and approve there; Studio shows the terminal and takes no part in the sign-in, and it never reads, copies or stores the login. Afterwards it only asks `agent status`. A subscription is yours alone: it is not shared, and Studio does not keep a Cursor API key (that is billed apart from the plan). Conversations still run on Claude Code.
