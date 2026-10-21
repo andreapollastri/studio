@@ -184,6 +184,17 @@ out=$(ensure_php_fixed 8.5 2>&1)
 [[ $out == *"Ubuntu's security fixes keep the version number"* && $out != *"does not serve"* ]] || fail "Ubuntu's PHP says: $out"
 ok "Ubuntu's PHP goes to its newest build, whose number stays"
 
+# the drop-in that lets Studio's pool run its root helper: written once, PHP-FPM restarted for it
+export SYSTEMD_UNITS=$T/systemd
+: > "$T/php/log"
+php_fpm_unconfined 8.5
+grep -qx 'ProtectSystem=false' "$T/systemd/php8.5-fpm.service.d/studio.conf" || fail "the drop-in: $(cat "$T/systemd/php8.5-fpm.service.d/studio.conf")"
+[ "$(cat "$T/php/log")" = "$(printf 'systemctl daemon-reload\nsystemctl is-active --quiet php8.5-fpm\nsystemctl restart php8.5-fpm')" ] || fail "drop-in written: $(cat "$T/php/log")"
+: > "$T/php/log"
+php_fpm_unconfined 8.5
+[ ! -s "$T/php/log" ] || fail "an unchanged drop-in restarted PHP-FPM: $(cat "$T/php/log")"
+ok "PHP-FPM's ProtectSystem goes for Studio's root helper, with one restart when the drop-in changes"
+
 fake_php 8.3 8.3.6 8.3.6-0ubuntu0.24.04.5
 php_from_ubuntu 8.3 || fail "8.3.6-0ubuntu0.24.04.5 is Ubuntu's"
 fake_php 8.4 8.4.26 8.4.26-1+ubuntu24.04.1+deb.sury.org+1

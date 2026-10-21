@@ -96,6 +96,24 @@ test('each subscription gets a folder of its own, signs out, and is removed with
         ->and(CursorAccount::query()->whereKey($personal->id)->exists())->toBeTrue();
 });
 
+test('a Cursor subscription the server cannot sign out stays, with the reason instead of an error page', function () {
+    $user = User::factory()->create(['handle' => 'maria']);
+    $work = CursorAccount::factory()->for($user)->create(['name' => 'Work', 'dir' => '.cursor-work']);
+    $_ENV['FAKE_SIGN_OUT_FAIL'] = $_SERVER['FAKE_SIGN_OUT_FAIL'] = '1';
+
+    try {
+        Livewire::actingAs($user)->test(Connections::class)
+            ->call('removeCursor', $work->uuid)
+            ->assertOk()
+            ->assertDispatched('toast-show', fn (string $name, array $params) => ($params['dataset']['variant'] ?? null) === 'danger'
+                && str_contains($params['slots']['text'], 'Work could not be signed out on the server, so it stays'));
+    } finally {
+        unset($_ENV['FAKE_SIGN_OUT_FAIL'], $_SERVER['FAKE_SIGN_OUT_FAIL']);
+    }
+
+    expect(CursorAccount::query()->whereKey($work->id)->exists())->toBeTrue();
+});
+
 test('what agent status says is signed in, and an address, and nothing else', function () {
     expect(CursorLogin::interpret('{"authenticated":true,"email":"ada@cursor.test","accessToken":"secret"}', true))
         ->toBe(['logged_in' => true, 'email' => 'ada@cursor.test'])

@@ -254,7 +254,28 @@ opcache.validate_timestamps=1
 opcache.revalidate_freq=2
 realpath_cache_size=4096K
 INI
+    php_fpm_unconfined "$v"
     systemctl enable --now "php${v}-fpm" >/dev/null 2>&1
+}
+
+SYSTEMD_UNITS=${SYSTEMD_UNITS:-/etc/systemd/system}
+
+# php_fpm_unconfined V — PHP-FPM's own unit (sury.org's, Debian's) has ProtectSystem=full: /etc
+# and /usr read-only for the master and for everything a pool starts. Studio's pool runs its
+# root helper from web requests (sudo studio-admin: a person's Linux user, Claude Code's policy
+# in /etc/claude-code), which inherits that view and stops at "Read-only file system". Every
+# pool runs as its own user, which the file permissions keep out of /etc anyway. A change of
+# the drop-in restarts PHP-FPM: only a new master gets the new view.
+php_fpm_unconfined() {
+    local v=$1 dir="$SYSTEMD_UNITS/php$1-fpm.service.d" want
+    want=$'[Service]\n# Studio: its pool runs the root helper (sudo studio-admin), which writes in /etc\nProtectSystem=false'
+    [ "$(cat "$dir/studio.conf" 2>/dev/null)" = "$want" ] && return 0
+    mkdir -p "$dir"
+    printf '%s\n' "$want" > "$dir/studio.conf"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    if systemctl is-active --quiet "php${v}-fpm"; then
+        systemctl restart "php${v}-fpm" >/dev/null 2>&1 || sys_warn "php${v}-fpm did not restart"
+    fi
 }
 
 # add_php V — one more PHP among those the release offers (PHP_VERSIONS, PHP_OPTIONAL), from

@@ -786,7 +786,9 @@ cursor_dir_remove() {
 ensure_claude_policy() {
     local f=${CLAUDE_POLICY:?} rule
     local -a rules=('Read(/home/*/.claude-*/**)' 'Read(/home/*/.cursor/**)' 'Read(/home/*/.cursor-*/**)')
-    mkdir -p "$(dirname "$f")"; chmod 755 "$(dirname "$f")"
+    # nothing written when the policy is already in shape: claude-status runs it on every check
+    mkdir -p "$(dirname "$f")"
+    [ -n "$(find "$(dirname "$f")" -maxdepth 0 -perm 755)" ] || chmod 755 "$(dirname "$f")"
     [ -f "$f" ] || cat > "$f" <<'JSON'
 {
   "permissions": {
@@ -804,7 +806,7 @@ JSON
             jq --arg r "$rule" '.permissions.deny = ((.permissions.deny // []) + [$r])' "$f" > "$f.new" && mv -f "$f.new" "$f"
         fi
     done
-    chmod 644 "$f"
+    [ -n "$(find "$f" -maxdepth 0 -perm 644)" ] || chmod 644 "$f"
 }
 
 # claude_as HANDLE DIR ARGS… — the person's own Claude Code in their home, with nothing of

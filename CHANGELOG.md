@@ -4,6 +4,12 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.13
+
+- **Claude and Cursor subscriptions work again on 2.4.11's PHP.** sury.org's PHP-FPM unit runs with `ProtectSystem=full`: `/etc` and `/usr` are read-only for PHP-FPM and for everything a pool starts. Studio's pool calls its root helper from the page (`sudo studio-admin`), and the helper inherited that view: adding a subscription on *Settings → Accounts* answered `chmod: changing permissions of '/etc/claude-code': Read-only file system`, and removing the first one ended on an error page. Every `phpX.Y-fpm` now gets a drop-in (`/etc/systemd/system/phpX.Y-fpm.service.d/studio.conf`, `ProtectSystem=false`) and restarts once with it; each pool still runs as its own user, which the file permissions keep out of `/etc`. The update puts it in place on every PHP of the server.
+- **The Claude Code policy is written only when it changes.** Every check of a subscription rewrote the modes of `/etc/claude-code`; it now leaves a policy already in shape alone.
+- **Removing a subscription the server cannot sign out says why.** It was an error page (500) with the account still there; now the account stays, with the reason, to remove again once the server answers. Claude and Cursor alike.
+
 ## 2.4.12
 
 - **Vite+ 1.3.0, with Vitest 5.0.5.** The asset build moves from Vite+ 0.3.3 to 1.3.0, and the `vite` alias and its override with it to `@voidzero-dev/vite-plus-core@1.3.0`: `vp build` refuses a core that is not its own version. Vite+ 1.x brings Vitest 5, whose dev servers before 5.0.5 served files that `server.fs.deny` should refuse (`.env`, keys and certificates, `.npmrc`, `.git`, Vitest's own API token) from the UI and Browser Mode. 1.3.0 has the fix. Studio's servers were never exposed: 2.4.11 and earlier build with Vitest 4, and Studio runs no Vitest server. Vite+ 1.x wants Node 22.18 or newer on Node 22, as 0.3 did.

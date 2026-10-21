@@ -20,7 +20,14 @@ case "$cmd" in
     printf '{"ok":true,"app_url":"https://%s","path":"/srv/studio/workspaces/%s/.sandboxes/%s/c%s"}\n' "$host" "$1" "$2" "$3" ;;
   sandbox-delete)
     printf '{"ok":true}\n' ;;
-  person-ensure|claude-logout|claude-forget|cursor-logout|cursor-forget|git-cli)
+  claude-logout|claude-forget|cursor-logout|cursor-forget)
+    # what the helper said under PHP-FPM's ProtectSystem=full, before Studio's drop-in
+    if [ "${FAKE_SIGN_OUT_FAIL:-}" = 1 ]; then
+      printf '{"ok":false,"unexpected":true,"error":"studio-admin stopped (exit 1) at: chmod 755 \\"$(dirname \\"$f\\")\\""}\n'
+      printf "chmod: changing permissions of '/etc/claude-code': Read-only file system\n" >&2; exit 1
+    fi
+    printf '{"ok":true}\n' ;;
+  person-ensure|git-cli)
     printf '{"ok":true}\n' ;;
   cursor-status)
     if [ "${FAKE_CURSOR_LOGGED_IN:-0}" = 1 ]; then

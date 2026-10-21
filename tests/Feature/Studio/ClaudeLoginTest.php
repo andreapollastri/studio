@@ -113,6 +113,26 @@ test('subscriptions and API keys live side by side: each one signs out, is remov
         ->and($user->fresh()->defaultClaudeAccount->name)->toBe('Client key');
 });
 
+test('a subscription the server cannot sign out stays, with the reason instead of an error page', function () {
+    $user = User::factory()->withClaude('subscription')->create(['handle' => 'maria']);
+    $personal = $user->claudeAccounts()->first();
+    $_ENV['FAKE_SIGN_OUT_FAIL'] = $_SERVER['FAKE_SIGN_OUT_FAIL'] = '1';
+
+    try {
+        Livewire::actingAs($user)->test(Connections::class)
+            ->call('removeClaude', $personal->uuid)
+            ->assertOk()
+            ->assertDispatched('toast-show', fn (string $name, array $params) => ($params['dataset']['variant'] ?? null) === 'danger'
+                && str_contains($params['slots']['text'], 'could not be signed out on the server, so it stays')
+                && str_contains($params['slots']['text'], 'Read-only file system'));
+    } finally {
+        unset($_ENV['FAKE_SIGN_OUT_FAIL'], $_SERVER['FAKE_SIGN_OUT_FAIL']);
+    }
+
+    expect(ClaudeAccount::query()->whereKey($personal->id)->exists())->toBeTrue()
+        ->and($user->fresh()->claude_account_id)->toBe($personal->id);
+});
+
 test('a setup-token pasted as an API key is refused: subscriptions sign in', function () {
     $user = User::factory()->create(['handle' => 'maria']);
 

@@ -9,6 +9,7 @@ use App\Models\ClaudeAccount;
 use App\Models\CursorAccount;
 use App\Models\ProjectGroup;
 use App\Models\ProjectPreference;
+use App\Server\ServerException;
 use App\Ssh\Gateway;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
@@ -217,8 +218,15 @@ class Connections extends Component
         $user = auth()->user();
         $account = $this->account($uuid);
 
+        // signed out on the server first: an account it could not sign out stays, to try again
         if ($account->isSubscription()) {
-            $login->forget($account);
+            try {
+                $login->forget($account);
+            } catch (ServerException $e) {
+                Flux::toast(variant: 'danger', text: __(':account could not be signed out on the server, so it stays: :error', ['account' => $account->name, 'error' => $e->getMessage()]));
+
+                return;
+            }
         }
 
         $account->delete();
@@ -340,7 +348,15 @@ class Connections extends Component
     public function removeCursor(CursorLogin $login, string $uuid): void
     {
         $account = $this->cursorAccount($uuid);
-        $login->forget($account);
+
+        try {
+            $login->forget($account);
+        } catch (ServerException $e) {
+            Flux::toast(variant: 'danger', text: __(':account could not be signed out on the server, so it stays: :error', ['account' => $account->name, 'error' => $e->getMessage()]));
+
+            return;
+        }
+
         $account->delete();
 
         Flux::toast(text: __(':account removed.', ['account' => $account->name]));

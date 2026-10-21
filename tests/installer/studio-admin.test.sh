@@ -167,6 +167,14 @@ jq -e 'has("forceLoginMethod") | not' "$CLAUDE_POLICY" >/dev/null || fail "force
 [ ! -e "$CLAUDE_POLICY.new" ] || fail "a temporary file is left behind"
 ok "the policy denies reading every Claude and Cursor directory, an older one patched once"
 
+# A policy in shape is left as it is: claude-status runs this on every check, and a helper on a
+# read-only /etc (PHP-FPM's ProtectSystem, before Studio's drop-in) stopped at its chmod.
+before=$(ls -li "$CLAUDE_POLICY")
+( chmod() { echo "chmod $*" >&2; return 1; }; mv() { echo "mv $*" >&2; return 1; }; ensure_claude_policy ) 2>"$T/policy-writes" \
+    || fail "a policy in shape was written again: $(cat "$T/policy-writes")"
+[ ! -s "$T/policy-writes" ] && [ "$(ls -li "$CLAUDE_POLICY")" = "$before" ] || fail "a policy in shape was touched: $(cat "$T/policy-writes")"
+ok "a policy already in shape is not written again"
+
 # ---------------------------------------------------------------- git identity
 
 identity() { # JSON -> "name|email" or the error
