@@ -4,6 +4,10 @@ namespace App\Livewire\Studio;
 
 use App\Bridge\BridgeClient;
 use App\Bridge\BridgeException;
+use App\Databases\PaneDatabaseException;
+use App\Databases\PaneDatabases;
+use App\Files\MarkdownPage;
+use App\Models\DatabaseConnection;
 use App\Models\SshConnection;
 use App\Models\Workspace;
 use App\Ssh\Gateway;
@@ -17,6 +21,10 @@ use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
+/**
+ * @property-read array{path: ?string, html: ?string, error: ?string} $doc
+ * @property-read Collection<int, DatabaseConnection> $remoteDatabases
+ */
 class SidePane extends Component
 {
     public Workspace $workspace;
@@ -106,6 +114,25 @@ class SidePane extends Component
 
     public bool $stashUntracked = true;
 
+    /**
+     * The Db tab opens the workspace's database (local), the project site's (develop: the
+     * deploy branch's, as the Develop shell), or one of the project's Databases connections (remote).
+     */
+    public string $dbMode = 'local';
+
+    /** The connection (uuid) the Db tab shows, once one could be opened. */
+    #[Locked]
+    public ?string $dbConnection = null;
+
+    /** Why the Db tab could not open its database. */
+    public ?string $dbError = null;
+
+    /** The database client mounts on first use and stays, hidden, so where it was survives tab switches. */
+    public bool $dbMounted = false;
+
+    /** The Markdown file of the repository the Doc tab shows; null: the README. */
+    public ?string $docPath = null;
+
     /** The Files tab mounts on first use and then stays alive, hidden, so open editors survive tab switches. */
     public bool $filesMounted = false;
 
@@ -146,8 +173,13 @@ class SidePane extends Component
 
     public function setTab(string $tab): void
     {
-        $tabs = ['preview', ...(auth()->user()->can('chat', $this->workspace->project) ? ['changes'] : []), ...($this->canUseTerminal() ? ['terminal', 'files'] : [])];
+        $tabs = ['preview', ...(auth()->user()->can('chat', $this->workspace->project) ? ['doc', 'changes'] : []), ...($this->canUseTerminal() ? ['terminal', 'files', 'db'] : [])];
         $this->tab = in_array($tab, $tabs, true) ? $tab : 'preview';
+
+        if ($this->tab === 'db' && ! $this->dbMounted) {
+            $this->dbMounted = true;
+            $this->setDbMode($this->dbMode);
+        }
 
         if ($this->tab === 'files') {
             $this->filesMounted = true;
@@ -913,6 +945,155 @@ class SidePane extends Component
         }
     }
 
+    // ---------------------------------------------------------------- db
+
+    /** Open the database of a mode; for remote, the project's connection $id (or the first). */
+    public function setDbMode(string $mode, ?string $id = null): void
+    {
+        abort_unless($this->canUseTerminal(), 403);
+
+        $this->dbMode = match (true) {
+            $mode === 'develop' && $this->canUseDevelop() => 'develop',
+            $mode === 'remote' && $this->canUseRemoteDb() => 'remote',
+            default => 'local',
+        };
+        $this->dbConnection = null;
+        $this->dbError = null;
+
+        // what changes there is live for others: the password first, as for the Develop shell
+        if ($this->dbMode !== 'local' && ! $this->remoteConfirmed()) {
+            return;
+        }
+
+        if ($this->dbMode === 'local' && ! $this->workspace->isRunning()) {
+            $this->dbError = __('The workspace\'s database opens when the workspace is running.');
+
+            return;
+        }
+
+        $user = auth()->user();
+        $databases = app(PaneDatabases::class);
+
+        try {
+            $connection = match ($this->dbMode) {
+                'develop' => $databases->site($this->workspace->project, $user),
+                'remote' => $this->remoteDatabases->firstWhere('uuid', $id) ?? $this->remoteDatabases->first(),
+                default => $databases->workspace($this->workspace, $user, $this->sandbox),
+            };
+        } catch (PaneDatabaseException $e) {
+            $this->dbError = $e->getMessage();
+
+            return;
+        }
+
+        $this->dbConnection = $connection?->uuid;
+    }
+
+    /** The project's connections of Tools → Databases, as their access allows: who has one has Remote. */
+    public function canUseRemoteDb(): bool
+    {
+        return $this->canUseTerminal() && $this->remoteDatabases->isNotEmpty();
+    }
+
+    /**
+     * @return Collection<int, DatabaseConnection>
+     */
+    #[Computed]
+    public function remoteDatabases(): Collection
+    {
+        return app(PaneDatabases::class)->remote($this->workspace->project, auth()->user());
+    }
+
+    /** The connection the Db tab shows, while this person may still use it. */
+    private function openDatabase(): ?DatabaseConnection
+    {
+        if ($this->dbConnection === null) {
+            return null;
+        }
+
+        $connection = DatabaseConnection::query()->where('uuid', $this->dbConnection)->first();
+
+        return $connection !== null && $connection->accessFor(auth()->user()) !== null ? $connection : null;
+    }
+
+    // ---------------------------------------------------------------- doc
+
+    /**
+     * The Markdown files at the top of the repository, the README first: what the Doc tab can show.
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function docs(): array
+    {
+        if (! $this->workspace->isRunning()) {
+            return [];
+        }
+
+        try {
+            $entries = $this->bridge()->listFiles('')['entries'];
+        } catch (BridgeException) {
+            return [];
+        }
+
+        $names = array_values(array_map(fn (array $entry): string => $entry['name'], array_filter($entries, fn (array $entry): bool => $entry['type'] === 'file' && (bool) preg_match('/\.(md|markdown)$/i', $entry['name']))));
+        usort($names, fn (string $a, string $b): int => [! preg_match('/^readme\./i', $a), strtolower($a)] <=> [! preg_match('/^readme\./i', $b), strtolower($b)]);
+
+        return $names;
+    }
+
+    public function setDoc(string $path): void
+    {
+        $this->docPath = in_array($path, $this->docs(), true) ? $path : null;
+        unset($this->doc);
+    }
+
+    /**
+     * The open Markdown file as HTML; its images and links into the repository come from the workspace.
+     *
+     * @return array{path: ?string, html: ?string, error: ?string}
+     */
+    #[Computed]
+    public function doc(): array
+    {
+        if (! $this->workspace->isRunning()) {
+            return ['path' => null, 'html' => null, 'error' => $this->docMessage('stopped')];
+        }
+
+        $path = $this->docPath ?? ($this->docs()[0] ?? null);
+
+        if ($path === null) {
+            return ['path' => null, 'html' => null, 'error' => $this->docMessage('none')];
+        }
+
+        try {
+            $file = $this->bridge()->readFile($path);
+        } catch (BridgeException $e) {
+            return ['path' => $path, 'html' => null, 'error' => $e->getMessage()];
+        }
+
+        if (! isset($file['content'])) {
+            return ['path' => $path, 'html' => null, 'error' => $this->docMessage('large')];
+        }
+
+        $html = MarkdownPage::render((string) $file['content'], $path, fn (string $target): string => route('studio.files.download', ['workspace' => $this->workspace->uuid, 'path' => $target, 'sandbox' => $this->sandbox]));
+
+        return ['path' => $path, 'html' => $html, 'error' => null];
+    }
+
+    private function docMessage(string $why): string
+    {
+        if ($why === 'stopped') {
+            return __('The README appears when the workspace is running.');
+        }
+
+        if ($why === 'none') {
+            return __('No README at the top of the repository.');
+        }
+
+        return __('This file is too large to show here: open it in Files.');
+    }
+
     public function canUseTerminal(): bool
     {
         $user = auth()->user();
@@ -926,6 +1107,8 @@ class SidePane extends Component
             'canUseTerminal' => $this->canUseTerminal(),
             'canUseRemote' => $this->canUseRemote(),
             'canUseDevelop' => $this->canUseDevelop(),
+            'canUseRemoteDb' => $this->dbMounted && $this->canUseRemoteDb(),
+            'dbOpen' => $this->dbMounted ? $this->openDatabase() : null,
             'hasWorkspace' => auth()->user()->can('chat', $this->workspace->project),
             'shortcuts' => (array) config('studio.terminal', []),
             // Without a running workspace the staging site is the next best thing to look at.

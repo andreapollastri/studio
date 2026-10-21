@@ -1,4 +1,4 @@
-{{-- One level of the workspace tree; folders include themselves recursively while expanded. --}}
+{{-- One level of the file tree; folders include themselves recursively while expanded. --}}
 @php
     $entries = $dirs[$dir] ?? [];
     $pad = 8 + $depth * 12;
@@ -76,7 +76,7 @@
                         <flux:menu.item icon="folder-arrow-down" x-on:click="pick(@js($path), true)">{{ __('Upload a folder here') }}</flux:menu.item>
                         <flux:menu.separator />
                     @elseif ($entry['type'] === 'file')
-                        <flux:menu.item icon="arrow-down-tray" :href="route('studio.files.download', ['workspace' => $workspace->uuid, 'path' => $path, 'sandbox' => $sandbox])">{{ __('Download') }}</flux:menu.item>
+                        <flux:menu.item icon="arrow-down-tray" :href="$this->downloadUrl($path)">{{ __('Download') }}</flux:menu.item>
                         @if (str_ends_with(strtolower($entry['name']), '.zip'))
                             <flux:menu.item icon="archive-box" wire:click="extract(@js($path))">{{ __('Extract here') }}</flux:menu.item>
                         @endif
@@ -90,7 +90,7 @@
             </flux:dropdown>
         </div>
         @if ($entry['type'] === 'dir' && in_array($path, $expanded, true))
-            @include('livewire.studio.partials.file-tree', ['dir' => $path, 'depth' => $depth + 1])
+            @include('livewire.files.tree', ['dir' => $path, 'depth' => $depth + 1])
         @endif
     @endif
 @endforeach

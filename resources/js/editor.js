@@ -42,11 +42,13 @@ function toBase64(text) {
 // A phone (the md breakpoint of resources/css/app.css): the tree lays over the editor.
 const isPhone = () => window.matchMedia('(width < 48rem)').matches;
 
-function studioEditor() {
+/** scope keeps the models of this editor apart from another's on the same page (the SSH page has one per host). */
+function studioEditor(scope = '') {
     // Monaco objects stay out of Alpine's reactive proxy: only tabs, active, saving and message are reactive.
     let monaco = null;
     let editor = null;
     const models = new Map();
+    const uriOf = (path) => monaco.Uri.file(scope ? `/${scope}/${path}` : `/${path}`);
 
     return {
         tabs: [],
@@ -91,7 +93,7 @@ function studioEditor() {
             await loadMonaco();
             let tab = this.tabs.find((candidate) => candidate.path === path);
             if (!tab) {
-                models.set(path, monaco.editor.createModel(content, languageFor(path), monaco.Uri.file('/' + path)));
+                models.set(path, monaco.editor.createModel(content, languageFor(path), uriOf(path)));
                 tab = { path, hash, dirty: false };
                 this.tabs.push(tab);
             } else if (!tab.dirty && tab.hash !== hash) {
@@ -164,7 +166,7 @@ function studioEditor() {
                 if (tab.path !== from && !tab.path.startsWith(from + '/')) continue;
                 const path = to + tab.path.slice(from.length);
                 const old = models.get(tab.path);
-                const fresh = monaco.editor.createModel(old.getValue(), languageFor(path), monaco.Uri.file('/' + path));
+                const fresh = monaco.editor.createModel(old.getValue(), languageFor(path), uriOf(path));
                 models.delete(tab.path);
                 models.set(path, fresh);
                 const wasActive = this.active === tab.path;
@@ -175,6 +177,23 @@ function studioEditor() {
                 }
                 old.dispose();
             }
+        },
+
+        /** Before the tree moves to another folder (the SSH page's path bar): the tabs close, unsaved ones after asking. */
+        async leaveFolder() {
+            const dirty = this.tabs.filter((tab) => tab.dirty);
+            if (dirty.length && !(await window.studioDialog.confirm({
+                title: dirty.length === 1 ? `Discard the changes to ${dirty[0].path.split('/').pop()}?` : `Discard the changes to ${dirty.length} files?`,
+                body: 'Going to another folder closes the open files; what is not saved is lost.',
+                confirm: 'Discard',
+                danger: true,
+            }))) return false;
+            this.reset();
+            return true;
+        },
+
+        reset() {
+            for (const tab of [...this.tabs]) this.drop(tab.path);
         },
 
         removed({ path }) {

@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new in 2.0">v2.0</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.6">v2.4.6</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1837,7 +1837,7 @@
       <a href="#work-skills">Skills &amp; Claude's questions</a>
       <a href="#work-panes">The right pane</a>
       <a href="#work-files">Files</a>
-      <a href="#work-history">Changes, history &amp; branches</a>
+      <a href="#work-history">Git: changes, history &amp; branches</a>
       <a href="#work-terminal">Terminal</a>
       <a href="#work-agent">Subagents, plan mode, skills</a>
       <a href="#work-browser">The agent's browser</a>
@@ -1893,6 +1893,15 @@
             works on a project with the role they have there; a project is a hub with its repository, its servers and its
             passwords next to the chat. The agent gets a browser and sandboxes, and Studio drives the clouds the servers run
             on. The full list is in <code>CHANGELOG.md</code>.</p>
+        </div>
+
+        <h3>New in 2.4.6</h3>
+        <div class="walkthrough-grid">
+          <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
+            manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
+          <dl><dt>Doc and Db in the right pane</dt><dd>The README as a page, and the database client on your workspace's
+            database, the project site's or the project's connections. The tabs read <em>Doc, Preview, Git, Terminal,
+            Files, Db</em>. See <a href="#work-panes">The right pane</a>.</dd></dl>
         </div>
 
         <h3>The team works in projects</h3>
@@ -2218,8 +2227,8 @@
         </figure>
 
         <figure class="shot">
-          <img src="img/chat-changes.png" alt="The Changes tab showing the branch, modified files and the diff" loading="lazy" width="2880" height="1920" />
-          <figcaption><strong>See the change.</strong> The <em>Changes</em> tab reads the working tree of the workspace: branch,
+          <img src="img/chat-changes.png" alt="The Git tab showing the branch, modified files and the diff" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>See the change.</strong> The <em>Git</em> tab reads the working tree of the workspace: branch,
             files, diff. Its <em>History</em> and <em>Branches</em> views show the commit graph; the <em>Files</em> tab opens the
             same files in an editor.</figcaption>
         </figure>
@@ -2790,7 +2799,7 @@
             from any other nobody gets in. Empty means from anywhere.</dd></dl>
           <dl><dt>Branch overrides</dt><dd>A list for <code>feature/secret</code> replaces the site's list while that is the
             deploy branch, and the previews' list for every workspace that is on that branch. Studio remembers each
-            workspace's branch from its Changes tab.</dd></dl>
+            workspace's branch from its Git tab.</dd></dl>
         </div>
         <p>How it works: the Caddyfile puts a <code>forward_auth</code> to Studio's <code>/api/site-auth</code> in front of
           every host that is not Studio's own, so no project host is ever served without it, whatever its own file says.
@@ -3533,27 +3542,44 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="section-header">
           <span class="section-label">Work</span>
           <h2>The right pane</h2>
-          <p>Where the conversation's effect shows up: <em>Preview</em>, <em>Changes</em>,
-            <em>Terminal</em> and <em>Files</em>. Clients see the Preview only. In a conversation that runs in a
-            <a href="#work-sandboxes">sandbox</a>, all four follow it: its preview, its changes, its files. The arrows after
+          <p>Where the conversation's effect shows up: <em>Doc</em>, <em>Preview</em>, <em>Git</em>,
+            <em>Terminal</em>, <em>Files</em> and <em>Db</em>. Clients see the Preview only. In a conversation that runs in a
+            <a href="#work-sandboxes">sandbox</a>, they all follow it: its README, its preview, its changes, its files, its database. The arrows after
             the tabs open the pane full screen, and bring the conversations and the chat back as they were. The preview shows apps that
             refuse to be framed (<code>X-Frame-Options: DENY</code>): on project and preview hosts Caddy lets Studio, and
             only Studio, frame them.</p>
         </div>
         <div class="walkthrough-grid">
+          <dl><dt>Doc</dt><dd>The README of the repository as a page (GitHub's Markdown: tables, code, task lists), with
+            its pictures from the workspace; the other Markdown files at the top (CHANGELOG, CLAUDE.md…) are a click away.
+            Raw HTML and <code>javascript:</code> links are left out, as in the chat.</dd></dl>
           <dl><dt>Preview</dt><dd>The Laravel app of your workspace on your branch, served by the server at
             <code>&lt;you&gt;-&lt;key&gt;.&lt;domain&gt;</code>. <em>Open</em> puts it in a tab, which always works; inside
             the pane the app must not forbid framing (<code>X-Frame-Options</code>). While the workspace is stopped, and for
             clients, the pane shows the project site.</dd></dl>
-          <dl><dt>Changes</dt><dd>A git client for the workspace: the working tree, the history, the branches, the stashes
-            and the tags, read and run through the bridge; see <a href="#work-history">Changes, history &amp; branches</a>.
+          <dl><dt>Git</dt><dd>A git client for the workspace: the working tree, the history, the branches, the stashes
+            and the tags, read and run through the bridge; see <a href="#work-history">Git: changes, history &amp; branches</a>.
             It refreshes after every stored chat event while the tab is open.</dd></dl>
           <dl><dt>Terminal</dt><dd>A shell in your workspace, as you, without the agent in between; see
             <a href="#work-terminal">Terminal</a>.</dd></dl>
           <dl><dt>Files</dt><dd>The workspace's files in the browser, with the editor of VS Code; see <a href="#work-files">Files</a>.</dd></dl>
+          <dl><dt>Db</dt><dd>The database client of <a href="#tools-databases">Databases</a>, inside the pane. <em>Local</em>
+            is your workspace's database (or the sandbox's), as its <code>.env</code> says; <em>Develop</em> is the database of
+            the project's own site, for who may open its shell; <em>Remote</em> lists the Databases connections tied to the
+            project that your role may use. Develop and Remote ask for your password first, as Databases does; what each
+            role may do (read or write, the production lock) is the same as there.</dd></dl>
           <dl><dt>Over SSH</dt><dd>The workspace is a directory on the server. A developer with SSH access can open it in
             an editor over SSH; the same Claude session resumes there with <code>claude --resume</code>.</dd></dl>
         </div>
+        <figure class="shot">
+          <img src="img/chat-doc.png" alt="The right pane on Doc: the project's README with its picture, a code block and a table" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Doc.</strong> The README of the repository, as GitHub would show it.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/chat-db.png" alt="The right pane on Db, Remote: a project's SQLite copy, read only, with its tables and the orders rows" loading="lazy" width="2880" height="1920" />
+          <figcaption><strong>Db.</strong> Local, Develop or Remote: here a copy of the shop's database the project shares
+            with its project managers, read only.</figcaption>
+        </figure>
       </section>
 
 <!-- Work: files -->
@@ -3609,7 +3635,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="section-header">
           <span class="section-label">Work</span>
           <h2>Changes, history &amp; branches</h2>
-          <p>The Changes tab is a git client for your workspace, or for the sandbox of the open conversation. Five views:
+          <p>The Git tab (once called Changes) is a git client for your workspace, or for the sandbox of the open conversation. Five views:
             the working tree, the history, the branches, the stashes and the tags. <em>Pull</em>, <em>Push</em> (or
             <em>Publish</em> for a branch the remote does not have yet) and <em>Fetch</em> sit on top.</p>
         </div>
@@ -3761,7 +3787,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             (<code>sandbox/&lt;handle&gt;-&lt;id&gt;</code>), with a copy of the workspace's database, its own build and its own
             preview at <code>&lt;handle&gt;-&lt;key&gt;--c&lt;id&gt;.&lt;domain&gt;</code>. It takes a moment to prepare; the
             chat says so.</li>
-          <li><strong>The work.</strong> The conversation runs there, and the <em>Preview</em>, <em>Changes</em>,
+          <li><strong>The work.</strong> The conversation runs there, and the <em>Preview</em>, <em>Git</em>,
             <em>Terminal</em> and <em>Files</em> tabs follow it: open another conversation and they follow that one. Several
             sandboxes run at once without touching the workspace or each other. Queues run inline there; the scheduler and
             Reverb are off.</li>
@@ -3834,11 +3860,23 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             are in <a href="#setup-ssh-keys">Settings → Accounts → SSH keys</a>.</dd></dl>
           <dl><dt>Host keys</dt><dd>The first connection shows the server's fingerprint and asks; from then on a different key
             is refused.</dd></dl>
+          <dl><dt>Files</dt><dd><em>Terminal ⇄ Files</em>, above the terminals (or <em>Browse files</em> in a connection's
+            menu), turns a session into the file manager of its host, the same as a project's
+            <a href="#work-files">Files</a> tab: tree, editor, uploads of files and folders, drag and drop, <em>Move to…</em>,
+            zip and unzip, download. It starts in your home on the server; the path bar goes anywhere else.</dd></dl>
           <dl><dt>Shared with a project</dt><dd>Tie a connection to a project and the administrators and the project's
             developers find host, port and user ready, tagged with your name, here and in the project's
             <a href="#work-access">Access</a> tab. Each connects with a key or password of their own: credentials are never
             shared.</dd></dl>
         </div>
+        <figure class="shot">
+          <img src="img/ssh-files.png" alt="The SSH page with a session switched to Files: the server's home in a tree, README.md open in the editor, the path bar above" loading="lazy" width="2880" height="2000" />
+          <figcaption><strong>SSH → Files.</strong> A session on a server turned into its file manager; <em>Terminal</em>
+            brings the shell back, as it was.</figcaption>
+        </figure>
+        <p>The file manager speaks SFTP from Studio's server with your own key or password, only to a host whose key was
+          accepted in the terminal; zip and unzip run on the server and need <code>zip</code> and <code>unzip</code> there.
+          It can do what you could do in the shell, nothing more.</p>
         <p>Private keys and passwords are encrypted with <code>APP_KEY</code> and never reach the browser. The page asks Studio
           for a one-time ticket (60 seconds) and opens a WebSocket to the gateway, <code>studio-ssh</code>
           (<code>ssh-gateway/</code>, behind Caddy at <code>/ssh/ws</code>), which redeems the ticket on the loopback and only

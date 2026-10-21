@@ -970,6 +970,14 @@ cmd_site_shell() { # key php — the Terminal's Develop mode: a shell on the pro
         /bin/bash --login
 }
 
+cmd_project_db() { # slug — the Db tab's Develop mode: the site's database, which Studio opens for whoever may use that shell
+    local slug=$1; valid_name "$slug"; project_paths "$slug"
+    [ -f "$P_ENV" ] || fail "the site of $slug is not created on this server"
+    local pass; pass=$(grep -E '^DB_PASSWORD=' "$P_ENV" | head -n1 | cut -d= -f2-)
+    [ -n "$pass" ] || fail "the site of $slug has no database password"
+    jq -n --arg d "$P_DB" --arg p "$pass" '{ok:true, database:$d, username:$d, password:$p}'
+}
+
 # git-cli: the agents' command-line tool for the forge of a person's git account, when it is not
 # the installation's own (the system step installs that one). ensure_git_cli of the live release's
 # installer/lib/system.sh does it; what it says goes to stderr, the answer stays alone on stdout.
@@ -1362,6 +1370,7 @@ case "$cmd" in
     cursor-forget)    [ $# -eq 2 ] || fail "usage: cursor-forget <handle> <dir>"; cmd_cursor_forget "$1" "$2" ;;
     cursor-login)     [ $# -eq 3 ] || [ $# -eq 4 ] || fail "usage: cursor-login <handle> <cols> <rows> [dir]"; cmd_cursor_login "$1" "$2" "$3" "${4:-.cursor}" ;;
     site-shell)       [ $# -eq 2 ] || fail "usage: site-shell <key> <php>"; cmd_site_shell "$1" "$2" ;;
+    project-db)       [ $# -eq 1 ] || fail "usage: project-db <slug>"; cmd_project_db "$1" ;;
     git-cli)          [ $# -eq 1 ] || fail "usage: git-cli <provider>"; cmd_git_cli "$1" ;;
     update-check)     cmd_update_check ;;
     update-start)     [ $# -le 1 ] && [[ "${1:-}" =~ ^(force)?$ ]] || fail "usage: update-start [force]"; cmd_update_start "${1:-}" ;;

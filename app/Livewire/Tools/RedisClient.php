@@ -36,6 +36,10 @@ class RedisClient extends Component
     #[Locked]
     public DatabaseConnection $connection;
 
+    /** Inside the project's Db tab (App\Livewire\Studio\PaneDatabase): sized to the pane, no way back to the list. */
+    #[Locked]
+    public bool $embedded = false;
+
     #[Url]
     public int $db = 0;
 

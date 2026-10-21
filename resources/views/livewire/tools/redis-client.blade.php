@@ -5,7 +5,8 @@
     $typeColors = ['string' => 'zinc', 'hash' => 'sky', 'list' => 'emerald', 'set' => 'violet', 'zset' => 'amber', 'stream' => 'pink'];
 @endphp
 
-<div class="flex min-h-[36rem] flex-col gap-3 lg:-m-2 lg:h-[calc(100dvh-4rem)]">
+{{-- In the Db tab ($embedded) the layout follows the pane's width, not the window's. --}}
+<div @class(['flex flex-col gap-3', 'min-h-[36rem] lg:-m-2 lg:h-[calc(100dvh-4rem)]' => ! $embedded, '@container h-full p-3' => $embedded])>
     @include('livewire.tools.partials.database.header')
 
     @if ($error)
@@ -15,9 +16,9 @@
         </flux:callout>
     @endif
 
-    <div class="flex min-h-0 flex-1 gap-3 max-lg:flex-col">
+    <div @class(['flex min-h-0 flex-1 gap-3', 'max-lg:flex-col' => ! $embedded, 'flex-col @3xl:flex-row' => $embedded])>
         {{-- Databases and keys --}}
-        <aside class="flex shrink-0 flex-col gap-2 lg:w-80 lg:min-h-0">
+        <aside @class(['flex shrink-0 flex-col gap-2', 'lg:w-80 lg:min-h-0' => ! $embedded, '@3xl:w-64 @3xl:min-h-0' => $embedded])>
             <div class="flex items-center gap-1">
                 <flux:dropdown class="min-w-0 flex-1">
                     <flux:button size="sm" icon="circle-stack" icon:trailing="chevron-up-down" class="w-full justify-start!">db{{ $db }} <span class="text-zinc-400">· {{ number_format($databases[$db] ?? 0) }}</span></flux:button>
@@ -40,7 +41,7 @@
                     @endforeach
                 </flux:select>
             </div>
-            <nav class="min-h-0 flex-1 overflow-y-auto rounded-lg border border-zinc-200 p-1 max-lg:max-h-72 dark:border-zinc-700">
+            <nav @class(['min-h-0 flex-1 overflow-y-auto rounded-lg border border-zinc-200 p-1 dark:border-zinc-700', 'max-lg:max-h-72' => ! $embedded, 'max-h-48 @3xl:max-h-none' => $embedded])>
                 @forelse ($keys as $item)
                     <button type="button" wire:key="rk-{{ md5($item['key']) }}" wire:click="openKey({{ Js::from($item['key']) }})"
                         @class(['flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-start text-sm', 'bg-zinc-200/70 dark:bg-zinc-700' => $key === $item['key'], 'hover:bg-zinc-100 dark:hover:bg-zinc-800' => $key !== $item['key']])>

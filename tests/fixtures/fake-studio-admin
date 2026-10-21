@@ -44,6 +44,9 @@ case "$cmd" in
     printf '{"ok":true,"sha":"def5678"}\n' ;;
   project-delete)
     printf '{"ok":true}\n' ;;
+  project-db)
+    db="prj_$(printf '%s' "$1" | tr '-' '_')"
+    printf '{"ok":true,"database":"%s","username":"%s","password":"site-secret"}\n' "$db" "$db" ;;
   update-check)
     printf '{"ok":true,"channel":"stable","current":"v1.0.0","latest":"%s","target":"%s","update_available":%s,"waiting":"","waiting_reason":""}\n' "${FAKE_STUDIO_LATEST:-v1.1.0}" "${FAKE_STUDIO_LATEST:-v1.1.0}" "${FAKE_STUDIO_AVAILABLE:-true}" ;;
   update-start)

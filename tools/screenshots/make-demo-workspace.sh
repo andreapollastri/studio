@@ -79,6 +79,43 @@ if (($args[0] ?? '') === 'larapilot:dashboard-user') {
 echo "Laravel Framework 13.36.0\n";
 PHP
 chmod +x artisan
+# the README the Doc tab shows, with a picture of its own (a PNG drawn here, no tools needed)
+mkdir -p docs
+python3 - docs/orders.png <<'PY'
+import struct, sys, zlib
+w, h = 960, 200
+rows = b''.join(b'\x00' + bytes(c for x in range(w) for c in ((24 + x * 60 // w, 120 + y // 4, 200 - x * 80 // w) if 30 < y < h - 30 and 40 < x < w - 40 and (y // 34 + x // 220) % 2 else (244, 244, 245))) for y in range(h))
+chunk = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+open(sys.argv[1], 'wb').write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows, 9)) + chunk(b'IEND', b''))
+PY
+cat > README.md <<'MD'
+# Shop Acme
+
+The online shop of **Acme**: Laravel 13, Livewire 4 and MariaDB, deployed by Cipi.
+
+![The orders list](docs/orders.png)
+
+## Getting started
+
+```bash
+composer install
+php artisan migrate --seed
+npm run dev
+```
+
+## Environments
+
+| Environment | Branch    | URL                             |
+|-------------|-----------|---------------------------------|
+| Develop     | `develop` | https://shop-acme.dev.agency.test |
+| Production  | `main`    | https://shop.acme.test          |
+
+## Conventions
+
+- One story per branch: `feature/US-014-date-filter`.
+- Every pull request runs the Larapilot pre-deploy gate first.
+- Release notes come from the merged stories; see the [changelog](CHANGELOG.md).
+MD
 printf 'vendor/\nnode_modules/\n.env\n' > .gitignore
 G="git -c user.name=demo -c user.email=demo@example.test"
 git add -A && $G commit -q -m "Orders list with search by number"

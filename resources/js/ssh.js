@@ -3,6 +3,8 @@
  * Studio stays light. Livewire owns connections and keys and hands out a
  * one-time ticket per terminal (open()); each terminal is then a WebSocket to
  * the SSH gateway, which speaks JSON both ways (see ssh-gateway/src/session.js).
+ * On the SSH page a session can show the file manager of its host instead
+ * (view 'files'): a Livewire component per connection, over SFTP (browse()).
  */
 import { FONT, loadXterm, THEME } from './xterm';
 
@@ -98,6 +100,7 @@ function sshTerminals() {
                 status: 'connecting',
                 error: null,
                 fingerprint: null,
+                view: 'terminal',
             });
             this.active = id;
 
@@ -106,6 +109,36 @@ function sshTerminals() {
             if (term) this.connect(id, info);
             // Below lg the connections sit above the terminals: bring the new one into view.
             if (window.matchMedia('(width < 64rem)').matches) this.$refs.terminals?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return id;
+        },
+
+        /** The files of a host: its open session turns to them, or a new one opens on them. */
+        async openFiles(connectionId) {
+            const open = this.sessions.find((s) => s.connectionId === connectionId);
+            const id = open ? open.id : await this.open(connectionId);
+            if (!id) return;
+            this.active = id;
+            await this.showFiles(id);
+        },
+
+        filesShown() {
+            return this.find(this.active)?.view === 'files';
+        },
+
+        activeConnection() {
+            return this.find(this.active)?.connectionId ?? null;
+        },
+
+        async showFiles(id) {
+            const s = this.find(id);
+            if (s && (await this.$wire.browse(s.connectionId))) s.view = 'files';
+        },
+
+        showTerminal(id) {
+            const s = this.find(id);
+            if (!s) return;
+            s.view = 'terminal';
+            this.focus(id);
         },
 
         /** A key a touch keyboard does not have, from the key bar under the terminal. */

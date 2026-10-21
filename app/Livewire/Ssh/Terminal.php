@@ -19,13 +19,15 @@ use Illuminate\Support\Collection as BaseCollection;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
  * The SSH page: a person's saved hosts (favourites first), the hosts shared
  * with the projects they work on, their keys and the system keys shared with
- * them (managed in System) on the left; any number of terminals on the right.
+ * them (managed in System) on the left; any number of terminals on the right,
+ * each of which can turn into the file manager of its host (Files, over SFTP).
  * Livewire owns connections and keys; the terminals
  * live in the browser (xterm.js) and talk to the SSH gateway with a one-time
  * ticket from open(). On a shared connection everybody uses their own key or
@@ -70,6 +72,10 @@ class Terminal extends Component
     public ?string $credential_key = null;
 
     public string $credential_password = '';
+
+    /** @var list<string> uuids of the connections whose file manager is open next to their terminals */
+    #[Locked]
+    public array $browsing = [];
 
     public function mount(): void
     {
@@ -367,6 +373,38 @@ class Terminal extends Component
             'address' => $connection->address(),
             'connection_id' => $connection->uuid,
         ];
+    }
+
+    /**
+     * The file manager of a connection (Files), in place of its terminal: over
+     * SFTP with the same credential, and only on a host whose key was accepted.
+     */
+    public function browse(string $id): bool
+    {
+        $user = auth()->user();
+        $connection = $this->visibleConnection($id);
+
+        if (! $connection->canConnect($user)) {
+            if ($connection->isOwnedBy($user)) {
+                Flux::toast(variant: 'warning', text: __(':name has no key or password: edit it first.', ['name' => $connection->name]));
+            } else {
+                $this->editCredential($connection->uuid);
+            }
+
+            return false;
+        }
+
+        if (blank($connection->host_key)) {
+            Flux::toast(variant: 'warning', text: __('Accept the host key of :name in its terminal first: the file manager checks the same key.', ['name' => $connection->name]));
+
+            return false;
+        }
+
+        if (! in_array($connection->uuid, $this->browsing, true)) {
+            $this->browsing[] = $connection->uuid;
+        }
+
+        return true;
     }
 
     /** The person accepted the key a new host showed: later connections, of anybody, expect the same one. */

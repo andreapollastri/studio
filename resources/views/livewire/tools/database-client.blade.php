@@ -5,7 +5,8 @@
     $writable = $canWrite && ! $locked;
 @endphp
 
-<div class="flex min-h-[36rem] flex-col gap-3 lg:-m-2 lg:h-[calc(100dvh-4rem)]">
+{{-- In the Db tab ($embedded) the layout follows the pane's width, not the window's. --}}
+<div @class(['flex flex-col gap-3', 'min-h-[36rem] lg:-m-2 lg:h-[calc(100dvh-4rem)]' => ! $embedded, '@container h-full p-3' => $embedded])>
     @include('livewire.tools.partials.database.header')
 
     @if ($error)
@@ -13,16 +14,16 @@
             <flux:callout.text class="font-mono text-xs">{{ $error }}</flux:callout.text>
             <x-slot name="actions">
                 <flux:button size="sm" wire:click="refresh">{{ __('Try again') }}</flux:button>
-                @if ($connection->isOwnedBy(auth()->user()))
+                @if ($connection->isOwnedBy(auth()->user()) && $connection->managed === null)
                     <flux:button size="sm" variant="ghost" :href="route('databases')" wire:navigate>{{ __('Edit the connection') }}</flux:button>
                 @endif
             </x-slot>
         </flux:callout>
     @endif
 
-    <div class="flex min-h-0 flex-1 gap-3 max-lg:flex-col">
+    <div @class(['flex min-h-0 flex-1 gap-3', 'max-lg:flex-col' => ! $embedded, 'flex-col @3xl:flex-row' => $embedded])>
         {{-- Databases, schemas, tables and views --}}
-        <aside class="flex shrink-0 flex-col gap-2 lg:w-64 lg:min-h-0">
+        <aside @class(['flex shrink-0 flex-col gap-2', 'lg:w-64 lg:min-h-0' => ! $embedded, '@3xl:w-56 @3xl:min-h-0' => $embedded])>
             @if ($family !== 'sqlite')
                 <div class="flex items-center gap-1">
                     <flux:dropdown class="min-w-0 flex-1">
@@ -61,7 +62,7 @@
                 @endif
             </div>
 
-            <nav class="min-h-0 flex-1 overflow-y-auto rounded-lg border border-zinc-200 p-1 max-lg:max-h-64 dark:border-zinc-700">
+            <nav @class(['min-h-0 flex-1 overflow-y-auto rounded-lg border border-zinc-200 p-1 dark:border-zinc-700', 'max-lg:max-h-64' => ! $embedded, 'max-h-48 @3xl:max-h-none' => $embedded])>
                 @php($needle = mb_strtolower(trim($objectFilter)))
                 @php($shown = collect($objects)->filter(fn ($o) => $needle === '' || str_contains(mb_strtolower($o['name']), $needle)))
                 @foreach (['table' => __('Tables'), 'view' => __('Views')] as $type => $label)

@@ -2,7 +2,7 @@
 
 namespace App\Bridge;
 
-use RuntimeException;
+use App\Files\FileStoreException;
 
 /** A bridge that is missing or refused; its code is the HTTP status of a refusal (409: already there). */
-class BridgeException extends RuntimeException {}
+class BridgeException extends FileStoreException {}

@@ -13,7 +13,7 @@ use Throwable;
  * A file read or written over SFTP on a saved SSH connection, as one person: their own key or
  * password, never the owner's (SshConnection::forGateway), and only on a host whose key was
  * accepted in the SSH terminal before. For the files Studio writes on a server for a project:
- * the anonymizer's config of a Cipi app.
+ * the anonymizer's config of a Cipi app; open() is also the session of the SSH page's file manager.
  */
 class RemoteFiles
 {
@@ -40,7 +40,7 @@ class RemoteFiles
         return is_string($contents) ? $contents : null;
     }
 
-    protected function open(SshConnection $connection, User $user): SFTP
+    public function open(SshConnection $connection, User $user): SFTP
     {
         if (! $connection->isVisibleTo($user) || ! $connection->canConnect($user)) {
             throw new ConnectorException(__('You have no credential of your own for :name: set one on the SSH page.', ['name' => $connection->name]));

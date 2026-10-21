@@ -58,6 +58,7 @@
                             <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" />
                             <flux:menu>
                                 <flux:menu.item icon="command-line" x-on:click="open('{{ $connection->uuid }}')">{{ __('Open a terminal') }}</flux:menu.item>
+                                <flux:menu.item icon="folder-open" x-on:click="openFiles('{{ $connection->uuid }}')">{{ __('Browse files') }}</flux:menu.item>
                                 @if ($row['mine'])
                                     <flux:menu.item icon="pencil-square" wire:click="editConnection('{{ $connection->uuid }}')">{{ __('Edit') }}</flux:menu.item>
                                     @if ($connection->host_key)
@@ -131,8 +132,8 @@
         @endif
     </aside>
 
-    {{-- Terminals: the browser owns them, Livewire never redraws this part. --}}
-    @include('livewire.ssh.partials.terminals', ['class' => 'min-h-[28rem] max-lg:scroll-mt-16 rounded-xl border border-zinc-200 dark:border-zinc-700', 'empty' => __('Pick a connection on the left to open a terminal. Open as many as you like: tabs, or all side by side.')])
+    {{-- Terminals (the browser owns them), and the file manager each session can switch to. --}}
+    @include('livewire.ssh.partials.terminals', ['class' => 'min-h-[28rem] max-lg:scroll-mt-16 rounded-xl border border-zinc-200 dark:border-zinc-700', 'files' => true, 'empty' => __('Pick a connection on the left to open a terminal. Open as many as you like: tabs, or all side by side. Terminal ⇄ Files, above, turns a session into the file manager of its host.')])
 
     {{-- New / edit connection --}}
     <flux:modal name="ssh-connection" class="md:w-[32rem]">
@@ -256,4 +257,9 @@
     </flux:modal>
 
     @include('livewire.ssh.partials.key-modals')
+
+    {{-- The file manager's editor (Monaco itself loads on first use) --}}
+    @assets
+        @vite('resources/js/editor.js')
+    @endassets
 </div>

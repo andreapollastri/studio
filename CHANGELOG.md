@@ -4,6 +4,13 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.6
+
+- **Files on the SSH page.** Each session switches between *Terminal* and *Files* (or *Browse files* in a connection's menu): the file manager of a project's Files tab, on the server. Tree, editor, uploads of files and folders, drag and drop, *Move to…*, zip and unzip, download. It starts in your home and the path bar goes anywhere else. It speaks SFTP with your own key or password, only to a host whose key was accepted in the terminal, and keeps where it was when you go back to the shell. Zip and unzip run on the server and need `zip` and `unzip` there.
+- **Doc: the README in the right pane.** A new first tab shows the repository's README as a page: tables, code, task lists, and its pictures from the workspace. The other Markdown files at the top (CHANGELOG, CLAUDE.md…) are a click away. Raw HTML and `javascript:` links are left out, as in the chat.
+- **Db: the database client in the right pane.** The client of *Databases*, inside the project. *Local* opens your workspace's database (or the sandbox's) as its `.env` says. *Develop* opens the database of the project's own site, for who may open its shell. *Remote* lists the *Databases* connections tied to the project that your role may use. Develop and Remote ask for your password first; read, write and the production lock work as in *Databases*. Local and Develop are connections Studio keeps for you: refreshed on every open, not listed in *Databases*.
+- **Changes is now Git.** The tabs of the right pane read *Doc, Preview, Git, Terminal, Files, Db*.
+
 ## 2.4.5
 
 - **A confirmation asked from a window stays in front of it.** Removing an account (and every other confirmation opened from inside a window) drew "Remove … from Studio?" behind that window, so it could not be answered and the account stayed. The question is now its own window and opens on top.

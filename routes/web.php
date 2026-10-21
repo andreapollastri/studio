@@ -6,6 +6,7 @@ use App\Http\Controllers\DatabaseTransferController;
 use App\Http\Controllers\DoorController;
 use App\Http\Controllers\DriveFileController;
 use App\Http\Controllers\SiteLoginController;
+use App\Http\Controllers\SshFileController;
 use App\Http\Controllers\WorkspaceFileController;
 use App\Infrastructure\Git\Forges;
 use App\Livewire\Admin\Connectors as AdminConnectors;
@@ -57,6 +58,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Sessions from this server to any host: asks for the password again, as Settings → Security does.
     Route::get('ssh', SshTerminal::class)->middleware(['can:ssh', 'password.confirm'])->name('ssh');
+    Route::get('ssh/{connection:uuid}/download', SshFileController::class)->middleware(['can:ssh', 'password.confirm'])->name('ssh.files.download');
     Route::get('passwords', Vault::class)->middleware('password.confirm')->name('vault');
     Route::get('drive', Drive::class)->name('drive');
     // MySQL, MariaDB, PostgreSQL, SQLite, Redis and Valkey, direct or through SSH: the password again, as for the SSH terminal.

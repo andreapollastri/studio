@@ -2,7 +2,7 @@
     x-data="{ ask: {}, confirm() { this.$flux.modal('git-confirm').close(); this.$wire.call(this.ask.method, ...(this.ask.args ?? [])) } }"
     x-on:git-confirm="ask = $event.detail; $flux.modal('git-confirm').show()">
     <div class="flex items-center gap-0.5 overflow-x-auto border-b border-zinc-200 px-2 py-2 dark:border-zinc-700">
-        @foreach (array_filter(['preview' => __('Preview'), 'changes' => $hasWorkspace ? __('Changes') : null, 'terminal' => $canUseTerminal ? __('Terminal') : null, 'files' => $canUseTerminal ? __('Files') : null]) as $key => $label)
+        @foreach (array_filter(['doc' => $hasWorkspace ? __('Doc') : null, 'preview' => __('Preview'), 'changes' => $hasWorkspace ? __('Git') : null, 'terminal' => $canUseTerminal ? __('Terminal') : null, 'files' => $canUseTerminal ? __('Files') : null, 'db' => $canUseTerminal ? __('Db') : null]) as $key => $label)
             <button
                 type="button"
                 wire:click="setTab('{{ $key }}')"
@@ -30,11 +30,36 @@
         </div>
     </div>
 
-    <div @class(['relative min-h-0 flex-1', 'overflow-hidden' => $tab === 'files', 'overflow-auto' => $tab !== 'files'])>
+    <div @class(['relative min-h-0 flex-1', 'overflow-hidden' => in_array($tab, ['files', 'db'], true), 'overflow-auto' => ! in_array($tab, ['files', 'db'], true)])>
         @if ($filesMounted)
             {{-- Mounted on first use and kept, hidden, so open editor tabs survive switching panes. --}}
             <div @class(['absolute inset-0', 'hidden' => $tab !== 'files'])>
                 <livewire:studio.files :workspace="$workspace" :sandbox="$sandbox" :key="'files-'.$workspace->id.'-'.$sandbox" />
+            </div>
+        @endif
+        @if ($dbMounted && $canUseTerminal)
+            {{-- The database client of Tools → Databases on the mode's database, kept, hidden, while the pane shows something else. --}}
+            <div @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'db'])>
+                <div class="border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
+                    @include('livewire.studio.partials.db-modes')
+                </div>
+                <div class="min-h-0 flex-1">
+                    @if ($dbMode !== 'local' && ! $this->remoteConfirmed())
+                        <div class="flex flex-wrap items-center gap-2 p-4 text-sm">
+                            <flux:text>{{ __('As for Databases, confirm your password to open this database.') }}</flux:text>
+                            <flux:button size="xs" variant="primary" icon="lock-closed" wire:click="confirmPassword">{{ __('Confirm') }}</flux:button>
+                        </div>
+                    @elseif ($dbError)
+                        <div class="space-y-2 p-4 text-sm">
+                            <flux:text>{{ $dbError }}</flux:text>
+                            <flux:button size="xs" icon="arrow-path" wire:click="setDbMode('{{ $dbMode }}')">{{ __('Try again') }}</flux:button>
+                        </div>
+                    @elseif ($dbOpen && $dbOpen->driver->isRedis())
+                        <livewire:studio.pane-redis :connection="$dbOpen" :key="'pane-db-'.$dbOpen->uuid" />
+                    @elseif ($dbOpen)
+                        <livewire:studio.pane-database :connection="$dbOpen" :key="'pane-db-'.$dbOpen->uuid" />
+                    @endif
+                </div>
             </div>
         @endif
         @if ($shellMounted && $canUseTerminal)
@@ -127,7 +152,34 @@
                 @include('livewire.ssh.partials.terminals', ['class' => 'min-h-0', 'empty' => __('Pick a host above to open a terminal on it.')])
             </div>
         @endif
-        @if ($tab === 'preview')
+        @if ($tab === 'doc')
+            @php($docPage = $this->doc)
+            @if ($docPage['path'] !== null)
+                <div class="sticky top-0 z-10 flex items-center gap-1 border-b border-zinc-200 bg-white/95 px-3 py-1 backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
+                    @if (count($this->docs) > 1)
+                        <flux:dropdown position="bottom" align="start">
+                            <flux:button size="xs" variant="ghost" icon="document-text" icon:trailing="chevron-down" class="font-mono">{{ $docPage['path'] }}</flux:button>
+                            <flux:menu>
+                                @foreach ($this->docs as $docName)
+                                    <flux:menu.item wire:click="setDoc({{ \Illuminate\Support\Js::from($docName) }})" :icon="$docName === $docPage['path'] ? 'check' : null" class="font-mono">{{ $docName }}</flux:menu.item>
+                                @endforeach
+                            </flux:menu>
+                        </flux:dropdown>
+                    @else
+                        <span class="flex items-center gap-1 px-2 font-mono text-xs text-zinc-500"><flux:icon.document-text variant="micro" class="size-3.5" />{{ $docPage['path'] }}</span>
+                    @endif
+                    <flux:spacer />
+                    <flux:button size="xs" variant="ghost" icon="arrow-path" wire:click="setDoc({{ \Illuminate\Support\Js::from((string) $docPage['path']) }})" :title="__('Refresh')" />
+                </div>
+            @endif
+            @if ($docPage['html'] !== null)
+                <article class="studio-doc prose prose-sm max-w-none px-6 py-5 dark:prose-invert prose-pre:bg-zinc-100 prose-pre:text-zinc-900 prose-img:inline prose-img:my-0 dark:prose-pre:bg-zinc-800 dark:prose-pre:text-zinc-100">
+                    {!! $docPage['html'] !!}
+                </article>
+            @else
+                <div class="p-6 text-sm text-zinc-500">{{ $docPage['error'] }}</div>
+            @endif
+        @elseif ($tab === 'preview')
             @if ($workspace->isRunning() && $appUrl)
                 <iframe src="{{ $appUrl }}" title="{{ $sandbox ? __('Sandbox preview') : __('Workspace preview') }}" class="h-full w-full bg-white" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
             @elseif ($previewUrl)

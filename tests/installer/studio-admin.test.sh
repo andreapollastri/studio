@@ -290,4 +290,16 @@ RELOADS=0; W_SANDBOXES="$T/none"; preview_env_of_sandboxes maria shop staging
 [ "$RELOADS" = 0 ] || fail "no sandbox, no reload"
 ok "preview_env_of_sandboxes: every sandbox with a host follows the workspace, Caddy reloaded once"
 
+# ---------------------------------------------------------------- the Db tab's Develop database
+
+for fn in valid_name dbname project_paths cmd_project_db; do eval "$(extract "$fn")"; done
+ETC="$T/etc"; PROJECTS="$T/projects"; mkdir -p "$ETC/projects"
+printf 'DB_PASSWORD=0123abcd\nGIT_TOKEN=ghp_x\n' > "$ETC/projects/shop-acme.env"
+answer=$( ( fail() { admin_fail "$@"; }; cmd_project_db shop-acme ) )
+[ "$(jq -r '.database + " " + .username + " " + .password' <<<"$answer")" = 'prj_shop_acme prj_shop_acme 0123abcd' ] || fail "project-db answered $answer"
+jq -e 'has("GIT_TOKEN") | not' <<<"$answer" >/dev/null || fail "project-db hands over the database, nothing else"
+if ( fail() { admin_fail "$@"; }; cmd_project_db no-site ) >/dev/null; then fail "project-db of a project without a site"; fi
+if ( fail() { admin_fail "$@"; }; cmd_project_db '../x' ) >/dev/null; then fail "project-db took a path"; fi
+ok "project-db: the site's database, user and password, for a valid slug with a site"
+
 printf '\nall studio-admin tests passed\n'

@@ -7,6 +7,7 @@
 # (npm run build).
 #
 #   tools/screenshots/run.sh [work dir] [jobs file] [out dir]   → docs/img/*.png by default
+#   SHOTS_SSH_PORT=8092 tools/screenshots/run.sh …               → the SSH gateway elsewhere, when 8082 is taken
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 WORK=${1:-$(mktemp -d)}
@@ -15,9 +16,10 @@ OUT=${3:-$ROOT/docs/img}
 mkdir -p "$WORK"
 DB="$WORK/demo.sqlite"; LOGS="$WORK/logs"; mkdir -p "$LOGS"
 PIDS=()
+GW=${SHOTS_SSH_PORT:-8082}
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; pkill -f "studio-shots-" 2>/dev/null || true; }
 trap cleanup EXIT
-for port in 4455 8082 8766 8767 8768 8769 9333; do
+for port in 4455 $GW 8766 8767 8768 8769 9333; do
     if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then echo "port $port is in use: stop what listens there first" >&2; exit 1; fi
 done
 
@@ -25,7 +27,7 @@ export DB_CONNECTION=sqlite DB_DATABASE="$DB" STUDIO_DOMAIN=dev.agency.test STUD
   STUDIO_LOCAL_BRIDGE_URL=http://127.0.0.1:4455 STUDIO_LOCAL_BRIDGE_TOKEN=local-bridge-token \
   STUDIO_LOCAL_APP_URL=http://127.0.0.1:8766/preview/ DEMO_STAGING_URL=http://127.0.0.1:8766 DEMO_PREVIEW_URL=http://127.0.0.1:8766/preview/ \
   STUDIO_SERVER_IPS=203.0.113.10 APP_URL=http://127.0.0.1:8767 QUEUE_CONNECTION=sync BROADCAST_CONNECTION=log CACHE_STORE=file SESSION_DRIVER=file \
-  STUDIO_SSH_URL=ws://127.0.0.1:8082/ssh/ws
+  STUDIO_SSH_URL=ws://127.0.0.1:$GW/ssh/ws
 
 rm -f "$DB"; touch "$DB"
 (cd "$ROOT" && php artisan migrate --force --seed --seeder=DemoSeeder >"$LOGS/seed.log")
@@ -56,9 +58,22 @@ serve() { # port, extra env…
     local port=$1; shift
     (cd "$ROOT" && exec env "$@" php -S "127.0.0.1:$port" -t public tools/screenshots/router.php >"$LOGS/studio-$port.log" 2>&1) & PIDS+=($!)
 }
-serve 8767
+# the home of the SSH page's server: its file manager reads this folder (router.php)
+SFTP_HOME="$WORK/sftp-home"
+mkdir -p "$SFTP_HOME"/{shop-acme/{app/Http/Controllers,config,public,resources/views,storage/logs},backups,logs}
+printf 'APP_NAME="Shop Acme"\nAPP_ENV=production\nAPP_URL=https://shop-acme.example.com\nDB_CONNECTION=mariadb\nDB_DATABASE=shopacme\nDB_USERNAME=shopacme\nQUEUE_CONNECTION=redis\n' >"$SFTP_HOME/shop-acme/.env"
+printf '# Shop Acme\n\nThe shop of Acme: Laravel 13, Livewire, MariaDB.\n' >"$SFTP_HOME/shop-acme/README.md"
+printf '{\n    "name": "acme/shop",\n    "require": {\n        "php": "^8.4",\n        "laravel/framework": "^13.0"\n    }\n}\n' >"$SFTP_HOME/shop-acme/composer.json"
+printf '<?php\n\nuse Illuminate\\Support\\Facades\\Route;\n\nRoute::view(\x27/\x27, \x27welcome\x27);\n' >"$SFTP_HOME/shop-acme/public/index.php"
+printf '[2026-10-21 09:12:03] production.INFO: Order 1042 paid\n[2026-10-21 09:14:41] production.WARNING: Slow query on orders (812 ms)\n' >"$SFTP_HOME/shop-acme/storage/logs/laravel.log"
+for f in OrderController ProductController CheckoutController; do printf '<?php\n\nnamespace App\\Http\\Controllers;\n\nclass %s extends Controller\n{\n}\n' "$f" >"$SFTP_HOME/shop-acme/app/Http/Controllers/$f.php"; done
+printf '<?php\n\nreturn [\n    \x27name\x27 => env(\x27APP_NAME\x27, \x27Shop Acme\x27),\n];\n' >"$SFTP_HOME/shop-acme/config/app.php"
+head -c 2048 /dev/urandom >"$SFTP_HOME/backups/shopacme-2026-10-20.sql.gz"
+head -c 4096 /dev/urandom >"$SFTP_HOME/backups/shopacme-2026-10-21.sql.gz"
+printf 'export PATH="$HOME/bin:$PATH"\n' >"$SFTP_HOME/.bashrc"
+serve 8767 DEMO_SFTP_HOME="$SFTP_HOME"
 # the SSH gateway, for the Terminal tab's shell: it redeems tickets at the Studio above
-(cd "$ROOT" && exec env APP_KEY="$(sed -n 's/^APP_KEY=//p' .env)" SSH_GATEWAY_REDEEM_URL=http://127.0.0.1:8767/api/ssh/redeem SSH_GATEWAY_ORIGIN=http://127.0.0.1:8767 \
+(cd "$ROOT" && exec env SSH_GATEWAY_PORT="$GW" APP_KEY="$(sed -n 's/^APP_KEY=//p' .env)" SSH_GATEWAY_REDEEM_URL=http://127.0.0.1:8767/api/ssh/redeem SSH_GATEWAY_ORIGIN=http://127.0.0.1:8767 \
     node ssh-gateway/bin/gateway.js >"$LOGS/gateway.log" 2>&1) & PIDS+=($!)
 NATIVE=(STUDIO_WORKSPACE_DRIVER=native STUDIO_HELPER="$ROOT/tests/fixtures/fake-studio-admin" STUDIO_HELPER_SUDO=false)
 serve 8768 "${NATIVE[@]}" STUDIO_UPDATE_STATE="$WORK/state.json"
@@ -78,6 +93,7 @@ sed -e "s#\${BASE}#http://127.0.0.1:8767#g" -e "s#\${BASE2}#http://127.0.0.1:876
     -e "s#\${ACCOUNT_CIPI}#$(q "select uuid from connector_accounts where connector = 'cipi'")#g" \
     -e "s#\${DB_LOCAL}#$(q "select uuid from database_connections where name = 'Shop Acme · local copy'")#g" \
     -e "s#\${JOB_SITE}#$(q "select uuid from backup_jobs where name = 'Shop Acme · site and database'")#g" \
+    -e "s#\${SSH_CIPI}#$(q "select uuid from ssh_connections where name = 'Shop Acme · Cipi'")#g" \
     "$JOBS" >"$WORK/jobs.json"
 
 (cd "$ROOT/tools/screenshots" && node shots.mjs "$WORK/jobs.json" "$OUT")

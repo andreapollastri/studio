@@ -4,6 +4,7 @@ namespace App\Bridge;
 
 use App\Accounts\Accounts;
 use App\Claude\AllowRules;
+use App\Files\FileStore;
 use App\Mcp\NativeServers;
 use App\Models\Conversation;
 use App\Models\PermissionRequest;
@@ -35,7 +36,7 @@ use Psr\Http\Message\StreamInterface;
  * With a sandbox name, the git and file calls work in that sandbox's worktree
  * instead of the workspace (the bridge reads it from X-Studio-Sandbox).
  */
-final class BridgeClient
+final class BridgeClient implements FileStore
 {
     public function __construct(private readonly Workspace $workspace, private readonly ?string $sandbox = null) {}
 

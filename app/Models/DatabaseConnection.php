@@ -27,6 +27,9 @@ use Illuminate\Support\Carbon;
  * write) and every administrator of Studio reads and writes it; they use the owner's
  * database credentials without ever seeing them.
  *
+ * A managed connection is one Studio keeps for the project's Db tab (App\Databases\PaneDatabases):
+ * the person's workspace database or the project site's, refreshed on every open and not listed.
+ *
  * @property int $id
  * @property string $uuid
  * @property int $user_id
@@ -44,11 +47,12 @@ use Illuminate\Support\Carbon;
  * @property int|null $ssh_connection_id
  * @property string $tunnel_as owner or member
  * @property Carbon|null $last_used_at
+ * @property string|null $managed workspace:<id>[:<sandbox>] or site:<project id>
  * @property-read User $user
  * @property-read Project|null $project
  * @property-read SshConnection|null $sshConnection
  */
-#[Fillable(['user_id', 'project_id', 'project_access', 'name', 'driver', 'environment', 'host', 'port', 'username', 'password', 'database', 'tls', 'ssh_connection_id', 'tunnel_as', 'last_used_at'])]
+#[Fillable(['user_id', 'project_id', 'project_access', 'name', 'driver', 'environment', 'host', 'port', 'username', 'password', 'database', 'tls', 'ssh_connection_id', 'tunnel_as', 'last_used_at', 'managed'])]
 class DatabaseConnection extends Model
 {
     /** @use HasFactory<DatabaseConnectionFactory> */
@@ -118,13 +122,13 @@ class DatabaseConnection extends Model
 
     /**
      * The person's own connections, every project connection for an administrator, and for
-     * a member those of their projects where their role has access.
+     * a member those of their projects where their role has access; never the managed ones.
      *
      * @param  Builder<DatabaseConnection>  $query
      */
     public function scopeVisibleTo(Builder $query, User $user): void
     {
-        $query->where(function (Builder $query) use ($user) {
+        $query->whereNull('managed')->where(function (Builder $query) use ($user) {
             $query->where('user_id', $user->id);
 
             if ($user->isAdmin()) {

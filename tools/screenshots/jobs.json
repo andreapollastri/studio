@@ -59,7 +59,7 @@
   },
   {
     "name": "chat-changes",
-    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Changes\"); if (b) b.click(); return !!b; })()",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Git\"); if (b) b.click(); return !!b; })()",
     "height": 960,
     "wait": 3000
   },
@@ -149,7 +149,7 @@
     "wait": 600
   },
   {
-    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Changes\"); if (b) b.click(); return !!b; })()",
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Git\"); if (b) b.click(); return !!b; })()",
     "wait": 1500
   },
   {
@@ -199,6 +199,27 @@
     "name": "vault",
     "url": "${BASE}/passwords?view=sharedfolder&folder=${VAULT_TOOLS}",
     "wait": 1500
+  },
+  {
+    "name": "chat-doc",
+    "url": "${BASE}/p/shop-acme/c/${CONV_PERMISSION}",
+    "eval": "(() => { setTimeout(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Doc\"); if (b) b.click(); }, 400); return true; })()",
+    "height": 960,
+    "wait": 3000
+  },
+  {
+    "eval": "(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \"Db\"); if (b) b.click(); return !!b; })()",
+    "wait": 2500
+  },
+  {
+    "eval": "(() => { Livewire.all().find(c => c.name === 'studio.side-pane').$wire.call('setDbMode', 'remote'); return true; })()",
+    "wait": 3000
+  },
+  {
+    "name": "chat-db",
+    "eval": "(() => { Livewire.all().find(c => c.name === 'studio.pane-database').$wire.call('openTable', 'orders'); return true; })()",
+    "height": 960,
+    "wait": 3000
   },
   {
     "name": "studio-empty",
@@ -271,6 +292,45 @@
     "name": "admin-projects",
     "url": "${BASE}/admin/projects",
     "wait": 1000
+  },
+  {
+    "url": "${BASE}/ssh",
+    "wait": 800
+  },
+  {
+    "eval": "(() => { const p = document.querySelector('input[name=password]'); if (!p) return false; p.value = 'password'; p.form.submit(); return true; })()",
+    "wait": 1500
+  },
+  {
+    "url": "${BASE}/ssh",
+    "eval": "(() => { setTimeout(() => Alpine.$data(document.querySelector('[x-data=\"sshTerminals\"]')).openFiles('${SSH_CIPI}'), 300); return true; })()",
+    "wait": 3500
+  },
+  {
+    "eval": "(() => { const d = Alpine.$data(document.querySelector('[x-data=\"sshTerminals\"]')); d.sessions.forEach(s => { s.status = 'ready'; s.error = null; }); const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'shop-acme'); if (b) b.click(); return !!b; })()",
+    "wait": 1200
+  },
+  {
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'app'); if (b) b.click(); return !!b; })()",
+    "wait": 1000
+  },
+  {
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'Http'); if (b) b.click(); return !!b; })()",
+    "wait": 1000
+  },
+  {
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'Controllers'); if (b) b.click(); return !!b; })()",
+    "wait": 1000
+  },
+  {
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === '.env'); if (b) b.click(); return !!b; })()",
+    "wait": 2500
+  },
+  {
+    "name": "ssh-files",
+    "eval": "(() => { const b = [...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'README.md'); if (b) b.click(); return !!b; })()",
+    "height": 1000,
+    "wait": 4000
   },
   {
     "name": "admin-project-new",

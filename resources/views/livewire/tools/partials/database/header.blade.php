@@ -3,7 +3,9 @@
 <div class="shrink-0 overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
     <div class="h-1 {{ $env->bar() }}"></div>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
-        <flux:button size="sm" variant="ghost" icon="arrow-left" :href="route('databases')" wire:navigate :aria-label="__('All connections')" />
+        @unless ($embedded)
+            <flux:button size="sm" variant="ghost" icon="arrow-left" :href="route('databases')" wire:navigate :aria-label="__('All connections')" />
+        @endunless
         <span class="flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold {{ $connection->driver->tint() }}">{{ $connection->driver->short() }}</span>
         <div class="min-w-0">
             <div class="flex items-center gap-2">
