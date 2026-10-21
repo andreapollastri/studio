@@ -6,7 +6,7 @@
 @endphp
 
 {{-- In the Db tab ($embedded) the layout follows the pane's width, not the window's. --}}
-<div @class(['flex flex-col gap-3', 'min-h-[36rem] lg:-m-2 lg:h-[calc(100dvh-4rem)]' => ! $embedded, '@container h-full p-3' => $embedded])>
+<div @class(['flex flex-col gap-3', 'min-h-[36rem] lg:-m-2 lg:h-[calc(100dvh-4rem)]' => ! $embedded, '@container h-full overflow-y-auto p-3' => $embedded])>
     @include('livewire.tools.partials.database.header')
 
     @if ($error)
@@ -21,7 +21,7 @@
         </flux:callout>
     @endif
 
-    <div @class(['flex min-h-0 flex-1 gap-3', 'max-lg:flex-col' => ! $embedded, 'flex-col @3xl:flex-row' => $embedded])>
+    <div @class(['flex flex-1 gap-3', 'min-h-0 max-lg:flex-col' => ! $embedded, 'flex-col @3xl:flex-row' => $embedded])>
         {{-- Databases, schemas, tables and views --}}
         <aside @class(['flex shrink-0 flex-col gap-2', 'lg:w-64 lg:min-h-0' => ! $embedded, '@3xl:w-56 @3xl:min-h-0' => $embedded])>
             @if ($family !== 'sqlite')
@@ -112,7 +112,8 @@
         </aside>
 
         {{-- What is open --}}
-        <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+        {{-- in a short pane what is open keeps room enough, and the client scrolls --}}
+        <main @class(['flex min-w-0 flex-1 flex-col gap-2', 'min-h-0' => ! $embedded, 'min-h-[28rem]' => $embedded])>
             <div class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-700">
                 @foreach (array_filter([
                     'data' => $table ? __('Data') : null,

@@ -136,8 +136,6 @@
                             <flux:text>{{ __('As on the SSH page, confirm your password to open a session.') }}</flux:text>
                             <flux:button size="xs" variant="primary" icon="lock-closed" wire:click="confirmPassword">{{ __('Confirm') }}</flux:button>
                         </div>
-                    @elseif ($this->remoteConnections->isEmpty())
-                        <flux:text class="text-sm">{{ __('No SSH connection tied to this project. Add one on the SSH page (with the project chosen), or from a Cipi app in Infrastructure.') }}</flux:text>
                     @else
                         <div class="flex flex-wrap gap-1.5">
                             @foreach ($this->remoteConnections as $row)

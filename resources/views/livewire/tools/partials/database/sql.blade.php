@@ -1,6 +1,6 @@
 {{-- The SQL editor: run everything or the selection (Ctrl/⌘+Enter), one result per statement; saved queries and history on the side. --}}
 @use('Illuminate\Support\Js')
-<div class="flex h-full gap-3 max-xl:flex-col"
+<div @class(['flex h-full gap-3', 'max-xl:flex-col' => ! $embedded, 'flex-col @5xl:flex-row' => $embedded])
      x-data="{
         running: false,
         async run(all = false) {
@@ -105,7 +105,7 @@
     </div>
 
     {{-- Saved queries and history --}}
-    <aside class="flex shrink-0 flex-col gap-3 overflow-y-auto xl:w-72">
+    <aside @class(['flex shrink-0 flex-col gap-3 overflow-y-auto', 'xl:w-72' => ! $embedded, 'max-h-60 @5xl:max-h-none @5xl:w-72' => $embedded])>
         <section class="space-y-1">
             <flux:heading size="sm">{{ __('Saved queries') }}</flux:heading>
             @forelse ($saved as $query)

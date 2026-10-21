@@ -104,7 +104,7 @@ Inside a conversation the chat is the full Claude Code CLI: subagents, plan mode
 MCP servers from the repository, hooks. Studio adds a browser signed in to the preview (screenshots show in the
 chat), subagent cards with `code-reviewer` and `browser-qa`, and conversations in a sandbox of their own
 (worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* picks the model, the effort and the permission mode
-(ask, ask with edits, autopilot, plan only); the *Terminal* tab is a shell in the workspace, on a real terminal; the *Files* tab is a file manager (uploads, moves, zips) with the editor of VS Code; the *Changes* tab shows the working tree, the commit graph and the branches. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role, unless the site, or the site and its previews, are made public; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
+(ask, ask with edits, autopilot, plan only); the *Terminal* tab is a shell in the workspace, on a real terminal; the *Files* tab is a file manager (uploads, moves, zips) with the editor of VS Code; the *Git* tab shows the working tree, the commit graph and the branches; *Doc* shows the README as a page; *Db* opens the workspace's database, the project site's or the project's connections in the database client. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role, unless the site, or the site and its previews, are made public; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
 **A project is a hub.** Its page has tabs: *Workspace* (the chat, the preview, the changes, the terminal, the files),
 *Repository* (pull requests, issues, branches, pipelines and releases of its repository, with the person's own account),
@@ -201,7 +201,7 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/chat-permission.png" alt="A permission card before php artisan migrate:fresh --seed, with Always allow, the preview of the branch on the right"><br><sub><strong>Approve what matters.</strong> Tests and builds run on their own; the rest asks once, or never again with <em>Always allow</em>. The preview on the right follows her branch.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/img/chat-changes.png" alt="The Changes tab: branch, modified files and the diff"><br><sub><strong>See the change.</strong> The Changes tab reads the working tree of the workspace: branch, files, diff.</sub></td>
+<td width="50%"><img src="docs/img/chat-changes.png" alt="The Git tab: branch, modified files and the diff"><br><sub><strong>See the change.</strong> The Git tab reads the working tree of the workspace: branch, files, diff.</sub></td>
 <td width="50%"><img src="docs/img/chat-plan.png" alt="A Plan only conversation with two subagent cards side by side"><br><sub><strong>Plan only, with subagents.</strong> Two subagents at once, each a card with its status, steps and report; the answer is a plan, nothing was changed.</sub></td>
 </tr>
 <tr>
@@ -259,6 +259,10 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/terminal.png" alt="The Terminal tab: shortcut buttons over a shell, where an artisan command asked for a password twice and added the user"><br><sub><strong>Terminal.</strong> A shell in the workspace on a real terminal: prompts and passwords work; shortcuts type the useful commands.</sub></td>
 <td width="50%"><img src="docs/img/files-menu.png" alt="The row menu of a folder in the Files tree: new file, new folder, uploads, rename, move, compress, delete"><br><sub><strong>Upload, move, zip.</strong> Files and whole folders upload by dropping them on the tree; rows move by dragging; zips are made and extracted in place.</sub></td>
 </tr>
+<tr>
+<td width="50%"><img src="docs/img/chat-doc.png" alt="The Doc tab: the project's README as a page, with its picture, a code block and a table"><br><sub><strong>Doc.</strong> The README of the repository as a page, its pictures from the workspace; the other Markdown files a click away.</sub></td>
+<td width="50%"><img src="docs/img/chat-db.png" alt="The Db tab on Remote: a project's database copy, read only, its tables and rows"><br><sub><strong>Db.</strong> The database client in the pane: your workspace's database, the project site's, or the project's connections, as your role allows.</sub></td>
+</tr>
 </table>
 
 **Tools**
@@ -271,6 +275,10 @@ shows the result on her own branch.
 <tr>
 <td width="50%"><img src="docs/img/database-data.png" alt="The SQL client: tables on the left, the rows of a table with filters, pages and export"><br><sub><strong>Rows.</strong> Tables and views on the left; rows sorted, filtered and paged, edited in place.</sub></td>
 <td width="50%"><img src="docs/img/database-sql.png" alt="The SQL editor with two statements run, saved queries and history on the side"><br><sub><strong>SQL.</strong> One result per statement; saved queries and history. Structure, new tables, import and export are the other tabs.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/ssh-files.png" alt="The SSH page with a session switched to Files: the server's home in a tree, README.md open in the editor"><br><sub><strong>SSH: Terminal ⇄ Files.</strong> A session turns into the file manager of its host, over SFTP with your own key or password; the shell comes back as it was.</sub></td>
+<td width="50%"><img src="docs/img/accounts-ssh.png" alt="Settings, Accounts, SSH keys: keys with their type and public half"><br><sub><strong>SSH keys.</strong> Ed25519 or RSA, generated here or imported; the public half and the command that adds it to the server.</sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/img/vault.png" alt="The password manager: a shared folder with its items"><br><sub><strong>Password manager.</strong> Nested folders, items encrypted, TOTP with live codes; a folder tied to a project opens by role.</sub></td>
@@ -337,7 +345,10 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | Per conversation: model, effort, mode (ask, ask with edits, autopilot, plan only) | done, tested |
 | Terminal tab: a shell in the workspace on a real terminal (the bridge's `src/terminal.py`), carried by the SSH gateway | done, tested end to end (gateway → bridge → shell) on a local machine; not yet run on a live server |
 | Files tab: workspace tree, Monaco editor (the editor of VS Code), save with conflict check, create/rename/move/delete, uploads of files and folders, download, zip and unzip | done, tested (`bridge/src/files.js` against real directories) |
-| Changes tab: working tree, history graph, branches with switch and fetch | done, tested (`bridge/src/git.js` against real repositories) |
+| Git tab (once Changes): working tree, history graph, branches with switch and fetch | done, tested (`bridge/src/git.js` against real repositories) |
+| Doc tab: the repository's README and top-level Markdown as pages (GitHub's flavour, raw HTML stripped), pictures from the workspace | done, tested with a fake bridge |
+| Db tab: the database client in the pane on the workspace's database (from its `.env`), the project site's (`studio-admin project-db`) or the project's Databases connections | done, tested (SQLite end to end, the helper with a stand-in); Local and Develop not yet run on a live server |
+| SSH page, Files: each session switches to the file manager of its host over SFTP (`app/Ssh/SftpFiles.php`), with uploads, moves, zips, download | done, tested against a local-disk SFTP double; not yet run against a live server |
 | MCP servers per project: remote servers added in the project settings, by role, header stored encrypted, connection test; each chat gets them from the next message | done, tested |
 | Project settings: scheduler and queues on every host by default, extra queues, Horizon, Reverb, Pulse; every project host behind the Studio login and the project assignment (a per-host pass) unless made public (the site, or the site and the previews; /larapilot never), narrowed by address lists per site, previews and branch | done in Studio and the helper, tested with stand-ins; the helper's services block exercised in a sandbox with systemctl stubbed; units, cron and Caddy `forward_auth` not yet run on a live server |
 | New project from scratch: repository created on the git provider, latest Laravel + Laravel Boost + Larapilot (with its forge integration on, and Boost's skills, guidelines and MCP server for Claude Code and Cursor) pushed by the server | done, tested with stand-ins for the provider and the helper |

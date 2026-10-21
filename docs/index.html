@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.6">v2.4.6</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.7">v2.4.7</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1895,13 +1895,15 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6</h3>
+        <h3>New in 2.4.6 and 2.4.7</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
           <dl><dt>Doc and Db in the right pane</dt><dd>The README as a page, and the database client on your workspace's
             database, the project site's or the project's connections. The tabs read <em>Doc, Preview, Git, Terminal,
             Files, Db</em>. See <a href="#work-panes">The right pane</a>.</dd></dl>
+          <dl><dt>Fewer switches, more room (2.4.7)</dt><dd>The terminal's <em>Remote</em> shows only on a project with SSH
+            connections, as Db's does with database connections; in a short pane the Db client scrolls to the last row.</dd></dl>
         </div>
 
         <h3>The team works in projects</h3>
@@ -3709,7 +3711,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           SSH connection tied to the project (the app's user on its Cipi server, a staging box) is a button, and opens a
           terminal through the SSH gateway, as on the <a href="#tools-ssh">SSH page</a>, with your own key or password and
           its host key checked. As there, your password is asked again first. The sessions stay open while you look at
-          the preview or the changes; those who may not use SSH see no switch.</p>
+          the preview or the changes. <em>Remote</em> shows only on a project with SSH connections tied to it, and only to
+          those who may use SSH.</p>
       </section>
 
 <!-- Work: agent -->

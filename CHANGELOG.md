@@ -4,6 +4,12 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.7
+
+- **The Db tab scrolls.** In a short pane, with the tables stacked over the rows, the database client was cut at the bottom and could not be scrolled: the last rows, the Structure tab and the editor's results were out of reach. The client now scrolls as a whole and what is open keeps room enough. *Tools → Databases* is unchanged.
+- **Remote shows only where there is something to open.** The terminal of the right pane offered *Remote (SSH)* on every project, with "No SSH connection tied to this project" behind it. It now shows only on a project with SSH connections tied to it, as the Db tab does with the project's database connections.
+- **Fresh screenshots.** The pictures of the site and of the README show the tabs as they are now (*Doc, Preview, Git, Terminal, Files, Db*), with the README, the database client and the SSH file manager among them.
+
 ## 2.4.6
 
 - **Files on the SSH page.** Each session switches between *Terminal* and *Files* (or *Browse files* in a connection's menu): the file manager of a project's Files tab, on the server. Tree, editor, uploads of files and folders, drag and drop, *Move to…*, zip and unzip, download. It starts in your home and the path bar goes anywhere else. It speaks SFTP with your own key or password, only to a host whose key was accepted in the terminal, and keeps where it was when you go back to the shell. Zip and unzip run on the server and need `zip` and `unzip` there.

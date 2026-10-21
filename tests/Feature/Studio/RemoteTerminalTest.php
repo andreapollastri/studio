@@ -40,6 +40,28 @@ test('the workspace terminal switches to the project\'s SSH hosts, after the pas
     Livewire::actingAs($dev)->test(SidePane::class, ['workspace' => $workspace])->call('open', $elsewhere->uuid)->assertNotFound();
 });
 
+test('Remote shows only on a project with SSH connections tied to it', function () {
+    $project = Project::factory()->create();
+    $dev = User::factory()->create();
+    $project->syncMembers([$dev->id => 'dev']);
+    $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $dev->id]);
+    SshConnection::factory()->create(['user_id' => $dev->id, 'name' => 'Personal box']);
+
+    Livewire::actingAs($dev)->test(SidePane::class, ['workspace' => $workspace])
+        ->call('setTab', 'terminal')
+        ->assertDontSee('Remote (SSH)')
+        ->call('setTerminalMode', 'remote')
+        ->assertSet('terminalMode', 'local');
+
+    SshConnection::factory()->create(['user_id' => $dev->id, 'project_id' => $project->id, 'name' => 'Shop web']);
+
+    Livewire::actingAs($dev)->test(SidePane::class, ['workspace' => $workspace])
+        ->call('setTab', 'terminal')
+        ->assertSee('Remote (SSH)')
+        ->call('setTerminalMode', 'remote')
+        ->assertSet('terminalMode', 'remote');
+});
+
 test('a client of the project has no remote terminal', function () {
     $project = Project::factory()->create();
     $client = User::factory()->create(['role' => 'client']);

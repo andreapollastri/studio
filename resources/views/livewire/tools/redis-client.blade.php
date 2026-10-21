@@ -6,7 +6,7 @@
 @endphp
 
 {{-- In the Db tab ($embedded) the layout follows the pane's width, not the window's. --}}
-<div @class(['flex flex-col gap-3', 'min-h-[36rem] lg:-m-2 lg:h-[calc(100dvh-4rem)]' => ! $embedded, '@container h-full p-3' => $embedded])>
+<div @class(['flex flex-col gap-3', 'min-h-[36rem] lg:-m-2 lg:h-[calc(100dvh-4rem)]' => ! $embedded, '@container h-full overflow-y-auto p-3' => $embedded])>
     @include('livewire.tools.partials.database.header')
 
     @if ($error)
@@ -16,7 +16,7 @@
         </flux:callout>
     @endif
 
-    <div @class(['flex min-h-0 flex-1 gap-3', 'max-lg:flex-col' => ! $embedded, 'flex-col @3xl:flex-row' => $embedded])>
+    <div @class(['flex flex-1 gap-3', 'min-h-0 max-lg:flex-col' => ! $embedded, 'flex-col @3xl:flex-row' => $embedded])>
         {{-- Databases and keys --}}
         <aside @class(['flex shrink-0 flex-col gap-2', 'lg:w-80 lg:min-h-0' => ! $embedded, '@3xl:w-64 @3xl:min-h-0' => $embedded])>
             <div class="flex items-center gap-1">
@@ -61,7 +61,8 @@
             <flux:text class="text-[11px]">{{ trans_choice(':count key shown|:count keys shown', count($keys), ['count' => number_format(count($keys))]) }}{{ $cursor !== '0' ? ' · '.__('more to load') : '' }}</flux:text>
         </aside>
 
-        <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+        {{-- in a short pane what is open keeps room enough, and the client scrolls --}}
+        <main @class(['flex min-w-0 flex-1 flex-col gap-2', 'min-h-0' => ! $embedded, 'min-h-[28rem]' => $embedded])>
             <div class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-700">
                 @foreach (['keys' => $key ? $key : __('Key'), 'console' => __('Console'), 'info' => __('Server'), 'transfers' => __('Import & export')] as $name => $label)
                     <button type="button" wire:click="setTab('{{ $name }}')" @class(['-mb-px max-w-72 shrink-0 cursor-pointer truncate border-b-2 px-3 py-2 text-sm', 'border-zinc-800 font-medium dark:border-white' => $tab === $name, 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $tab !== $name, 'font-mono' => $name === 'keys' && $key])>{{ $label }}</button>

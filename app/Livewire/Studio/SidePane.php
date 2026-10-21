@@ -24,6 +24,7 @@ use Livewire\Component;
 /**
  * @property-read array{path: ?string, html: ?string, error: ?string} $doc
  * @property-read Collection<int, DatabaseConnection> $remoteDatabases
+ * @property-read Collection<int, array{connection: SshConnection, ready: bool}> $remoteConnections
  */
 class SidePane extends Component
 {
@@ -863,10 +864,10 @@ class SidePane extends Component
         return ['ticket' => Gateway::issueSiteShell($this->workspace->project, auth()->user()), 'url' => Gateway::url()];
     }
 
-    /** SSH from the pane, as on the SSH page: who may use SSH at all. */
+    /** SSH from the pane, as on the SSH page: who may use SSH at all, on a project with SSH connections tied to it. */
     public function canUseRemote(): bool
     {
-        return $this->canUseTerminal() && auth()->user()->canUseSsh();
+        return $this->canUseTerminal() && auth()->user()->canUseSsh() && $this->remoteConnections->isNotEmpty();
     }
 
     /** The SSH page asks for the password again; so does the pane, for as long as the page would. */
