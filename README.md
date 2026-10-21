@@ -276,7 +276,7 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/database-sql.png" alt="The SQL editor with two statements run, saved queries and history on the side"><br><sub><strong>SQL.</strong> One result per statement; saved queries and history. Structure, new tables, import and export are the other tabs.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/img/ssh-files.png" alt="The SSH page with a session switched to Files: the server's home in a tree, README.md open in the editor"><br><sub><strong>SSH: Terminal ⇄ Files.</strong> A session turns into the file manager of its host, over SFTP with your own key or password; the shell comes back as it was.</sub></td>
+<td width="50%"><img src="docs/img/ssh-files.png" alt="The SSH page: connections in groups with a search and a chip per group; a session switched to Files, the server's home in a tree, README.md open in the editor"><br><sub><strong>SSH: Terminal ⇄ Files.</strong> A session turns into the file manager of its host, over SFTP with your own key or password; the shell comes back as it was.</sub></td>
 <td width="50%"><img src="docs/img/accounts-ssh.png" alt="Settings, Accounts, SSH keys: keys with their type and public half"><br><sub><strong>SSH keys.</strong> Ed25519 or RSA, generated here or imported; the public half and the command that adds it to the server.</sub></td>
 </tr>
 <tr>

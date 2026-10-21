@@ -52,6 +52,8 @@ function sshTerminals() {
         active: null,
         layout: 'tabs',
         filter: '',
+        // the group the list shows: '' all of them, a group's uuid, 'none' the connections in no group
+        group: '',
         ctrl: false,
 
         init() {
@@ -74,6 +76,12 @@ function sshTerminals() {
         matches(text) {
             const q = this.filter.trim().toLowerCase();
             return q === '' || text.includes(q);
+        },
+
+        /** A group of the list under the group filter ('' all, a group's uuid, 'none') and the search: shown with a row that matches, or empty while nothing is searched. */
+        section(texts, key) {
+            if (this.group !== '' && this.group !== key) return false;
+            return this.filter.trim() === '' || texts.some((text) => this.matches(text));
         },
 
         dot(session) {

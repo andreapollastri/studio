@@ -194,6 +194,18 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(DatabasePreference::class);
     }
 
+    /** @return HasMany<SshGroup, $this> */
+    public function sshGroups(): HasMany
+    {
+        return $this->hasMany(SshGroup::class)->orderBy('position')->orderBy('name');
+    }
+
+    /** @return HasMany<SshPreference, $this> */
+    public function sshPreferences(): HasMany
+    {
+        return $this->hasMany(SshPreference::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;

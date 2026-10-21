@@ -155,3 +155,10 @@ test('a person who may only read cannot import', function () {
 
     expect(DatabaseTransfer::query()->exists())->toBeFalse();
 });
+
+test('an import takes 512 MB, and so does Livewire\'s upload it goes through, the drive\'s and the file managers\' too', function () {
+    expect(config('studio.databases.max_import_mb'))->toBe(512)
+        ->and(config('studio.drive.max_upload_mb'))->toBe(512)
+        // the temporary upload checks first: below the import's limit, a large dump stopped there
+        ->and(config('livewire.temporary_file_upload.rules'))->toContain('max:'.(512 * 1024));
+});

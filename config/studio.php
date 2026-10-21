@@ -169,7 +169,7 @@ return [
         'row_limit' => (int) env('STUDIO_DB_ROW_LIMIT', 1000),
         // days an export stays to download
         'keep_exports_days' => (int) env('STUDIO_DB_KEEP_EXPORTS_DAYS', 7),
-        'max_import_mb' => (int) env('STUDIO_DB_MAX_IMPORT_MB', 100),
+        'max_import_mb' => (int) env('STUDIO_DB_MAX_IMPORT_MB', 512),
         // empty: found on the PATH (mariadb-dump before mysqldump, mariadb before mysql)
         'binaries' => [
             'mysqldump' => env('STUDIO_MYSQLDUMP'),
@@ -182,7 +182,7 @@ return [
 
     // The drive (Tools → Drive): files on the local disk under storage/app/private/drive.
     'drive' => [
-        'max_upload_mb' => (int) env('STUDIO_DRIVE_MAX_UPLOAD_MB', 100),
+        'max_upload_mb' => (int) env('STUDIO_DRIVE_MAX_UPLOAD_MB', 512),
     ],
 
     /*

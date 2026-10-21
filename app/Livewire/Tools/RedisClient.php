@@ -394,7 +394,7 @@ class RedisClient extends Component
             return;
         }
 
-        $this->validate(['importFile' => ['required', 'file', 'max:'.((int) config('studio.databases.max_import_mb', 100) * 1024)]]);
+        $this->validate(['importFile' => ['required', 'file', 'max:'.((int) config('studio.databases.max_import_mb', 512) * 1024)]]);
         $this->queueTransfer('import', 'json', ['database' => $this->db, 'replace' => $this->importReplace], $this->importFile);
         $this->reset(['importFile', 'importReplace']);
         Flux::toast(variant: 'success', text: __('Import started.'));

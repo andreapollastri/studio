@@ -883,7 +883,7 @@ class DatabaseClient extends Component
         $drive = $this->importDrive !== null ? $this->driveFiles(['sql', 'gz', 'csv', 'tsv', 'json'])->firstWhere('uuid', $this->importDrive) : null;
 
         $this->validate([
-            'importFile' => [$drive === null ? 'required' : 'nullable', 'file', 'max:'.((int) config('studio.databases.max_import_mb', 100) * 1024)],
+            'importFile' => [$drive === null ? 'required' : 'nullable', 'file', 'max:'.((int) config('studio.databases.max_import_mb', 512) * 1024)],
             'importFormat' => ['required', 'in:sql,csv,json'],
             'importTable' => [$this->importFormat === 'sql' ? 'nullable' : 'required', 'nullable', 'string'],
             'importDelimiter' => ['required', Rule::in(['auto', ',', ';', '\t', '|'])],

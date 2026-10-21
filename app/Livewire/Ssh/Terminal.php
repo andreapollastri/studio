@@ -8,7 +8,9 @@ use App\Livewire\Concerns\SearchesDirectory;
 use App\Models\Project;
 use App\Models\SshConnection;
 use App\Models\SshCredential;
+use App\Models\SshGroup;
 use App\Models\SshKey;
+use App\Models\SshPreference;
 use App\Models\User;
 use App\Ssh\Gateway;
 use Flux\Flux;
@@ -25,7 +27,8 @@ use Livewire\Component;
 
 /**
  * The SSH page: a person's saved hosts (favourites first), the hosts shared
- * with the projects they work on, their keys and the system keys shared with
+ * with the projects they work on, in groups of their own with colours (as the
+ * databases'), with a search and a group filter; their keys and the system keys shared with
  * them (managed in System) on the left; any number of terminals on the right,
  * each of which can turn into the file manager of its host (Files, over SFTP).
  * Livewire owns connections and keys; the terminals
@@ -63,6 +66,16 @@ class Terminal extends Component
     /** uuid of the project, or null: personal */
     public ?string $connection_project = null;
 
+    /** uuid of the person's group the connection sits in, or null */
+    public ?string $connection_group = null;
+
+    // ---- A group in its dialog
+    public ?string $groupEditing = null;
+
+    public string $group_name = '';
+
+    public string $group_color = 'zinc';
+
     /** The shared connection whose credential (of this person) the modal edits. */
     public ?string $credentialFor = null;
 
@@ -83,20 +96,21 @@ class Terminal extends Component
     }
 
     /**
-     * Own and shared connections, favourites (of this person) first.
+     * Own and shared connections, favourites (of this person) first, each with the group it sits in for them.
      *
-     * @return BaseCollection<int, array{connection: SshConnection, mine: bool, favorite: bool, credential: SshCredential|null, label: string|null}>
+     * @return BaseCollection<int, array{connection: SshConnection, mine: bool, favorite: bool, credential: SshCredential|null, label: string|null, group: SshGroup|null}>
      */
     #[Computed]
     public function connections(): BaseCollection
     {
         $user = auth()->user();
+        $preferences = $user->sshPreferences()->with('group')->get()->keyBy('ssh_connection_id');
 
         return SshConnection::query()
             ->visibleTo($user)
             ->with(['key', 'user', 'project', 'credentials' => fn ($q) => $q->where('user_id', $user->id)->with('key')])
             ->get()
-            ->map(function (SshConnection $connection) use ($user) {
+            ->map(function (SshConnection $connection) use ($user, $preferences) {
                 $mine = $connection->isOwnedBy($user);
                 $credential = $mine ? null : $connection->credentials->first();
 
@@ -106,6 +120,7 @@ class Terminal extends Component
                     'favorite' => $mine ? $connection->favorite : (bool) $credential?->favorite,
                     'credential' => $credential,
                     'label' => $connection->credentialLabel($user, $credential),
+                    'group' => $preferences->get($connection->id)?->group,
                 ];
             })
             ->sortBy([
@@ -114,6 +129,13 @@ class Terminal extends Component
                 fn (array $a, array $b) => $b['mine'] <=> $a['mine'],
             ])
             ->values();
+    }
+
+    /** @return Collection<int, SshGroup> this person's groups, in their order */
+    #[Computed]
+    public function groups(): Collection
+    {
+        return auth()->user()->sshGroups()->get();
     }
 
     /** @return Collection<int, SshKey> */
@@ -171,9 +193,10 @@ class Terminal extends Component
             ->map(fn (User $user) => ['user' => $user, 'role' => $project ? $user->roleIn($project) : $user->role, 'has_credential' => (bool) $credentials->get($user->id)?->isUsable()]);
     }
 
-    public function newConnection(): void
+    public function newConnection(?string $group = null): void
     {
-        $this->reset(['editing', 'connection_name', 'connection_host', 'connection_port', 'connection_username', 'connection_auth', 'connection_key', 'connection_password', 'connection_favorite', 'connection_project']);
+        $this->reset(['editing', 'connection_name', 'connection_host', 'connection_port', 'connection_username', 'connection_auth', 'connection_key', 'connection_password', 'connection_favorite', 'connection_project', 'connection_group']);
+        $this->connection_group = $group !== null && $this->groups()->firstWhere('uuid', $group) ? $group : null;
         $keys = $this->usableKeys(null);
         $this->connection_key = $keys->first()?->uuid;
         $this->connection_auth = $keys->isEmpty() ? 'password' : 'key';
@@ -197,6 +220,7 @@ class Terminal extends Component
         $this->connection_password = '';
         $this->connection_favorite = $connection->favorite;
         $this->connection_project = $connection->project?->uuid;
+        $this->connection_group = $this->preference($connection)?->group?->uuid;
         $this->resetValidation();
         unset($this->audience);
 
@@ -225,6 +249,7 @@ class Terminal extends Component
             'connection_key' => ['required_if:connection_auth,key', 'nullable', 'string', $this->usableKeyRule($projectId)],
             'connection_password' => [$this->connection_auth === 'password' && ! filled($existing?->password) ? 'required' : 'nullable', 'string', 'max:500'],
             'connection_favorite' => ['boolean'],
+            'connection_group' => ['nullable', Rule::in($this->groups()->pluck('uuid')->all())],
             'connection_project' => ['nullable', 'string', function (string $attribute, mixed $value, \Closure $fail) use ($user): void {
                 if ($value !== null && ! $user->accessibleProjects()->where('uuid', $value)->exists()) {
                     $fail(__('Choose one of your projects.'));
@@ -260,8 +285,9 @@ class Terminal extends Component
             }
             $existing->update($attributes);
         } else {
-            $user->sshConnections()->create($attributes);
+            $existing = $user->sshConnections()->create($attributes);
         }
+        $this->placeIn($existing, $validated['connection_group'] ?? null);
 
         unset($this->connections);
         Flux::modal('ssh-connection')->close();
@@ -290,6 +316,102 @@ class Terminal extends Component
         }
 
         unset($this->connections);
+    }
+
+    /* ------------------------------------------------------------------ groups */
+
+    /** Groups are each person's own: a shared connection goes in a group of theirs as well. */
+    public function moveToGroup(string $id, string $group = ''): void
+    {
+        $this->placeIn($this->visibleConnection($id), $group !== '' ? $group : null);
+        unset($this->connections);
+    }
+
+    public function newGroup(): void
+    {
+        $this->reset(['groupEditing', 'group_name']);
+        $this->group_color = SshGroup::COLORS[$this->groups()->count() % count(SshGroup::COLORS)];
+        $this->resetValidation();
+
+        Flux::modal('ssh-group')->show();
+    }
+
+    public function editGroup(string $id): void
+    {
+        $group = $this->ownGroup($id);
+        $this->groupEditing = $group->uuid;
+        $this->group_name = $group->name;
+        $this->group_color = $group->color;
+        $this->resetValidation();
+
+        Flux::modal('ssh-group')->show();
+    }
+
+    public function saveGroup(): void
+    {
+        $user = auth()->user();
+        $group = $this->groupEditing ? $this->ownGroup($this->groupEditing) : null;
+
+        $this->validate([
+            'group_name' => ['required', 'string', 'max:60', Rule::unique('ssh_groups', 'name')->where('user_id', $user->id)->ignore($group?->id)],
+            'group_color' => ['required', Rule::in(SshGroup::COLORS)],
+        ]);
+
+        if ($group) {
+            $group->update(['name' => trim($this->group_name), 'color' => $this->group_color]);
+        } else {
+            $user->sshGroups()->create(['name' => trim($this->group_name), 'color' => $this->group_color, 'position' => (int) $user->sshGroups()->max('position') + 1]);
+        }
+
+        unset($this->groups, $this->connections);
+        Flux::modal('ssh-group')->close();
+        Flux::toast(variant: 'success', text: __('Group saved.'));
+    }
+
+    public function deleteGroup(string $id): void
+    {
+        $group = $this->ownGroup($id);
+        $group->delete();
+        unset($this->groups, $this->connections);
+
+        Flux::toast(text: __('Group :group deleted: its connections are back in the list.', ['group' => $group->name]));
+    }
+
+    public function moveGroup(string $id, int $step): void
+    {
+        $groups = $this->groups()->values();
+        $index = $groups->search(fn (SshGroup $g) => $g->uuid === $id);
+
+        if ($index === false || ! $groups->has($index + $step)) {
+            return;
+        }
+
+        $order = $groups->all();
+        [$order[$index], $order[$index + $step]] = [$order[$index + $step], $order[$index]];
+
+        foreach (array_values($order) as $position => $group) {
+            $group->forceFill(['position' => $position + 1])->save();
+        }
+
+        unset($this->groups);
+    }
+
+    private function placeIn(SshConnection $connection, ?string $group): void
+    {
+        SshPreference::query()->updateOrCreate(
+            ['user_id' => auth()->id(), 'ssh_connection_id' => $connection->id],
+            ['ssh_group_id' => $group !== null ? $this->groups()->firstWhere('uuid', $group)?->id : null],
+        );
+    }
+
+    private function preference(SshConnection $connection): ?SshPreference
+    {
+        return SshPreference::query()->with('group')->where('user_id', auth()->id())->where('ssh_connection_id', $connection->id)->first();
+    }
+
+    private function ownGroup(string $id): SshGroup
+    {
+        return auth()->user()->sshGroups()->where('uuid', $id)->firstOrFail();
     }
 
     public function forgetHostKey(string $id): void

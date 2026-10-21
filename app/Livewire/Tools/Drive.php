@@ -158,7 +158,7 @@ class Drive extends Component
     {
         $here = $this->here();
         abort_unless($this->access()->canWrite($here), 403);
-        $this->validate(['uploads.*' => ['file', 'max:'.((int) config('studio.drive.max_upload_mb', 100) * 1024)]]);
+        $this->validate(['uploads.*' => ['file', 'max:'.((int) config('studio.drive.max_upload_mb', 512) * 1024)]]);
 
         foreach ($this->uploads as $upload) {
             $name = $this->freeName(Str::limit(str_replace(['/', '\\'], '-', $upload->getClientOriginalName()), 190, ''), $here);
@@ -422,7 +422,7 @@ class Drive extends Component
             'sharingFolder' => $sharingFolder,
             'audience' => $sharingFolder !== null ? $access->audience($sharingFolder->id) : collect(),
             'targets' => $access->writableFolders()->except($excluded)->mapWithKeys(fn (string $path, int $id) => [(string) $access->folder($id)?->uuid => $path]),
-            'maxUploadMb' => (int) config('studio.drive.max_upload_mb', 100),
+            'maxUploadMb' => (int) config('studio.drive.max_upload_mb', 512),
             'manageable' => $this->folders()->filter(fn (DriveFolder $f) => $access->canManage($f->id))->pluck('uuid')->all(),
             'writable' => $this->folders()->filter(fn (DriveFolder $f) => $access->canWrite($f->id))->pluck('uuid')->all(),
         ]);

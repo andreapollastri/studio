@@ -6,7 +6,8 @@
  * tree dragged onto a folder moves there.
  */
 const ROW = 'application/x-studio-path';
-// One batch per request: below PHP's post_max_size (260 MB on a Studio server) and few files at a time.
+// One batch per request: below PHP's post_max_size (520 MB on a Studio server) and few files at a time;
+// a file larger than a batch goes alone.
 const BATCH_BYTES = 200 * 1024 * 1024;
 const BATCH_FILES = 50;
 

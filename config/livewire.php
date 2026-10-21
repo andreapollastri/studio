@@ -130,8 +130,8 @@ return [
 
     'temporary_file_upload' => [
         'disk' => env('LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK'), // Example: 'local', 's3'             | Default: 'default'
-        // The drive's uploads go through here: as large as the drive allows.
-        'rules' => ['required', 'file', 'max:'.((int) env('STUDIO_DRIVE_MAX_UPLOAD_MB', 100) * 1024)],
+        // The drive's uploads, the file managers' and the databases' imports go through here: as large as the largest of them.
+        'rules' => ['required', 'file', 'max:'.(max((int) env('STUDIO_DRIVE_MAX_UPLOAD_MB', 512), (int) env('STUDIO_DB_MAX_IMPORT_MB', 512)) * 1024)],
         'directory' => null,                                  // Example: 'tmp'                     | Default: 'livewire-tmp'
         'middleware' => null,                                 // Example: 'throttle:5,1'            | Default: 'throttle:60,1'
         'preview_mimes' => [                                  // Supported file types for temporary pre-signed file URLs...

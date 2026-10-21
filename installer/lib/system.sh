@@ -752,9 +752,11 @@ EOF
     for v in /etc/php/*/fpm/pool.d/studio.conf; do [ -f "$v" ] && [ "$v" != "/etc/php/${php}/fpm/pool.d/studio.conf" ] && rm -f "$v"; done
     render_tpl "$rel/installer/templates/fpm-pool.conf.tpl" "/etc/php/${php}/fpm/pool.d/studio.conf" \
         NAME=studio USER=studio GROUP=studio MAX=12 LOG=/var/lib/studio/php.log
-    # The drive takes files up to STUDIO_DRIVE_MAX_UPLOAD_MB (100 MB by default) through Livewire;
+    # Uploads (the drive, the file managers, the databases' imports) take files up to 512 MB through
+    # Livewire (STUDIO_DRIVE_MAX_UPLOAD_MB, STUDIO_DB_MAX_IMPORT_MB), streamed to disk, never held in
+    # memory; reading one may take as long as Livewire lets an upload last (30 minutes);
     # no X-Powered-By header saying which PHP this is.
-    printf 'php_admin_value[upload_max_filesize] = 256M\nphp_admin_value[post_max_size] = 260M\nphp_admin_value[max_execution_time] = 600\nphp_admin_flag[expose_php] = off\n' \
+    printf 'php_admin_value[upload_max_filesize] = 512M\nphp_admin_value[post_max_size] = 520M\nphp_admin_value[max_input_time] = 1800\nphp_admin_value[max_execution_time] = 600\nphp_admin_flag[expose_php] = off\n' \
         >> "/etc/php/${php}/fpm/pool.d/studio.conf"
 
     for unit in studio-queue studio-backups studio-databases studio-reverb studio-scheduler; do

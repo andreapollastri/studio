@@ -16,7 +16,7 @@
     <div class="studio-files flex min-h-0 w-full flex-1">
         <aside
             x-show="tree"
-            x-data="studioFileDrop({{ $this::MAX_UPLOAD_FILES }}, {{ (int) config('studio.drive.max_upload_mb', 100) }})"
+            x-data="studioFileDrop({{ $this::MAX_UPLOAD_FILES }}, {{ (int) config('studio.drive.max_upload_mb', 512) }})"
             class="studio-files-tree flex {{ $treeWidth ?? 'w-44' }} shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-700"
         >
             <div class="flex items-center gap-0.5 border-b border-zinc-200 px-2 py-1 dark:border-zinc-700">

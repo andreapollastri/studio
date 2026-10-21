@@ -303,6 +303,72 @@ test('stars on a shared connection are personal, and the same name may come from
         ->and($adaWeb->credentials()->where('user_id', $bob->id)->value('favorite'))->toBeTrue();
 });
 
+test('groups are each person\'s own: a connection, shared ones too, goes in one from its menu or its form', function () {
+    $project = Project::factory()->create();
+    [$ada, $bob] = User::factory()->count(2)->create();
+    $project->members()->attach([$ada->id, $bob->id]);
+    $web = SshConnection::factory()->create(['user_id' => $ada->id, 'project_id' => $project->id, 'name' => 'web']);
+    $db = SshConnection::factory()->create(['user_id' => $ada->id, 'name' => 'db']);
+
+    Livewire::actingAs($ada)->test(Terminal::class)
+        ->call('newGroup')->set('group_name', 'Live')->set('group_color', 'red')->call('saveGroup')->assertHasNoErrors()
+        ->call('newGroup')->set('group_name', 'Customers')->call('saveGroup')->assertHasNoErrors()
+        ->call('newGroup')->set('group_name', 'Live')->call('saveGroup')->assertHasErrors(['group_name' => 'unique']);
+    [$production, $clients] = [$ada->sshGroups()->where('name', 'Live')->sole(), $ada->sshGroups()->where('name', 'Customers')->sole()];
+
+    // from the menu, and from the form: a new connection "here" starts in that group
+    Livewire::actingAs($ada)->test(Terminal::class)
+        ->call('moveToGroup', $web->uuid, $production->uuid)
+        ->call('newConnection', $clients->uuid)
+        ->assertSet('connection_group', $clients->uuid)
+        ->set('connection_name', 'shop')->set('connection_host', 'shop.example.com')->set('connection_username', 'deploy')
+        ->set('connection_auth', 'password')->set('connection_password', 'x')
+        ->call('saveConnection')->assertHasNoErrors()
+        ->call('editConnection', $web->uuid)
+        ->assertSet('connection_group', $production->uuid);
+
+    $shop = $ada->sshConnections()->where('name', 'shop')->sole();
+    $in = fn (User $user, SshConnection $connection) => $user->sshPreferences()->where('ssh_connection_id', $connection->id)->first()?->group?->name;
+    expect($in($ada, $web))->toBe('Live')->and($in($ada, $shop))->toBe('Customers')->and($in($ada, $db))->toBeNull();
+
+    // the page: groups in their order with their connections, then the ones in none, and a chip for each
+    Livewire::actingAs($ada)->test(Terminal::class)
+        ->assertSeeInOrder(['Live', 'web', 'Customers', 'shop', 'No group', 'db'])
+        ->assertSeeHtml("group = group === '{$production->uuid}' ? '' : '{$production->uuid}'")
+        ->assertSeeHtml("'{$production->uuid}')")
+        ->call('moveGroup', $clients->uuid, -1)
+        ->assertSeeInOrder(['Customers', 'shop', 'Live', 'web']);
+
+    // Bob sees Ada's shared web, outside any group of his; Ada's groups are not his to use
+    Livewire::actingAs($bob)->test(Terminal::class)
+        ->assertDontSee('Live')
+        ->call('moveToGroup', $web->uuid, $production->uuid);
+    expect($in($bob, $web))->toBeNull()
+        ->and($in($ada, $web))->toBe('Live');
+
+    Livewire::actingAs($bob)->test(Terminal::class)
+        ->call('newGroup')->set('group_name', 'Mine')->call('saveGroup')
+        ->call('moveToGroup', $web->uuid, $bob->sshGroups()->sole()->uuid);
+    expect($in($bob, $web))->toBe('Mine')->and($in($ada, $web))->toBe('Live');
+
+    // nor to edit
+    Livewire::actingAs($bob)->test(Terminal::class)->call('editGroup', $production->uuid)->assertNotFound();
+});
+
+test('a deleted group leaves its connections in no group', function () {
+    $ada = User::factory()->create();
+    $web = SshConnection::factory()->create(['user_id' => $ada->id, 'name' => 'web']);
+    $group = $ada->sshGroups()->create(['name' => 'Live', 'color' => 'red', 'position' => 1]);
+
+    Livewire::actingAs($ada)->test(Terminal::class)
+        ->call('moveToGroup', $web->uuid, $group->uuid)
+        ->call('deleteGroup', $group->uuid)
+        ->assertDontSee('Live');
+
+    expect(SshConnection::query()->whereKey($web->id)->exists())->toBeTrue()
+        ->and($ada->sshPreferences()->where('ssh_connection_id', $web->id)->value('ssh_group_id'))->toBeNull();
+});
+
 test('the project picker offers the person\'s projects and the form lists who will see the connection', function () {
     $owner = User::factory()->create();
     $project = Project::factory()->create(['name' => 'Shop']);

@@ -345,7 +345,7 @@ trait ManagesFiles
     /** A batch arrived on Studio: each file goes on to the store; one already there waits for "Replace". */
     public function updatedUploads(): void
     {
-        $this->validate(['uploads.*' => ['file', 'max:'.((int) config('studio.drive.max_upload_mb', 100) * 1024)]]);
+        $this->validate(['uploads.*' => ['file', 'max:'.((int) config('studio.drive.max_upload_mb', 512) * 1024)]]);
 
         $store = $this->files();
         $sent = 0;

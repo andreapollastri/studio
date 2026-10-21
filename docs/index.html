@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.13">v2.4.13</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.14">v2.4.14</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1896,7 +1896,7 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6 to 2.4.13</h3>
+        <h3>New in 2.4.6 to 2.4.14</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -1924,6 +1924,12 @@
           <dl><dt>Subscriptions on sury.org's PHP (2.4.13)</dt><dd>Adding or removing a Claude or Cursor subscription works
             again: PHP-FPM's own sandbox kept Studio's root helper from writing in <code>/etc</code>. A subscription the
             server cannot sign out now stays, with the reason, instead of an error page.</dd></dl>
+          <dl><dt>Uploads up to 512 MB (2.4.14)</dt><dd>The drive, the file managers and the imports of
+            <em>Databases</em> take files up to 512 MB: an SQL dump of that size imports from your computer or your
+            drive. See <a href="#tools-databases">Databases</a>.</dd></dl>
+          <dl><dt>SSH groups (2.4.14)</dt><dd>The SSH page's connections go in groups of your own with a colour, as the
+            databases', with a chip per group to show it alone and a search by name, host, project or group. See
+            <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
         </div>
 
         <h3>The team works in projects</h3>
@@ -3649,7 +3655,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             after a confirmation.</dd></dl>
           <dl><dt>Upload</dt><dd>The arrow at the top of the tree uploads files or a whole folder, which keeps its tree;
             so does dropping them from the computer onto the tree or onto a folder. Up to
-            <code>STUDIO_DRIVE_MAX_UPLOAD_MB</code> (100) a file and a thousand files at a time: for more, upload a zip and
+            <code>STUDIO_DRIVE_MAX_UPLOAD_MB</code> (512 MB) a file and a thousand files at a time: for more, upload a zip and
             extract it. A file that is already there is not replaced until you say so.</dd></dl>
           <dl><dt>Move</dt><dd>Drag a row onto a folder, or onto the empty part of the tree for the top; or <em>Move
             to…</em> in its menu, and pick the folder. Open editor tabs follow the file.</dd></dl>
@@ -3905,6 +3911,10 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="walkthrough-grid">
           <dl><dt>Connections</dt><dd>Host, port, user and a key or a password, saved per person; favourites stay on top. A
             click opens a terminal; open as many as you like, in tabs or all side by side.</dd></dl>
+          <dl><dt>Groups, search</dt><dd>Put connections in groups of your own, with a colour (Clients, Agency…), as in
+            <a href="#tools-databases">Databases</a>: from <em>Move to group</em> in a connection's menu, or in its form; the
+            connections shared with you go in your groups too, and nobody else sees how you sorted them. A chip per group
+            shows that group alone, or the connections in none; the search finds a name, a host, a project or a group.</dd></dl>
           <dl><dt>Keys</dt><dd>Generate Ed25519 or RSA 4096, or import yours (OpenSSH, PEM, PuTTY, with its passphrase, which is
             not kept). The page shows the public key and the command that adds it to <code>authorized_keys</code>. The same keys
             are in <a href="#setup-ssh-keys">Settings → Accounts → SSH keys</a>.</dd></dl>
@@ -3920,9 +3930,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             shared.</dd></dl>
         </div>
         <figure class="shot">
-          <img src="img/ssh-files.png" alt="The SSH page with a session switched to Files: the server's home in a tree, README.md open in the editor, the path bar above" loading="lazy" width="2880" height="2000" />
-          <figcaption><strong>SSH → Files.</strong> A session on a server turned into its file manager; <em>Terminal</em>
-            brings the shell back, as it was.</figcaption>
+          <img src="img/ssh-files.png" alt="The SSH page: connections in the groups Clients and Agency and one in no group, a search and a chip per group; a session switched to Files, the server's home in a tree, README.md open in the editor" loading="lazy" width="2880" height="2000" />
+          <figcaption><strong>SSH → Files.</strong> The connections in their groups, with the search and a chip per group;
+            a session on a server turned into its file manager; <em>Terminal</em> brings the shell back, as it was.</figcaption>
         </figure>
         <p>The file manager speaks SFTP from Studio's server with your own key or password, only to a host whose key was
           accepted in the terminal; zip and unzip run on the server and need <code>zip</code> and <code>unzip</code> there.
@@ -4024,7 +4034,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
                 CREATE, gzip; with <code>mariadb-dump</code>/<code>mysqldump</code>, <code>pg_dump</code> or
                 <code>sqlite3 .dump</code> when they are there (else Studio writes it: portable INSERTs)</td><td>a
                 <code>.sql</code> or <code>.sql.gz</code> run with <code>mariadb</code>, <code>psql</code> or the host's
-                <code>sqlite3</code> (else statement by statement), stopping at the first error or going on</td></tr>
+                <code>sqlite3</code> (else statement by statement), stopping at the first error or going on; up to
+                <code>STUDIO_DB_MAX_IMPORT_MB</code> (512 MB), from your computer or your drive</td></tr>
               <tr><td><strong>CSV / JSON</strong></td><td>tables (a zip of files when there are several) or the rows of
                 a query</td><td>rows into a table, columns matched by name, empty values as NULL, the table emptied first if
                 you like</td></tr>
@@ -4098,7 +4109,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </div>
         <ul>
           <li><strong>Files</strong>: upload with the button or by dropping them on the page, up to
-            <code>STUDIO_DRIVE_MAX_UPLOAD_MB</code> (100) each; rename, move, remove, download; images and PDFs open in the
+            <code>STUDIO_DRIVE_MAX_UPLOAD_MB</code> (512 MB) each; rename, move, remove, download; images and PDFs open in the
             browser.</li>
           <li><strong>Access</strong>: tie a folder to a project and choose, for its clients, PMs and developers (their role on
             that project), no access, view, or view and edit. It applies to everything inside, down to a folder tied to another project, and the folder shows in the project's <a href="#work-access">Access</a> tab. The owner of a top

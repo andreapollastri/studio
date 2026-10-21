@@ -33,7 +33,9 @@ use App\Models\ProjectMcpServer;
 use App\Models\ProjectPreference;
 use App\Models\ProjectResource;
 use App\Models\SshConnection;
+use App\Models\SshGroup;
 use App\Models\SshKey;
+use App\Models\SshPreference;
 use App\Models\User;
 use App\Models\VaultFolder;
 use App\Models\VaultItem;
@@ -440,6 +442,23 @@ class DemoSeeder extends Seeder
         SshConnection::query()->updateOrCreate(['user_id' => $andrea->id, 'project_id' => $shop->id, 'name' => 'Shop Acme · Cipi'], [
             'host' => '203.0.113.9', 'port' => 22, 'username' => 'shopacme', 'auth' => 'password', 'password' => 'demo', 'host_key' => 'SHA256:'.str_repeat('q', 43),
         ]);
+        // the SSH page in Andrea's groups: clients' servers, the agency's own, and one in none
+        $sshGroups = collect([['Clients', 'sky'], ['Agency', 'emerald']])->mapWithKeys(fn (array $g, int $i) => [$g[0] => SshGroup::query()->updateOrCreate(
+            ['user_id' => $andrea->id, 'name' => $g[0]], ['color' => $g[1], 'position' => $i + 1],
+        )]);
+        foreach ([
+            ['Shop Acme · Cipi', null, null, 'Clients'],
+            ['Blog Rossi · staging', 'staging.blog-rossi.test', 'deploy', 'Clients'],
+            ['web1 · root', '203.0.113.9', 'root', 'Agency'],
+            ['ci runner', '203.0.113.21', 'ubuntu', 'Agency'],
+            ['old vps', '198.51.100.7', 'andrea', null],
+        ] as [$name, $host, $username, $group]) {
+            $connection = $host === null
+                ? SshConnection::query()->where('user_id', $andrea->id)->where('name', $name)->sole()
+                : SshConnection::query()->updateOrCreate(['user_id' => $andrea->id, 'name' => $name], ['host' => $host, 'port' => 22, 'username' => $username, 'auth' => 'password', 'password' => 'demo']);
+            SshPreference::query()->updateOrCreate(['user_id' => $andrea->id, 'ssh_connection_id' => $connection->id], ['ssh_group_id' => $group ? $sshGroups[$group]->id : null]);
+        }
+
         $key = SshKey::query()->updateOrCreate(['user_id' => null, 'name' => 'backups'], Keys::generate('ed25519', 'studio@dev.agency.test'));
         $shop->sshKeys()->syncWithoutDetaching([$key->id => ['developers' => false]]);
 
