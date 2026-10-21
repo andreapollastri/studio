@@ -225,12 +225,13 @@ ok "Ubuntu 26.04 gets every PHP from sury.org; Ubuntu's archive only where neith
 # add_php: one of the release's versions, from php_source's repository; the forms then offer it
 php_source() { PHP_SOURCE=packages.sury.org; }
 apt-cache() { [ "$2" != php8.2-fpm ]; }
-ensure_php_version() { echo "ensure $1" >> "$T/php/log"; echo "$1.0" > "$T/php/$1"; }
-ensure_php_fixed() { echo "fixed $1" >> "$T/php/log"; }
+# the new PHP arrives before the fixes (8.4.26); the real ensure_php_fixed takes it to 8.4.27
+ensure_php_version() { echo "ensure $1" >> "$T/php/log"; fake_php "$1" "$1.26" "$1.26-1+ubuntu24.04.1" "$1.27" "$1.27-1+ubuntu24.04.1"; }
 STUDIO_HOME=$T/studio; mkdir -p "$STUDIO_HOME/shared"; printf 'STUDIO_PHP_VERSIONS=8.5\n' > "$STUDIO_HOME/shared/.env"
 PHP_VERSIONS="8.5"; PHP_OPTIONAL="8.2 8.3 8.4"; rm -f "$T/php/8.4"; : > "$T/php/log"
 FAKE_PHP_VERSIONS=8.4,8.5 add_php 8.4 >/dev/null 2>&1 || fail "add_php 8.4 failed"
-[ "$(cat "$T/php/log")" = "$(printf 'ensure 8.4\nfixed 8.4')" ] || fail "add_php: $(cat "$T/php/log")"
+[ "$(cat "$T/php/log")" = "$(printf 'ensure 8.4\napt install --only-upgrade php8.4-cli php8.4-fpm\nsystemctl restart php8.4-fpm\nneedrestart')" ] || fail "add_php: $(cat "$T/php/log")"
+[ "$(php_patch_level 8.4)" = 8.4.27 ] || fail "add_php left PHP 8.4 at $(php_patch_level 8.4)"
 [ "$(env_get "$STUDIO_HOME/shared/.env" STUDIO_PHP_VERSIONS)" = 8.4,8.5 ] || fail "the forms' list: $(cat "$STUDIO_HOME/shared/.env")"
 : > "$T/php/log"
 if add_php 7.4 >/dev/null 2>&1; then fail "add_php took a version the release does not offer"; fi
