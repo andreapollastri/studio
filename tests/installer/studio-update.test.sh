@@ -109,6 +109,8 @@ AUTO_UPDATE=1
 UPDATE_CHANNEL=stable
 EOF
 printf 'DB_CONNECTION=mysql\nDB_DATABASE=studio\n' > "$SANDBOX/opt/studio/shared/.env"
+# the server's PHP is the stub's, whatever PHP the machine running the tests has in /usr/bin
+mkdir -p "$SANDBOX/usr/bin" && ln -s "$STUBS/php8.4" "$SANDBOX/usr/bin/php8.4"
 git clone -q --branch v1.0.0 "file://$REMOTE" "$SANDBOX/opt/studio/releases/v1.0.0" 2>/dev/null
 git -C "$SANDBOX/opt/studio/releases/v1.0.0" rev-parse HEAD > "$SANDBOX/opt/studio/releases/v1.0.0/.studio-commit"
 rm -rf "$SANDBOX/opt/studio/releases/v1.0.0/.git"
