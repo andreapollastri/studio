@@ -198,7 +198,7 @@ artisan() { local rel=$1 php=$2; shift 2; as_studio "php$php" "$rel/artisan" "$@
 
 php_of() { # the PHP a release runs Studio on: its choice when installed, otherwise the newest PHP here
     (
-        STUDIO_PHP=8.4
+        STUDIO_PHP=8.5
         # shellcheck disable=SC1091
         [ -f "$1/installer/requirements.env" ] && . "$1/installer/requirements.env"
         if [ ! -x "/usr/bin/php$STUDIO_PHP" ]; then

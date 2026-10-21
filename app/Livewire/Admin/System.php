@@ -6,6 +6,7 @@ use App\Livewire\Concerns\CreatesSshKeys;
 use App\Models\Project;
 use App\Models\SshKey;
 use App\Server\DashboardVisibility;
+use App\Server\PhpVersions;
 use App\Server\SecurityPolicy;
 use App\Server\ServerException;
 use App\Server\Updates;
@@ -120,6 +121,17 @@ class System extends Component
             $updates->startSystem();
             $this->dispatch('system-update-started');
             Flux::toast(variant: 'success', text: __('The server update started. Studio\'s services restart for a moment when it ends.'));
+        });
+    }
+
+    /** One of the release's optional PHP versions (8.3, 8.4) onto the server, on the queue. */
+    public function installPhp(string $version): void
+    {
+        $updates = app(Updates::class);
+
+        $this->guard($updates, function () use ($version) {
+            app(PhpVersions::class)->install($version);
+            Flux::toast(variant: 'success', text: __('Installing PHP :version: a few minutes. The project forms offer it once it is done.', ['version' => $version]));
         });
     }
 
@@ -296,6 +308,7 @@ class System extends Component
             'waiting' => $updates->waiting(),
             'releaseUrl' => fn (string $tag) => $updates->releaseUrl($tag),
             'projectCount' => Project::query()->count(),
+            'php' => app(PhpVersions::class),
             'domain' => (string) config('studio.domain'),
             'hidden' => $visibility->hidden(),
             'doorUrl' => $visibility->hidden() ? $visibility->doorUrl() : null,

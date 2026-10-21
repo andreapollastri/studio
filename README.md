@@ -15,7 +15,7 @@ laptop but a browser.
 <img src="docs/img/chat-permission.png" alt="A permission card asking to run php artisan migrate:fresh --seed, with Allow, Always allow and Deny, the preview of the branch on the right" width="100%">
 </p>
 
-**Version 2.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.3/8.4/8.5 · MariaDB and PostgreSQL.
+**Version 2.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.5 (8.4, 8.3 on request) · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
 (Netlify publishes the `docs/` folder as it is, see `netlify.toml`).
@@ -26,8 +26,7 @@ laptop but a browser.
 wget -qO- https://raw.githubusercontent.com/andreapollastri/studio/refs/heads/main/installer/install.sh | sudo bash
 ```
 
-Ubuntu 24.04 or 26.04 LTS (on 26.04, until `ppa:ondrej/php` serves it, PHP comes from Ubuntu's archive:
-8.5 only). apt's output goes to `/var/log/studio-install.log`; an installation that stopped halfway starts
+Ubuntu 24.04 or 26.04 LTS (PHP 8.5 from `packages.sury.org` on both; 8.4 and 8.3 from *Administration → System* when a project needs them). apt's output goes to `/var/log/studio-install.log`; an installation that stopped halfway starts
 again from the questions when the script is run again. The wizard asks for the domain, shows the one DNS record to create
 (`*.<domain>` → the server), checks it, asks for the first administrator (name and email: the password is
 generated and shown, in a yellow box to save, in the summary and at the end), the git provider and the
@@ -306,7 +305,7 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/infra-attach.png" alt="The Attach to a project dialog: project, name, who sees it, who acts on it, the actions"><br><sub><strong>Attach to a project.</strong> Which roles see the row, which act on it, and which of its actions they may run.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/img/admin-system.png" alt="Administration, System: installed and newest release, update buttons, nightly switch, channel, last log"><br><sub><strong>System.</strong> The installed build and the newest one, the nightly switch, the channel, the last run with its log, the git hosts.</sub></td>
+<td width="50%"><img src="docs/img/admin-system.png" alt="Administration, System: installed and newest release, update buttons, nightly switch, channel, last log, the server's PHP versions"><br><sub><strong>System.</strong> The installed build and the newest one, the nightly switch, the channel, the last run with its log, the git hosts.</sub></td>
 <td width="50%"><img src="docs/img/admin-domains.png" alt="Administration, Domains: a verified domain used by a project, one waiting for its DNS"><br><sub><strong>Domains.</strong> The records to create, what the DNS answered, the projects that use each domain.</sub></td>
 </tr>
 </table>

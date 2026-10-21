@@ -82,11 +82,11 @@ install_file() {
 }
 
 load_requirements() { # load_requirements RELEASE_DIR
-    STUDIO_PHP=8.4; PHP_VERSIONS="8.3 8.4 8.5"; PHP_FIXED=""; NODE_MAJOR=22
+    STUDIO_PHP=8.5; PHP_VERSIONS="8.5"; PHP_OPTIONAL=""; PHP_FIXED=""; NODE_MAJOR=22
     # shellcheck disable=SC1091
     [ -f "$1/installer/requirements.env" ] && . "$1/installer/requirements.env"
     resolve_studio_php
-    export STUDIO_PHP PHP_VERSIONS PHP_FIXED NODE_MAJOR
+    export STUDIO_PHP PHP_VERSIONS PHP_OPTIONAL PHP_FIXED NODE_MAJOR
 }
 
 # The PHP that runs Studio: the release's choice when it is installed, otherwise the
@@ -118,31 +118,96 @@ ensure_caddy() {
     apt_ensure caddy
 }
 
-# ppa:ondrej/php, when it publishes packages for this Ubuntu release
+APT_SOURCES=${APT_SOURCES:-/etc/apt/sources.list.d}
+SURY_KEYRING=${SURY_KEYRING:-/usr/share/keyrings/debsuryorg-archive-keyring.gpg}
+
+# packages.sury.org and ppa:ondrej/php, when they publish packages for this Ubuntu release
+sury_available() {
+    curl -fsI --max-time 15 "https://packages.sury.org/php/dists/$1/Release" >/dev/null 2>&1
+}
 ondrej_available() {
     curl -fsI --max-time 15 "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/$1/Release" >/dev/null 2>&1
 }
 
-# Every version in PHP_VERSIONS this Ubuntu can install, with the extensions Laravel apps
-# expect. The versions come from ppa:ondrej/php where it serves this release; where it
-# does not yet (Ubuntu 26.04 at first), from Ubuntu's own archive, which carries one PHP.
-ensure_php() {
-    local codename v e pkgs avail=()
-    codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-}")
+# ensure_sury CODENAME — sury.org's keyring (a package of its own) and its source; 1, with
+# no source written, when the keyring cannot be had
+ensure_sury() {
+    local line dir
+    if [ ! -s "$SURY_KEYRING" ]; then
+        dir=$(mktemp -d)
+        if curl -fsSL --max-time 60 -o "$dir/debsuryorg-archive-keyring.deb" https://packages.sury.org/debsuryorg-archive-keyring.deb; then
+            studio_apt install "$dir/debsuryorg-archive-keyring.deb" || true
+        fi
+        rm -rf "$dir"
+        [ -s "$SURY_KEYRING" ] || return 1
+    fi
+    line="deb [signed-by=$SURY_KEYRING] https://packages.sury.org/php/ $1 main"
+    [ "$(cat "$APT_SOURCES/php-sury.list" 2>/dev/null)" = "$line" ] && return 0
+    printf '%s\n' "$line" > "$APT_SOURCES/php-sury.list"
+    APT_UPDATED=0; PHP_SOURCE_MOVED=1
+}
+
+# php_source CODENAME — where PHP comes from, in PHP_SOURCE: packages.sury.org, then
+# ppa:ondrej/php, then Ubuntu's archive (one PHP alone). sury.org and the PPA are the same
+# maintainer and packages, every version side by side, but sury.org publishes first (on 21
+# October 2026 it had the fixed builds while the PPA was still building them) and served
+# Ubuntu 26.04 before the PPA did. The PPA goes only once sury.org is in place, so a failed
+# keyring leaves the server as it was; a sury.org source already there for this release
+# stays when sury.org does not answer. PHP_SOURCE_MOVED=1 when a source came or went.
+php_source() {
+    local codename=$1
+    PHP_SOURCE_MOVED=${PHP_SOURCE_MOVED:-0}
+    if { sury_available "$codename" || grep -qs " $codename main" "$APT_SOURCES/php-sury.list"; } && ensure_sury "$codename"; then
+        PHP_SOURCE=packages.sury.org
+        if compgen -G "$APT_SOURCES/*ondrej*" >/dev/null; then
+            rm -f "$APT_SOURCES"/*ondrej*
+            APT_UPDATED=0; PHP_SOURCE_MOVED=1
+        fi
+        return 0
+    fi
+    # a source left behind for a release a repository does not serve breaks every apt update
+    if [ -f "$APT_SOURCES/php-sury.list" ]; then
+        rm -f "$APT_SOURCES/php-sury.list"
+        APT_UPDATED=0; PHP_SOURCE_MOVED=1
+    fi
     if ondrej_available "$codename"; then
-        if ! grep -rqs 'ondrej/php' /etc/apt/sources.list.d/; then
+        PHP_SOURCE=ppa:ondrej/php
+        if ! grep -rqs 'ondrej/php' "$APT_SOURCES"/; then
             add-apt-repository -y -n ppa:ondrej/php >>"$STUDIO_APT_LOG" 2>&1
-            APT_UPDATED=0
+            APT_UPDATED=0; PHP_SOURCE_MOVED=1
         fi
+        return 0
+    fi
+    PHP_SOURCE=archive
+    if compgen -G "$APT_SOURCES/*ondrej*" >/dev/null; then
+        rm -f "$APT_SOURCES"/*ondrej*
+        APT_UPDATED=0; PHP_SOURCE_MOVED=1
+    fi
+}
+
+# Every version in PHP_VERSIONS this Ubuntu can install, and every one already here (an
+# optional one an administrator added, or one an older release installed), with the
+# extensions Laravel apps expect, from php_source's repository.
+ensure_php() {
+    local codename v pkgs avail=()
+    codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-}")
+    PHP_SOURCE_MOVED=0
+    php_source "$codename"
+    if [ "$PHP_SOURCE" = archive ]; then
+        sys_note "neither packages.sury.org nor ppa:ondrej/php serves Ubuntu ${codename:-this release} yet: PHP comes from Ubuntu's archive"
     else
-        # a source left behind for a release the PPA does not serve breaks every apt update
-        if compgen -G '/etc/apt/sources.list.d/*ondrej*' >/dev/null; then
-            rm -f /etc/apt/sources.list.d/*ondrej*
-            APT_UPDATED=0
-        fi
-        sys_note "ppa:ondrej/php has no packages for Ubuntu ${codename:-this release} yet: PHP comes from Ubuntu's archive"
+        sys_note "PHP from $PHP_SOURCE"
     fi
     [ "${APT_UPDATED:-0}" = 1 ] || { studio_apt update; APT_UPDATED=1; }
+    # moved to another repository: what is installed goes to its builds where they are newer
+    # (Ubuntu's PHP 8.5 to sury.org's, with the security fixes), then what still runs the old PHP restarts
+    if [ "$PHP_SOURCE_MOVED" = 1 ]; then
+        mapfile -t pkgs < <(dpkg-query -W -f='${db:Status-Abbrev} ${binary:Package}\n' 'php*' 2>/dev/null | awk '$1 ~ /^ii/ {print $2}')
+        if [ "${#pkgs[@]}" -gt 0 ]; then
+            studio_apt install --only-upgrade "${pkgs[@]}" || sys_warn "PHP's packages could not move to $PHP_SOURCE"
+            restart_outdated_services
+        fi
+    fi
 
     for v in $PHP_VERSIONS; do
         if apt-cache show "php${v}-fpm" >/dev/null 2>&1; then avail+=("$v"); else sys_note "PHP $v is not available on Ubuntu ${codename}: skipped"; fi
@@ -153,31 +218,10 @@ ensure_php() {
         [ -n "$v" ] || { sys_warn "no PHP-FPM package is available on this Ubuntu"; return 1; }
         avail=("$v")
     fi
-
-    for v in "${avail[@]}"; do
-        pkgs=()
-        for e in cli fpm mysql pgsql mbstring xml curl zip gd intl bcmath readline sqlite3; do pkgs+=("php${v}-${e}"); done
-        # OPcache is part of PHP itself from 8.5 on; before that it is a package of its own
-        ver_ge "$v" 8.5 || pkgs+=("php${v}-opcache")
-        apt_ensure "${pkgs[@]}"
-        # redis: php8.x-redis from the PPA, or Ubuntu's php-redis (which provides it there)
-        if apt-cache show "php${v}-redis" >/dev/null 2>&1; then
-            apt_ensure "php${v}-redis" || sys_warn "the redis extension could not be installed for PHP $v"
-        elif apt-cache show php-redis >/dev/null 2>&1; then
-            apt_ensure php-redis || sys_warn "the redis extension could not be installed for PHP $v"
-        else
-            sys_warn "the redis extension is not available for PHP $v"
-        fi
-        cat > "/etc/php/${v}/fpm/conf.d/99-studio.ini" <<'INI'
-opcache.enable=1
-opcache.memory_consumption=192
-opcache.max_accelerated_files=20000
-opcache.validate_timestamps=1
-opcache.revalidate_freq=2
-realpath_cache_size=4096K
-INI
-        systemctl enable --now "php${v}-fpm" >/dev/null 2>&1
+    for v in $(installed_php_versions | tr ',' ' '); do
+        case " ${avail[*]} " in *" $v "*) ;; *) avail+=("$v") ;; esac
     done
+    for v in "${avail[@]}"; do ensure_php_version "$v"; done
 
     # every PHP here, also one an older release installed and this one no longer names
     for v in $(installed_php_versions | tr ',' ' '); do ensure_php_fixed "$v"; done
@@ -187,12 +231,63 @@ INI
     update-alternatives --set php "/usr/bin/php${STUDIO_PHP}" >/dev/null 2>&1 || true
 }
 
+# ensure_php_version V — PHP V's packages and extensions, Studio's settings, its PHP-FPM running
+ensure_php_version() {
+    local v=$1 e pkgs=()
+    for e in cli fpm mysql pgsql mbstring xml curl zip gd intl bcmath readline sqlite3; do pkgs+=("php${v}-${e}"); done
+    # OPcache is part of PHP itself from 8.5 on; before that it is a package of its own
+    ver_ge "$v" 8.5 || pkgs+=("php${v}-opcache")
+    apt_ensure "${pkgs[@]}"
+    # redis: php8.x-redis from sury.org or the PPA, or Ubuntu's php-redis (which provides it there)
+    if apt-cache show "php${v}-redis" >/dev/null 2>&1; then
+        apt_ensure "php${v}-redis" || sys_warn "the redis extension could not be installed for PHP $v"
+    elif apt-cache show php-redis >/dev/null 2>&1; then
+        apt_ensure php-redis || sys_warn "the redis extension could not be installed for PHP $v"
+    else
+        sys_warn "the redis extension is not available for PHP $v"
+    fi
+    cat > "/etc/php/${v}/fpm/conf.d/99-studio.ini" <<'INI'
+opcache.enable=1
+opcache.memory_consumption=192
+opcache.max_accelerated_files=20000
+opcache.validate_timestamps=1
+opcache.revalidate_freq=2
+realpath_cache_size=4096K
+INI
+    systemctl enable --now "php${v}-fpm" >/dev/null 2>&1
+}
+
+# add_php V — one more PHP among those the release offers (PHP_VERSIONS, PHP_OPTIONAL), from
+# php_source's repository, on the fixes PHP_FIXED names; Studio's forms then offer it.
+# Administration → System → PHP, through studio-admin php-install.
+add_php() {
+    local v=$1 codename
+    case " $PHP_VERSIONS $PHP_OPTIONAL " in
+        *" $v "*) ;;
+        *) sys_warn "PHP $v is not one this release offers (${PHP_VERSIONS} ${PHP_OPTIONAL})"; return 1 ;;
+    esac
+    codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-}")
+    php_source "$codename"
+    [ "${APT_UPDATED:-0}" = 1 ] || { studio_apt update; APT_UPDATED=1; }
+    if ! apt-cache show "php${v}-fpm" >/dev/null 2>&1; then
+        sys_warn "PHP $v is not available on Ubuntu ${codename:-this release} (PHP from ${PHP_SOURCE})"
+        return 1
+    fi
+    sys_note "· PHP $v from ${PHP_SOURCE}"
+    ensure_php_version "$v"
+    [ -n "$(php_patch_level "$v")" ] || { sys_warn "PHP $v did not install"; return 1; }
+    ensure_php_fixed "$v"
+    [ -f "$STUDIO_HOME/shared/.env" ] && env_set "$STUDIO_HOME/shared/.env" STUDIO_PHP_VERSIONS "$(installed_php_versions)"
+    return 0
+}
+
 # php_patch_level V -> the PHP of branch V installed here (8.4.27), empty without one
 php_patch_level() { "/usr/bin/php$1" -r 'echo PHP_VERSION;' 2>/dev/null || true; }
 
-# php_from_ppa V: PHP V comes from ppa:ondrej/php, whose versions are PHP's own. Ubuntu's
-# archive backports security fixes and keeps the version number it shipped.
-php_from_ppa() { dpkg-query -W -f='${Version}' "php$1-fpm" 2>/dev/null | grep -q 'sury'; }
+# php_from_ubuntu V: PHP V comes from Ubuntu's archive (8.3.6-0ubuntu0.24.04.5, 8.5.4-1ubuntu1),
+# which backports security fixes and keeps the version number it shipped. The builds of
+# sury.org and of the PPA carry PHP's own (8.4.27-1+ubuntu24.04.1), not always with "sury" in it.
+php_from_ubuntu() { dpkg-query -W -f='${Version}' "php$1-fpm" 2>/dev/null | grep -qE -- '-[0-9]+ubuntu[0-9]'; }
 
 # ensure_php_fixed V — PHP V on the patch PHP_FIXED names for its branch or later: an
 # apt update leaves an installed PHP where it is (apt_ensure installs only what is
@@ -218,10 +313,10 @@ ensure_php_fixed() {
     cur=$(php_patch_level "$v")
     if ver_ge "${cur:-0}" "$min"; then
         sys_note "  PHP $v is $cur"
-    elif php_from_ppa "$v"; then
-        sys_warn "PHP $v is still $cur: ppa:ondrej/php does not serve $min yet; the nightly server update installs it once it does"
-    else
+    elif php_from_ubuntu "$v"; then
         sys_note "  PHP $v is Ubuntu's ($cur), on its newest package: Ubuntu's security fixes keep the version number"
+    else
+        sys_warn "PHP $v is still $cur: ${PHP_SOURCE:-its repository} does not serve $min yet; the nightly server update installs it once it does"
     fi
 }
 
@@ -478,7 +573,7 @@ PERL
 }
 
 # upgrade_system RELEASE_DIR CHANGES_FILE — every package on the server to its newest
-# version: Ubuntu and the repositories Studio added (ppa:ondrej/php, Caddy, NodeSource,
+# version: Ubuntu and the repositories Studio added (packages.sury.org or ppa:ondrej/php, Caddy, NodeSource,
 # the provider's CLI), then Composer, Claude Code, glab and the azure-devops extension
 # through the release's system step. CHANGES_FILE gets one line per package that changed.
 # It stays on what is installed: a new PHP version comes with requirements.env; a new

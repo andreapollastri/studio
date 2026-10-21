@@ -181,6 +181,40 @@
             </div>
         </div>
 
+        {{-- PHP: the release's own on every server, its optional versions on request --}}
+        @php($phpInstalled = $php->installed())
+        @php($phpInstalling = $php->installing())
+        @php($phpState = $php->state())
+        <div id="php" class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700" @if ($phpInstalling) wire:poll.5s @endif>
+            <flux:text class="text-xs uppercase tracking-wide">{{ __('PHP') }}</flux:text>
+            <div class="mt-2 flex flex-wrap gap-2">
+                @foreach (collect([...$phpInstalled, ...$php->optional()])->unique()->sort(fn ($a, $b) => version_compare($b, $a)) as $phpVersion)
+                    <div class="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-700">
+                        <span class="font-mono text-sm">PHP {{ $phpVersion }}</span>
+                        @if ($phpVersion === $php->default())
+                            <flux:badge size="sm" color="green">{{ __('default') }}</flux:badge>
+                        @endif
+                        @if (in_array($phpVersion, $phpInstalled, true))
+                            <flux:badge size="sm" color="zinc">{{ __('installed') }}</flux:badge>
+                        @elseif ($phpInstalling === $phpVersion)
+                            <flux:badge size="sm" color="blue">{{ __('installing…') }}</flux:badge>
+                        @else
+                            <flux:button size="xs" icon="plus" wire:click="installPhp('{{ $phpVersion }}')" :disabled="! $managed || $running || $serverRunning || $phpInstalling !== null"
+                                wire:confirm="{{ __('Install PHP :version on the server? Its packages, extensions and PHP-FPM, from packages.sury.org: a few minutes. Every update then keeps it on its newest version.', ['version' => $phpVersion]) }}">
+                                {{ __('Install') }}
+                            </flux:button>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+            @if (($phpState['status'] ?? null) === 'failed')
+                <flux:callout class="mt-3" variant="danger" icon="exclamation-triangle">
+                    <flux:callout.text>{{ __('PHP :version could not be installed: :error', ['version' => $phpState['version'], 'error' => $phpState['error'] ?? '']) }}</flux:callout.text>
+                </flux:callout>
+            @endif
+            <flux:text class="mt-2 text-xs">{{ __('Every server runs PHP :default, which runs Studio and which new projects start on. Projects that need an older PHP get it here; once installed, a version stays, and the updates keep it patched.', ['default' => $php->default()]) }}</flux:text>
+        </div>
+
         {{-- TLS certificates: Caddy renews them; the nightly check renews the late ones and reports the rest --}}
         @php($certificates = is_array($server['certificates'] ?? null) ? $server['certificates'] : null)
         @if ($certificates && ! empty($certificates['problems']))
@@ -233,7 +267,7 @@
         @endif
 
         <flux:text class="text-xs">
-            {{ __('Every night, an hour before Studio\'s own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git hosts\' CLIs. Then it checks every TLS certificate: Caddy renews them by itself, and one it did not renew in time gets renewed now or shows up here. It stays on what is installed: a new PHP version comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.') }}
+            {{ __('Every night, an hour before Studio\'s own update, the server upgrades every package to its newest version: Ubuntu and its security fixes, every installed PHP and its extensions, Caddy, MariaDB, PostgreSQL, redis, Node, Composer, Claude Code and the git hosts\' CLIs. Then it checks every TLS certificate: Caddy renews them by itself, and one it did not renew in time gets renewed now or shows up here. It stays on what is installed: another PHP version is added above or comes with a release of Studio; a new Ubuntu release or a new major version of a database is a decision for a person.') }}
         </flux:text>
     </section>
 

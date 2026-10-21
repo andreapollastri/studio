@@ -94,7 +94,7 @@ return [
 
     // PHP versions installed on the server, for the sites and workspaces; the
     // installer and the updater keep this list in step with what is installed.
-    'php_versions' => array_values(array_filter(array_map('trim', explode(',', (string) env('STUDIO_PHP_VERSIONS', '8.3,8.4,8.5'))))),
+    'php_versions' => array_values(array_filter(array_map('trim', explode(',', (string) env('STUDIO_PHP_VERSIONS', '8.5'))))),
 
     'native' => [
         'helper' => env('STUDIO_HELPER', '/usr/local/sbin/studio-admin'),

@@ -53,6 +53,9 @@
 #   cursor-forget    <handle> <dir>    signs out of that subscription and removes ~/<dir> (never .cursor)
 #   git-cli          <provider>        github|gitlab|bitbucket|azure: the agents' CLI for that forge, installed
 #                                      when missing (ensure_git_cli of the release's installer/lib/system.sh)
+#   php-install      <version>         one of the release's optional PHP versions (8.3, 8.4), with its
+#                                      extensions and PHP-FPM (add_php of the release's installer/lib/system.sh);
+#                                      Studio's cached configuration is rebuilt, so its forms offer it
 #   update-check | update-start [force] | update-auto <on|off> | update-channel <stable|beta>
 #                                      the root updater (studio-update), for Administration → System
 #   system-update-start | system-update-auto <on|off>
@@ -991,6 +994,23 @@ cmd_git_cli() { # provider
     echo '{"ok":true}'
 }
 
+cmd_php_install() { # version
+    local v=$1 rel="${STUDIO_DIR:-/opt/studio/current}" lib
+    lib="$rel/installer/lib/system.sh"
+    [[ "$v" =~ ^[0-9]+\.[0-9]+$ ]] || fail "usage: php-install <version>"
+    [ -f "$lib" ] || fail "the system library of this release is missing ($lib)"
+    # apt is the updater's while it runs
+    update_running && fail "an update is running: install PHP $v once it is done"
+    # shellcheck disable=SC1090
+    ( . "$lib"; declare -F add_php >/dev/null || exit 3; load_requirements "$rel"; add_php "$v" ) >&2 \
+        || fail "PHP $v could not be installed (see ${STUDIO_APT_LOG:-/var/log/studio-install.log})"
+    # the project forms read the installed versions from Studio's cached configuration
+    sudo -u studio env -i HOME=/var/lib/studio PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        "php${STUDIO_PHP:-8.5}" "$rel/artisan" config:cache --no-interaction --no-ansi >&2 \
+        || log "config:cache failed: the forms offer PHP $v after the next update"
+    jq -n --arg v "$v" '{ok:true, version:$v}'
+}
+
 workspace_paths() { # handle slug
     W_SANDBOXES="$WORKSPACES/$1/.sandboxes/$2"
     W_USER="ws-$1"; W_HOME="$HOMES/ws-$1"; W_DIR="$WORKSPACES/$1/$2"; W_ENV="$ETC/workspaces/$1--$2.env"
@@ -1372,6 +1392,7 @@ case "$cmd" in
     site-shell)       [ $# -eq 2 ] || fail "usage: site-shell <key> <php>"; cmd_site_shell "$1" "$2" ;;
     project-db)       [ $# -eq 1 ] || fail "usage: project-db <slug>"; cmd_project_db "$1" ;;
     git-cli)          [ $# -eq 1 ] || fail "usage: git-cli <provider>"; cmd_git_cli "$1" ;;
+    php-install)      [ $# -eq 1 ] || fail "usage: php-install <version>"; cmd_php_install "$1" ;;
     update-check)     cmd_update_check ;;
     update-start)     [ $# -le 1 ] && [[ "${1:-}" =~ ^(force)?$ ]] || fail "usage: update-start [force]"; cmd_update_start "${1:-}" ;;
     update-channel)   [ $# -eq 1 ] || fail "usage: update-channel stable|beta"; cmd_update_channel "$1" ;;

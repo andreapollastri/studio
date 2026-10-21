@@ -12,6 +12,7 @@ use App\Livewire\Projects\Settings;
 use App\Models\ConnectorAccount;
 use App\Models\Project;
 use App\Models\User;
+use App\Server\PhpVersions;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
@@ -42,7 +43,7 @@ class Projects extends Component
 
     public string $default_branch = 'develop';
 
-    public string $php_version = '8.4';
+    public string $php_version = '8.5';
 
     public string $db_engine = 'mariadb';
 
@@ -80,18 +81,10 @@ class Projects extends Component
         $this->php_version = self::defaultPhp();
     }
 
-    /** 8.4 where the server has it, otherwise the newest PHP it has (Ubuntu 26.04 ships only 8.5). */
+    /** The release's own PHP (8.5) where the server has it, otherwise the newest PHP it has. */
     public static function defaultPhp(): string
     {
-        $versions = array_values(array_map('strval', (array) config('studio.php_versions')));
-
-        if ($versions === [] || in_array('8.4', $versions, true)) {
-            return '8.4';
-        }
-
-        usort($versions, fn (string $a, string $b): int => version_compare($a, $b));
-
-        return (string) end($versions);
+        return app(PhpVersions::class)->default();
     }
 
     public function create(): void

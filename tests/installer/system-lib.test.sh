@@ -46,7 +46,10 @@ mkdir -p "$T/rel/installer"
 printf 'STUDIO_PHP=8.5\nPHP_VERSIONS="8.4 8.5 8.6"\nNODE_MAJOR=24\n' > "$T/rel/installer/requirements.env"
 load_requirements "$T/rel"
 [ "$STUDIO_PHP $NODE_MAJOR" = "8.5 24" ] && [ "$PHP_VERSIONS" = "8.4 8.5 8.6" ] || fail "load_requirements: $STUDIO_PHP $NODE_MAJOR / $PHP_VERSIONS"
-ok "a release's requirements.env is what the system step installs"
+[ -z "$PHP_OPTIONAL" ] || fail "a release without PHP_OPTIONAL offers nothing more, got $PHP_OPTIONAL"
+FAKE_PHP_VERSIONS=8.5 load_requirements "$HERE/../.."
+[ "$STUDIO_PHP $PHP_VERSIONS" = "8.5 8.5" ] && [ "$PHP_OPTIONAL" = "8.3 8.4" ] || fail "this release: PHP $STUDIO_PHP / $PHP_VERSIONS, optional $PHP_OPTIONAL"
+ok "a release's requirements.env is what the system step installs: PHP 8.5, with 8.3 and 8.4 on request"
 
 printf 'STUDIO_PHP=9.9\n' > "$T/rel/installer/requirements.env"
 FAKE_PHP_VERSIONS=8.3,8.4 load_requirements "$T/rel"
@@ -167,11 +170,12 @@ ensure_php_fixed 8.4; ensure_php_fixed 8.3; ensure_php_fixed 8.6
 ok "a PHP on the fixes or later, or of a branch the release does not name, is left alone"
 
 : > "$T/php/log"
-fake_php 8.5 8.5.11 8.5.11-1+deb.sury.org+1
-out=$(ensure_php_fixed 8.5 2>&1)
+# sury.org's builds do not say "sury": PHP's own version, so the number is the whole story
+fake_php 8.5 8.5.11 8.5.11-1+ubuntu24.04.1
+out=$(PHP_SOURCE=packages.sury.org ensure_php_fixed 8.5 2>&1)
 [ "$(cat "$T/php/log")" = "apt install --only-upgrade php8.5-cli php8.5-fpm" ] || fail "no new build restarted: $(cat "$T/php/log")"
-[[ $out == *"ppa:ondrej/php does not serve 8.5.12 yet"* ]] || fail "late PPA says: $out"
-ok "while the PPA lacks the fix, nothing restarts and the update says so"
+[[ $out == *"packages.sury.org does not serve 8.5.12 yet"* ]] || fail "late repository says: $out"
+ok "while the repository lacks the fix, nothing restarts and the update says so"
 
 : > "$T/php/log"
 fake_php 8.5 8.5.4 8.5.4-1ubuntu1 8.5.4 8.5.4-1ubuntu1.1
@@ -179,6 +183,60 @@ out=$(ensure_php_fixed 8.5 2>&1)
 [ "$(tail -n1 "$T/php/log")" = needrestart ] || fail "Ubuntu's new build did not restart: $(cat "$T/php/log")"
 [[ $out == *"Ubuntu's security fixes keep the version number"* && $out != *"does not serve"* ]] || fail "Ubuntu's PHP says: $out"
 ok "Ubuntu's PHP goes to its newest build, whose number stays"
+
+fake_php 8.3 8.3.6 8.3.6-0ubuntu0.24.04.5
+php_from_ubuntu 8.3 || fail "8.3.6-0ubuntu0.24.04.5 is Ubuntu's"
+fake_php 8.4 8.4.26 8.4.26-1+ubuntu24.04.1+deb.sury.org+1
+! php_from_ubuntu 8.4 || fail "8.4.26-1+ubuntu24.04.1+deb.sury.org+1 is not Ubuntu's"
+ok "Ubuntu's own builds are told from sury.org's and the PPA's"
+
+# php_source with the apt sources in a directory: $T/repos/up-<host>-<codename> says a repository
+# serves that release, $T/repos/keyring-ok that sury.org's keyring package can be had
+APT_SOURCES=$T/repos/sources.list.d; SURY_KEYRING=$T/repos/debsuryorg-archive-keyring.gpg; export STUDIO_APT_LOG=$T/apt.log
+mkdir -p "$APT_SOURCES"
+sury_available() { [ -f "$T/repos/up-sury-$1" ]; }
+ondrej_available() { [ -f "$T/repos/up-ondrej-$1" ]; }
+curl() { [ -f "$T/repos/keyring-ok" ] && echo key > "$SURY_KEYRING"; }
+add-apt-repository() { echo "URIs: https://ppa.launchpadcontent.net/ondrej/php/ubuntu/" > "$APT_SOURCES/ondrej-ubuntu-php-noble.sources"; }
+source_of() { # source_of CODENAME -> "PHP_SOURCE moved=… apt=… | the sources"
+    APT_UPDATED=1; PHP_SOURCE_MOVED=0
+    php_source "$1"
+    echo "$PHP_SOURCE moved=$PHP_SOURCE_MOVED apt=$APT_UPDATED | $(cd "$APT_SOURCES" && ls | tr '\n' ' ')"
+}
+
+touch "$T/repos/up-ondrej-noble"
+[ "$(source_of noble)" = "ppa:ondrej/php moved=1 apt=0 | ondrej-ubuntu-php-noble.sources " ] || fail "the PPA alone: $(source_of noble)"
+touch "$T/repos/up-sury-noble"
+[ "$(source_of noble)" = "ppa:ondrej/php moved=0 apt=1 | ondrej-ubuntu-php-noble.sources " ] || fail "no keyring, the PPA stays: $(source_of noble)"
+touch "$T/repos/keyring-ok"
+[ "$(source_of noble)" = "packages.sury.org moved=1 apt=0 | php-sury.list " ] || fail "sury.org takes over from the PPA: $(source_of noble)"
+[ "$(cat "$APT_SOURCES/php-sury.list")" = "deb [signed-by=$SURY_KEYRING] https://packages.sury.org/php/ noble main" ] || fail "sury.org's source: $(cat "$APT_SOURCES/php-sury.list")"
+[ "$(source_of noble)" = "packages.sury.org moved=0 apt=1 | php-sury.list " ] || fail "sury.org again: $(source_of noble)"
+ok "packages.sury.org first, the PPA only until sury.org's keyring and source are in place"
+
+touch "$T/repos/up-sury-resolute"
+[ "$(source_of resolute)" = "packages.sury.org moved=1 apt=0 | php-sury.list " ] || fail "26.04 on sury.org: $(source_of resolute)"
+rm -f "$T/repos/up-sury-resolute"
+[ "$(source_of resolute)" = "packages.sury.org moved=0 apt=1 | php-sury.list " ] || fail "a sury.org that does not answer is kept: $(source_of resolute)"
+rm -f "$APT_SOURCES/php-sury.list"; echo stale > "$APT_SOURCES/ondrej-ubuntu-php-resolute.sources"
+[ "$(source_of resolute)" = "archive moved=1 apt=0 | " ] || fail "neither serves 26.04: $(source_of resolute)"
+ok "Ubuntu 26.04 gets every PHP from sury.org; Ubuntu's archive only where neither repository serves the release"
+
+# add_php: one of the release's versions, from php_source's repository; the forms then offer it
+php_source() { PHP_SOURCE=packages.sury.org; }
+apt-cache() { [ "$2" != php8.2-fpm ]; }
+ensure_php_version() { echo "ensure $1" >> "$T/php/log"; echo "$1.0" > "$T/php/$1"; }
+ensure_php_fixed() { echo "fixed $1" >> "$T/php/log"; }
+STUDIO_HOME=$T/studio; mkdir -p "$STUDIO_HOME/shared"; printf 'STUDIO_PHP_VERSIONS=8.5\n' > "$STUDIO_HOME/shared/.env"
+PHP_VERSIONS="8.5"; PHP_OPTIONAL="8.2 8.3 8.4"; rm -f "$T/php/8.4"; : > "$T/php/log"
+FAKE_PHP_VERSIONS=8.4,8.5 add_php 8.4 >/dev/null 2>&1 || fail "add_php 8.4 failed"
+[ "$(cat "$T/php/log")" = "$(printf 'ensure 8.4\nfixed 8.4')" ] || fail "add_php: $(cat "$T/php/log")"
+[ "$(env_get "$STUDIO_HOME/shared/.env" STUDIO_PHP_VERSIONS)" = 8.4,8.5 ] || fail "the forms' list: $(cat "$STUDIO_HOME/shared/.env")"
+: > "$T/php/log"
+if add_php 7.4 >/dev/null 2>&1; then fail "add_php took a version the release does not offer"; fi
+if add_php 8.2 >/dev/null 2>&1; then fail "add_php took a version the repository does not have"; fi
+[ ! -s "$T/php/log" ] || fail "a refused version was installed: $(cat "$T/php/log")"
+ok "add_php installs one of the release's versions, patched, and the forms offer it; nothing else"
 
 [ "$(env_get "$HERE/../../installer/requirements.env" STUDIO_PHP)" != "" ] || fail "installer/requirements.env has no STUDIO_PHP"
 [ "$(env_get "$HERE/../../installer/requirements.env" PHP_FIXED)" != "" ] || fail "installer/requirements.env has no PHP_FIXED"

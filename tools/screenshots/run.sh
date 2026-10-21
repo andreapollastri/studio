@@ -76,7 +76,8 @@ serve 8767 DEMO_SFTP_HOME="$SFTP_HOME"
 (cd "$ROOT" && exec env SSH_GATEWAY_PORT="$GW" APP_KEY="$(sed -n 's/^APP_KEY=//p' .env)" SSH_GATEWAY_REDEEM_URL=http://127.0.0.1:8767/api/ssh/redeem SSH_GATEWAY_ORIGIN=http://127.0.0.1:8767 \
     node ssh-gateway/bin/gateway.js >"$LOGS/gateway.log" 2>&1) & PIDS+=($!)
 NATIVE=(STUDIO_WORKSPACE_DRIVER=native STUDIO_HELPER="$ROOT/tests/fixtures/fake-studio-admin" STUDIO_HELPER_SUDO=false)
-serve 8768 "${NATIVE[@]}" STUDIO_UPDATE_STATE="$WORK/state.json"
+# the stable one has PHP 8.4 added to its 8.5 (Administration → System → PHP), 8.3 still on offer
+serve 8768 "${NATIVE[@]}" STUDIO_UPDATE_STATE="$WORK/state.json" STUDIO_PHP_VERSIONS=8.4,8.5
 serve 8769 "${NATIVE[@]}" STUDIO_UPDATE_STATE="$WORK/state-beta.json"
 sleep 2
 

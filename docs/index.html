@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.10">v2.4.10</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.11">v2.4.11</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1822,6 +1822,7 @@
       <a href="#setup-mcp">MCP servers</a>
       <a href="#setup-email">Email</a>
       <a href="#setup-updates">Updates</a>
+      <a class="sub" href="#setup-php">PHP versions</a>
       <a class="sub" href="#setup-domain">Domain &amp; visibility</a>
       <a class="sub" href="#setup-domains">Clients' domains</a>
       <a href="#setup-security">Security</a>
@@ -1895,7 +1896,7 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6 to 2.4.10</h3>
+        <h3>New in 2.4.6 to 2.4.11</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -1913,6 +1914,10 @@
             CVE-2026-109619, remote code execution without authentication. The update brings every older PHP on the server to
             its newest package and restarts what runs on it, without waiting for the nightly server update. See
             <a href="#setup-server-updates">The server itself</a>.</dd></dl>
+          <dl><dt>PHP 8.5 by default, from sury.org (2.4.11)</dt><dd>Every server gets PHP 8.5, which runs Studio and which
+            new projects start on; 8.4 and 8.3 are added from <em>Administration → System</em> when a project needs them. Every
+            PHP comes from <code>packages.sury.org</code>, on Ubuntu 24.04 and 26.04 alike, and the fixes arrive as soon as
+            they are published. See <a href="#setup-php">PHP versions</a>.</dd></dl>
         </div>
 
         <h3>The team works in projects</h3>
@@ -2039,7 +2044,7 @@
 
         <p>Then it installs the newest release of Studio, the latest published <code>vX.Y.Z</code> tag (the head of the main
           branch only while no release is published; the first release then replaces it), with what it needs:
-          Caddy, PHP 8.3, 8.4 and 8.5 (8.5 alone on Ubuntu 26.04, see below), Composer, Node, Claude Code, the CLI of your git
+          Caddy, PHP 8.5 (8.4 and 8.3 on request), Composer, Node, Claude Code, the CLI of your git
           host (<code>gh</code>, <code>glab</code> or the Azure CLI), MariaDB, PostgreSQL and redis. Ten minutes later:</p>
 
         <div class="install-commands">
@@ -2088,7 +2093,7 @@
             <thead><tr><th>Piece</th><th>Role</th></tr></thead>
             <tbody>
               <tr><td>Caddy</td><td>HTTPS for every host under the domain, with certificates issued <em>on demand</em>: before issuing one, Caddy asks Studio whether the host is known. No DNS API token, no per-host certbot runs.</td></tr>
-              <tr><td>PHP 8.3, 8.4, 8.5</td><td>From <code>ppa:ondrej/php</code>, with the usual extensions and PHP-FPM. Each project picks its version; a pool per site and per workspace runs as its own user. The list comes from the release's <code>installer/requirements.env</code>, so a later release can add a version. Where the PPA does not serve the Ubuntu release yet (26.04 at first), PHP comes from Ubuntu's own archive, which carries PHP 8.5 alone: Studio runs on it and projects can pick it; the next update adds 8.3 and 8.4 once the PPA serves 26.04. The same file names the first patch of each branch with the security fixes Studio asks for (<code>PHP_FIXED</code>): an update brings an older PHP to its newest package and restarts what runs on it.</td></tr>
+              <tr><td>PHP 8.5</td><td>From <code>packages.sury.org</code>, on Ubuntu 24.04 and 26.04 alike, with the usual extensions and PHP-FPM. It runs Studio, and new projects start on it; 8.4 and 8.3 are added from <em>Administration → System</em> (see <a href="#setup-php">PHP versions</a>). Each project picks among those installed; a pool per site and per workspace runs as its own user. The versions come from the release's <code>installer/requirements.env</code> (<code>PHP_VERSIONS</code> for every server, <code>PHP_OPTIONAL</code> on request), so a later release can add one. sury.org is Ondřej Surý's repository, the same maintainer and packages as <code>ppa:ondrej/php</code>, but it publishes first: on the security release of 21 October 2026 it had the fixed builds while the PPA was still building them, and it served Ubuntu 26.04 before the PPA did. A server that had the PPA or Ubuntu's own PHP moves to sury.org on its next update, and its PHP packages with it. Only where neither sury.org nor the PPA serves the Ubuntu release does PHP come from Ubuntu's archive, which carries one PHP alone. The same file names the first patch of each branch with the security fixes Studio asks for (<code>PHP_FIXED</code>): an update brings an older PHP to its newest package and restarts what runs on it.</td></tr>
               <tr><td>Composer, Node 22, Claude Code</td><td>What a Laravel project and the agent need. Claude Code is installed once, system-wide; each workspace runs it with its own login, and every update of Studio brings the newest one.</td></tr>
               <tr><td>The git hosts' CLIs</td><td><code>gh</code> for GitHub, <code>glab</code> for GitLab, the Azure CLI with the <code>azure-devops</code> extension for Azure DevOps; nothing for Bitbucket, whose REST API Larapilot calls directly. The installer puts in the one of the first token's host; another is installed the first time a workspace on its host needs it. The agents open pull requests with it.</td></tr>
               <tr><td>Playwright MCP, Chromium</td><td>The <a href="#work-browser">agent's browser</a>: Playwright MCP at the version pinned in <code>installer/requirements.env</code>, its headless Chromium in <code>/usr/local/lib/studio/browsers</code>, and an AppArmor profile so Chromium keeps its own sandbox on Ubuntu 24.04 and later.</td></tr>
@@ -2493,7 +2498,7 @@
               <tr><td><strong>Git account</strong></td><td>The account that creates or reads the repository, registers the push webhook and deploys the site, on any host: a <a href="#setup-git-service">service account</a> of the team, offered first, or one of yours.</td></tr>
               <tr><td><strong>Repository</strong></td><td>An existing one, or <em>Create it now</em> (below). The HTTPS address of a repository on the host of the chosen account: <code>https://github.com/owner/repo</code>, <code>https://gitlab.com/group/repo</code> (or your GitLab), <code>https://bitbucket.org/workspace/repo</code>, <code>https://dev.azure.com/org/project/_git/repo</code>. Cloned with that account for the site, with each member's own account on that host for their workspace.</td></tr>
               <tr><td><strong>Deploy branch</strong></td><td>What the site runs and what workspaces start from. A push to it deploys the site.</td></tr>
-              <tr><td><strong>PHP</strong>, <strong>Database</strong></td><td>A PHP version installed on the server (8.3, 8.4 or 8.5 today) and MariaDB or PostgreSQL, for the site and for every workspace of the project.</td></tr>
+              <tr><td><strong>PHP</strong>, <strong>Database</strong></td><td>A PHP version installed on the server: 8.5, which new projects start on, or 8.4 and 8.3 where an administrator <a href="#setup-php">added them</a> and MariaDB or PostgreSQL, for the site and for every workspace of the project.</td></tr>
               <tr><td><strong>Members &amp; roles</strong></td><td>For each person, <em>Not on the project</em> or their role on it: PM, developer or client. Administrators see every project without being members.</td></tr>
             </tbody>
           </table>
@@ -2975,12 +2980,20 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </div>
 
         <figure class="shot">
-          <img src="img/admin-system.png" alt="Administration → System: installed and newest release, Check now, Force update and Update buttons, the nightly switch, the channel, the last update with its log, the git hosts" loading="lazy" width="2880" height="1920" />
+          <img src="img/admin-system.png" alt="Administration → System: installed and newest release, Check now, Force update and Update buttons, the nightly switch, the channel, the last update with its log, the server's update and its PHP versions: 8.5 the default, 8.4 installed, 8.3 with Install" loading="lazy" width="2880" height="1920" />
           <figcaption><strong>Administration → System.</strong> The installed build and the newest one, <em>Check now</em>,
-            <em>Force update</em> and <em>Update to</em>, the nightly switch, the channel, the last run with its log, and the
-            four git hosts. While an update runs the page follows it live, through the maintenance of the
+            <em>Force update</em> and <em>Update to</em>, the nightly switch, the channel, the last run with its log, the
+            server's own update and its PHP versions. While an update runs the page follows it live, through the maintenance of the
             switch, and reloads onto the new release when it is done.</figcaption>
         </figure>
+
+        <h3 id="setup-php">PHP versions</h3>
+        <p>Every server gets <strong>PHP 8.5</strong>: it runs Studio, and new projects start on it. <strong>8.4</strong> and
+          <strong>8.3</strong> are there for projects that need them: <em>Install</em> next to one, under <em>Server → PHP</em>,
+          puts it on the server in a few minutes, from <code>packages.sury.org</code> with the usual extensions and its own
+          PHP-FPM, and the project forms offer it as soon as it is done. One install at a time, never during an update. Once
+          installed, a version stays, and every update keeps it on its newest patch, as it does 8.5. Servers installed before
+          2.4.11 keep the 8.3 and 8.4 they have.</p>
 
         <h3>Channels</h3>
         <div class="table-card">
@@ -3053,7 +3066,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <em>Update the server now</em>, or by hand. It brings every package and tool on the server to its newest version:</p>
         <ul>
           <li><strong>apt</strong>: <code>update</code>, <code>full-upgrade</code>, <code>autoremove</code>. That is Ubuntu and
-            its security fixes, every installed PHP and its extensions (<code>ppa:ondrej/php</code>), Caddy, MariaDB, PostgreSQL,
+            its security fixes, every installed PHP and its extensions (<code>packages.sury.org</code>), Caddy, MariaDB, PostgreSQL,
             redis, Node within its major (NodeSource), <code>gh</code> or <code>az</code>. Configuration files changed by hand
             are kept.</li>
           <li><strong>Outside apt</strong>: Composer (<code>self-update</code>), Claude Code (<code>npm</code>, <code>@latest</code>),
@@ -3072,8 +3085,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             <code>SYSTEM_REBOOT=1</code> in <code>/etc/studio/studio.env</code> the nightly run reboots the server five minutes
             after it ends; a run by hand never does.</li>
         </ul>
-        <p>It stays on what is installed: a new PHP version comes with a release of Studio (<code>requirements.env</code>); a
-          new Ubuntu release, a new Node major or a new major version of MariaDB or PostgreSQL is a decision for a person. The
+        <p>It stays on what is installed: another PHP version is added on the System page (<a href="#setup-php">PHP
+          versions</a>) or comes with a release of Studio (<code>requirements.env</code>); a new Ubuntu release, a new Node major or a new major version of MariaDB or PostgreSQL is a decision for a person. The
           System page lists what the last run changed (<code>php8.4-fpm 8.4.12-1 → 8.4.13-1</code>) with its log; apt's own
           output is in <code>/var/log/studio-install.log</code>. The switch <em>Nightly server updates</em> (or
           <code>studio-update system-auto off</code>) turns the timer off.</p>
@@ -5058,7 +5071,7 @@ bridge ──stdio──▶ Playwright MCP  <span class="comment">the agent's br
               <tr><td><code>STUDIO_DOMAIN</code></td><td>The domain every host hangs under</td></tr>
               <tr><td><code>STUDIO_WORKSPACE_DRIVER</code></td><td><code>native</code> on a server, <code>local</code> while developing Studio</td></tr>
               <tr><td><code>STUDIO_GIT_PROVIDER</code>, <code>STUDIO_GIT_URL</code></td><td>Only the installer's: the host of the first administrator's token (<code>github</code>, <code>gitlab</code>, <code>bitbucket</code> or <code>azure</code>, with the address of a self-managed GitLab or <code>https://dev.azure.com/&lt;organization&gt;</code>) and the CLI it preinstalls. Every host works whatever they say</td></tr>
-              <tr><td><code>STUDIO_PHP_VERSIONS</code></td><td>The PHP versions a project can pick, kept by the installer and the updater in step with what is installed (<code>8.3,8.4,8.5</code>)</td></tr>
+              <tr><td><code>STUDIO_PHP_VERSIONS</code></td><td>The PHP versions a project can pick, kept by the installer, the updater and <em>Administration → System → PHP</em> in step with what is installed (<code>8.5</code>, or <code>8.4,8.5</code> once 8.4 is added)</td></tr>
               <tr><td><code>STUDIO_UPDATE_STATE</code>, <code>STUDIO_UPDATE_REPOSITORY</code></td><td>Where the updater leaves its state (<code>/var/lib/studio-update/state.json</code>); the repository the release links point at</td></tr>
               <tr><td><code>STUDIO_HELPER</code>, <code>STUDIO_HELPER_SUDO</code>, <code>STUDIO_HELPER_TIMEOUT</code></td><td>Path of <code>studio-admin</code>, whether to go through sudo, seconds a command may take (1200)</td></tr>
               <tr><td><code>STUDIO_BRIDGE_PORT_BASE</code></td><td>Bridges listen on 127.0.0.1 at base + workspace id (42000)</td></tr>

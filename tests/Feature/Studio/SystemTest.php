@@ -2,7 +2,9 @@
 
 use App\Livewire\Admin\System;
 use App\Models\User;
+use App\Server\PhpVersions;
 use App\Server\Updates;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -173,6 +175,54 @@ test('a server update in progress keeps the page following it', function () {
         ->assertSet('serverAutomatic', false)
         ->assertSee('running: true', false)
         ->assertSee('updating…');
+});
+
+test('PHP 8.5 is the default and the optional 8.3 and 8.4 install from the page, one at a time', function () {
+    config(['studio.php_versions' => ['8.5']]);
+    $admin = User::factory()->admin()->create();
+
+    Livewire::actingAs($admin)->test(System::class)
+        ->assertSeeInOrder(['PHP 8.5', 'default', 'installed', 'PHP 8.4', 'Install', 'PHP 8.3', 'Install'])
+        ->call('installPhp', '8.4')
+        ->assertSet('error', null);
+
+    expect(helperCalls($this->log))->toBe(['php-install 8.4'])
+        ->and(app(PhpVersions::class)->state())->toBeNull();
+
+    // a version the release does not offer, or one already there, never reaches the helper
+    Livewire::actingAs($admin)->test(System::class)
+        ->call('installPhp', '7.4')
+        ->assertSet('error', 'PHP 7.4 is not one this server can add.')
+        ->call('installPhp', '8.5')
+        ->assertSet('error', 'PHP 8.5 is not one this server can add.');
+
+    expect(helperCalls($this->log))->toBe(['php-install 8.4']);
+});
+
+test('an install under way blocks a second one, and a failed one says why', function () {
+    config(['studio.php_versions' => ['8.5']]);
+    $admin = User::factory()->admin()->create();
+    Cache::put('studio:php-install', ['version' => '8.4', 'status' => 'running', 'error' => null, 'at' => now()->toIso8601String()]);
+
+    Livewire::actingAs($admin)->test(System::class)
+        ->assertSee('installing…')
+        ->assertSeeHtml('wire:poll.5s')
+        ->call('installPhp', '8.3')
+        ->assertSet('error', 'PHP 8.4 is being installed: one at a time.');
+
+    Cache::forget('studio:php-install');
+    $_ENV['FAKE_PHP_INSTALL_FAIL'] = $_SERVER['FAKE_PHP_INSTALL_FAIL'] = '1';
+
+    try {
+        Livewire::actingAs($admin)->test(System::class)
+            ->call('installPhp', '8.3')
+            ->assertSee('PHP 8.3 could not be installed')
+            ->assertSee('/var/log/studio-install.log');
+    } finally {
+        unset($_ENV['FAKE_PHP_INSTALL_FAIL'], $_SERVER['FAKE_PHP_INSTALL_FAIL']);
+    }
+
+    expect(app(PhpVersions::class)->state())->toMatchArray(['version' => '8.3', 'status' => 'failed']);
 });
 
 test('a local installation explains that updates happen on the server', function () {

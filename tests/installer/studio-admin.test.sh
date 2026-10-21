@@ -36,7 +36,7 @@ extract() {
         on { print; if (match($0, /<<.?[A-Z]+/)) { doc = substr($0, RSTART + 2, RLENGTH - 2); gsub(/[^A-Z]/, "", doc) } else if ($0 == "}") exit }
     ' "$ADMIN"
 }
-for fn in valid_host site_hosts valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir valid_cursor_dir cursor_dir_layout cursor_dir_remove ensure_cursor_dir cursor_read_status ensure_claude_policy field has_field git_identity cmd_git_cli set_env unset_env write_workspace_env workspace_agent_env; do
+for fn in valid_host site_hosts valid_claude_dir claude_dir_layout claude_dir_remove ensure_claude_dir valid_cursor_dir cursor_dir_layout cursor_dir_remove ensure_cursor_dir cursor_read_status ensure_claude_policy field has_field git_identity cmd_git_cli cmd_php_install set_env unset_env write_workspace_env workspace_agent_env; do
     def=$(extract "$fn"); [ -n "$def" ] || fail "no function $fn in studio-admin"
     eval "$def"
 done
@@ -202,7 +202,35 @@ out=$( ( STUDIO_DIR="$T/release"; fail() { admin_fail "$@"; }; cmd_git_cli azure
 case "$out" in *'"ok":false'*'azure'*) ;; *) fail "a failed install is an error: $out" ;; esac
 ok "git-cli installs the forge's CLI through the release's ensure_git_cli and answers {\"ok\":true}"
 
-grep -qE '^    git-cli\)' "$ADMIN" && grep -qE '^    claude-forget\)' "$ADMIN" && grep -qE '^    cursor-login\)' "$ADMIN" || fail "git-cli, claude-forget and cursor-login are dispatched"
+# ---------------------------------------------------------------- php-install
+
+cat > "$T/release/installer/lib/system.sh" <<'LIB'
+load_requirements() { PHP_OPTIONAL="8.3 8.4"; }
+add_php() { echo "adding PHP $1"; echo "$1" >> "$INSTALLED"; }
+LIB
+: > "$INSTALLED"; : > "$T/cached"
+log() { :; }
+update_running() { [ -f "$T/updating" ]; }
+sudo() { echo "$*" >> "$T/cached"; }
+out=$( ( STUDIO_DIR="$T/release"; fail() { admin_fail "$@"; }; cmd_php_install 8.4 ) 2>/dev/null )
+[ "$out" = "$(jq -n '{ok:true, version:"8.4"}')" ] || fail "php-install answers ok with the version, got: $out"
+[ "$(cat "$INSTALLED")" = 8.4 ] || fail "php-install ran add_php 8.4"
+grep -q 'artisan config:cache' "$T/cached" || fail "php-install rebuilds Studio's cached configuration"
+for bad in '8' '8.4;id' '../8.4'; do
+    out=$( ( STUDIO_DIR="$T/release"; fail() { admin_fail "$@"; }; cmd_php_install "$bad" ) 2>/dev/null || true )
+    case "$out" in *'"ok":false'*) ;; *) fail "php-install took '$bad': $out" ;; esac
+done
+touch "$T/updating"
+out=$( ( STUDIO_DIR="$T/release"; fail() { admin_fail "$@"; }; cmd_php_install 8.3 ) 2>/dev/null || true )
+case "$out" in *'"ok":false'*'update is running'*) ;; *) fail "php-install during an update: $out" ;; esac
+rm -f "$T/updating"
+echo 'load_requirements() { :; }; add_php() { return 1; }' > "$T/release/installer/lib/system.sh"
+out=$( ( STUDIO_DIR="$T/release"; fail() { admin_fail "$@"; }; cmd_php_install 8.3 ) 2>/dev/null || true )
+case "$out" in *'"ok":false'*'PHP 8.3 could not be installed'*) ;; *) fail "a failed install is an error: $out" ;; esac
+[ "$(cat "$INSTALLED")" = 8.4 ] || fail "only 8.4 was installed: $(cat "$INSTALLED")"
+ok "php-install adds a PHP through the release's add_php, never during an update, and refreshes the forms"
+
+grep -qE '^    git-cli\)' "$ADMIN" && grep -qE '^    php-install\)' "$ADMIN" && grep -qE '^    claude-forget\)' "$ADMIN" && grep -qE '^    cursor-login\)' "$ADMIN" || fail "git-cli, php-install, claude-forget and cursor-login are dispatched"
 ok "the new commands are dispatched"
 
 # ---------------------------------------------------------------- the workspace's environment

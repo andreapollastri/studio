@@ -55,6 +55,9 @@ case "$cmd" in
     printf '{"ok":true,"channel":"%s"}\n' "$1" ;;
   update-auto|system-update-auto)
     printf '{"ok":true,"auto":%s}\n' "$([ "$1" = on ] && echo true || echo false)" ;;
+  php-install)
+    if [ "${FAKE_PHP_INSTALL_FAIL:-}" = 1 ]; then printf '{"ok":false,"error":"PHP %s could not be installed (see /var/log/studio-install.log)"}\n' "$1"; exit 1; fi
+    printf '{"ok":true,"version":"%s"}\n' "$1" ;;
   system-update-start)
     printf '{"ok":true,"started":true,"unit":"studio-system-update.service"}\n' ;;
   fail)

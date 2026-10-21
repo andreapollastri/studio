@@ -24,7 +24,7 @@ class ProjectFactory extends Factory
             'slug' => Str::slug($name),
             'repo_url' => 'https://github.com/acme/'.Str::slug($name).'.git',
             'default_branch' => 'develop',
-            'php_version' => '8.4',
+            'php_version' => '8.5',
             'db_engine' => 'mariadb',
             'site_status' => SiteStatus::New,
             'larapilot_api_token' => null,
