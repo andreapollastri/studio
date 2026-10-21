@@ -214,3 +214,59 @@ test('the server gets the site with its aliases, and every workspace moves to th
         ->toContain('"preview_host":"maria-shop.client.test"')
         ->and($workspace->fresh()->app_url)->toBe('https://maria-shop.client.test');
 });
+
+test('administrators put a domain online or take it offline, and the projects on it are set up again', function () {
+    Queue::fake();
+    $admin = User::factory()->admin()->create();
+    $domain = verifiedDomain('client.test');
+    $site = Project::factory()->create(['slug' => 'shop', 'site_host' => 'client.test', 'site_domain_id' => $domain->id]);
+    $previews = Project::factory()->create(['slug' => 'api', 'preview_domain_id' => $domain->id]);
+    Project::factory()->create(['slug' => 'other']);
+
+    expect($domain->online)->toBeFalse();
+
+    Livewire::actingAs($admin)->test(Domains::class)
+        ->assertSee('not online')
+        ->call('toggleOnline', $domain->uuid)
+        ->assertSee('Take offline');
+
+    expect($domain->fresh()->online)->toBeTrue();
+    Queue::assertPushed(ConfigureProjectSite::class, 2);
+    Queue::assertPushed(ConfigureProjectSite::class, fn ($job) => $job->project->is($site));
+    Queue::assertPushed(ConfigureProjectSite::class, fn ($job) => $job->project->is($previews));
+
+    Livewire::actingAs($admin)->test(Domains::class)->call('toggleOnline', $domain->uuid);
+    expect($domain->fresh()->online)->toBeFalse();
+
+    Livewire::actingAs(User::factory()->create())->test(Domains::class)->assertForbidden();
+});
+
+test('a host of a domain that is online opens to anybody; Studio\'s address of the same site keeps the login', function () {
+    config(['app.url' => 'https://studio.dev.example.test']);
+    $domain = verifiedDomain('client.test');
+    $maria = User::factory()->create(['handle' => 'maria']);
+    $project = Project::factory()->create(['slug' => 'shop', 'site_host' => 'staging.client.test', 'site_domain_id' => $domain->id, 'preview_domain_id' => $domain->id]);
+    $workspace = Workspace::factory()->create(['project_id' => $project->id, 'user_id' => $maria->id, 'app_url' => 'https://maria-shop.client.test']);
+    $ask = fn (string $host, string $uri = '/') => $this->withHeaders(['X-Forwarded-Host' => $host, 'X-Forwarded-Uri' => $uri, 'X-Forwarded-Method' => 'GET', 'X-Forwarded-For' => '203.0.113.9'])->get('/api/site-auth');
+
+    // not online: the login, as everywhere
+    $ask('staging.client.test')->assertRedirect();
+    expect($project->serviceInput()['public'])->toBe('0')
+        ->and($workspace->serviceInput()['public'])->toBe('0');
+
+    $domain->update(['online' => true]);
+    $project->refresh();
+
+    $ask('staging.client.test')->assertNoContent();
+    $ask('maria-shop.client.test')->assertNoContent();
+    // the team's address stays behind the login, and so does the Larapilot dashboard
+    $ask('shop.dev.example.test')->assertRedirect();
+    $ask('staging.client.test', '/larapilot')->assertRedirect();
+    // a public site never shows a debug page: the server is told so
+    expect($project->serviceInput()['public'])->toBe('1')
+        ->and($workspace->fresh()->serviceInput()['public'])->toBe('1');
+
+    // an address list still narrows it
+    $project->update(['settings' => ['access' => ['site' => ['ips' => ['198.51.100.0/24']]]]]);
+    $ask('staging.client.test')->assertForbidden();
+});

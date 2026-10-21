@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { lstat, mkdtemp, readlink, realpath, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from '../src/server.js';
-import { homeLink, shellEnv } from '../src/shell.js';
+import { homeLink, shellEnv, terminalScript } from '../src/shell.js';
 import { testConfig, listen } from './helpers.js';
 
 /** Open GET /shell as the gateway does; resolves to { socket, messages, until } or the refusal's status. */
@@ -134,4 +134,22 @@ test('a link already there is used again; anything else of that name keeps the f
   const other = await realpath(await mkdtemp(join(tmpdir(), 'studio-home-')));
   await writeFile(join(other, name), 'mine');
   assert.equal(homeLink(dir, other), dir);
+});
+
+test('terminal.py comes from the live release, not from the one a long-running bridge started in', async () => {
+  const studio = await mkdtemp(join(tmpdir(), 'studio-releases-'));
+  for (const release of ['v2.4.3', 'v2.4.8']) {
+    await mkdir(join(studio, 'releases', release, 'bridge', 'bin'), { recursive: true });
+    await mkdir(join(studio, 'releases', release, 'bridge', 'src'), { recursive: true });
+    await writeFile(join(studio, 'releases', release, 'bridge', 'src', 'terminal.py'), '');
+  }
+  // started as the unit starts it, through current; the release it started in is removed later
+  await symlink('releases/v2.4.8', join(studio, 'current'));
+  await rm(join(studio, 'releases', 'v2.4.3'), { recursive: true });
+  const started = join(studio, 'current', 'bridge', 'bin', 'bridge.js');
+
+  assert.equal(terminalScript(started), join(studio, 'current', 'bridge', 'src', 'terminal.py'));
+  // run some other way (the tests, development): the file next to shell.js
+  assert.match(terminalScript(join(studio, 'nowhere', 'bin', 'bridge.js')), /bridge\/src\/terminal\.py$/);
+  assert.match(terminalScript(undefined), /bridge\/src\/terminal\.py$/);
 });

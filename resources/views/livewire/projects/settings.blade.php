@@ -143,6 +143,7 @@
                             @error('site_label')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
                             @if ($siteChoice)
                                 <flux:text class="text-xs">{{ __('The site at :host, and at :default for the team.', ['host' => (trim($site_label) !== '' ? strtolower(trim($site_label)).'.' : '').$siteChoice->name, 'default' => $project->defaultSiteHost()]) }}</flux:text>
+                                @include('livewire.projects.partials.domain-online', ['choice' => $siteChoice])
                             @endif
 
                             <flux:select wire:model.live="preview_domain" :label="__('Previews and sandboxes')">
@@ -154,6 +155,9 @@
                                 @endforeach
                             </flux:select>
                             @error('preview_domain')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
+                            @if ($previewChoice)
+                                @include('livewire.projects.partials.domain-online', ['choice' => $previewChoice])
+                            @endif
                             @if (($previewChoice?->id) !== $project->preview_domain_id)
                                 <flux:text class="text-xs">{{ __('Every workspace moves there when you save; sandboxes already open keep their address until they are removed.') }}</flux:text>
                             @endif

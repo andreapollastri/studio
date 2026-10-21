@@ -379,8 +379,8 @@ class Project extends Model
             'horizon' => $features['horizon'] ? '1' : '0',
             'pulse' => $features['pulse'] ? '1' : '0',
             'timezone' => $this->timezone(),
-            // a public site never shows a debug page
-            'public' => $this->isPublic('site') ? '1' : '0',
+            // a site anybody may open (public, or on a domain that is online) never shows a debug page
+            'public' => $this->opensToEveryone('site') ? '1' : '0',
         ];
     }
 
@@ -494,6 +494,18 @@ class Project extends Model
     public function isPublic(string $kind): bool
     {
         return $this->access()['public'][$kind === 'site' ? 'site' : 'previews'];
+    }
+
+    /**
+     * Anybody may open the site (or the previews): made public, or at an address of a domain that is online.
+     *
+     * @param  'site'|'preview'  $kind
+     */
+    public function opensToEveryone(string $kind): bool
+    {
+        $domain = $kind === 'site' ? $this->siteDomain : $this->previewDomain;
+
+        return $this->isPublic($kind) || (bool) $domain?->online;
     }
 
     /** The repository path on its git host (`owner/repo`…), or null when no enabled host knows the address. */

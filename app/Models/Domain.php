@@ -9,11 +9,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * A domain other than Studio's own, for projects: a site at `name` itself or, with the
  * wildcard, at `<label>.name`, and previews at `<person>-<key>.name`. Accepted once its DNS
  * points at this server (see DomainDns); Caddy gets certificates for it only while it does.
+ * Online, its hosts open to anybody, without the Studio login (SiteAccess), as a public site does;
+ * Studio's own address of the same site stays behind the login.
  *
  * @property int $id
  * @property string $uuid
@@ -25,8 +28,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $checked_at
  * @property Carbon|null $verified_at
  * @property int|null $user_id
+ * @property bool $online
  */
-#[Fillable(['name', 'wildcard', 'status', 'records', 'last_error', 'checked_at', 'verified_at', 'user_id'])]
+#[Fillable(['name', 'wildcard', 'status', 'records', 'last_error', 'checked_at', 'verified_at', 'user_id', 'online'])]
 class Domain extends Model
 {
     use HasPublicUuid;
@@ -37,6 +41,9 @@ class Domain extends Model
     /** One label, as a site's subdomain on a wildcard domain. */
     public const LABEL = '/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/';
 
+    /** @var array<string, mixed> */
+    protected $attributes = ['online' => false];
+
     /**
      * @return array<string, string>
      */
@@ -44,6 +51,7 @@ class Domain extends Model
     {
         return [
             'wildcard' => 'boolean',
+            'online' => 'boolean',
             'status' => DomainStatus::class,
             'records' => 'array',
             'checked_at' => 'datetime',
@@ -72,6 +80,16 @@ class Domain extends Model
     public function inUse(): bool
     {
         return $this->sites()->exists() || $this->previewProjects()->exists();
+    }
+
+    /**
+     * The projects whose site or previews live here: what changes on the server when the domain goes online or not.
+     *
+     * @return Collection<int, Project>
+     */
+    public function projects(): Collection
+    {
+        return $this->sites()->get()->merge($this->previewProjects()->get())->unique('id')->values();
     }
 
     public function isVerified(): bool

@@ -38,7 +38,7 @@ class SiteAuthController extends Controller
         }
 
         $user = $passes->userFromPass($request->cookies->get(SitePass::COOKIE), $host);
-        $decision = $access->decide($target['project'], $target['kind'], $target['workspace'], $this->clientIp($request), $user, $target['branch'] ?? null, $path);
+        $decision = $access->decide($target['project'], $target['kind'], $target['workspace'], $this->clientIp($request), $user, $target['branch'] ?? null, $path, $target['online']);
 
         if ($decision === SiteAccess::ALLOW) {
             return response('', 204);

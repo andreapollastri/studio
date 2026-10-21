@@ -3,6 +3,7 @@
 namespace App\Server;
 
 use App\Models\Conversation;
+use App\Models\Domain;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
@@ -23,9 +24,10 @@ final class SiteAccess
      * The project behind a host, by the hosts Studio keeps: a project's site at its own address
      * (`site_host`) or at `<slug>.<domain>`, a workspace's `app_url` (a preview), a sandboxed
      * conversation's host (a preview too, with the sandbox's branch, which the access rules may
-     * single out). Whatever the domain: Studio's, or one of Administration → Domains.
+     * single out). Whatever the domain: Studio's, or one of Administration → Domains; `online`
+     * says the host is under one of those that is online.
      *
-     * @return array{project: Project, kind: 'site'|'preview', workspace: Workspace|null, branch?: string|null}|null
+     * @return array{project: Project, kind: 'site'|'preview', workspace: Workspace|null, branch?: string|null, online: bool}|null
      */
     public function resolveHost(string $host): ?array
     {
@@ -35,22 +37,23 @@ final class SiteAccess
             return null;
         }
 
+        $online = (bool) Domain::covering($host)?->online;
         $project = Project::query()->where('site_host', $host)->first() ?? $this->defaultSite($host);
 
         if ($project) {
-            return ['project' => $project, 'kind' => 'site', 'workspace' => null];
+            return ['project' => $project, 'kind' => 'site', 'workspace' => null, 'online' => $online];
         }
 
         $workspace = Workspace::query()->with('project')->where('app_url', 'https://'.$host)->first();
 
         if ($workspace) {
-            return ['project' => $workspace->project, 'kind' => 'preview', 'workspace' => $workspace];
+            return ['project' => $workspace->project, 'kind' => 'preview', 'workspace' => $workspace, 'online' => $online];
         }
 
         $conversation = Conversation::query()->with('workspace.project')->where('sandbox_host', $host)->first();
 
         if ($conversation) {
-            return ['project' => $conversation->workspace->project, 'kind' => 'preview', 'workspace' => $conversation->workspace, 'branch' => $conversation->sandbox['branch'] ?? null];
+            return ['project' => $conversation->workspace->project, 'kind' => 'preview', 'workspace' => $conversation->workspace, 'branch' => $conversation->sandbox['branch'] ?? null, 'online' => $online];
         }
 
         return null;
@@ -70,13 +73,14 @@ final class SiteAccess
 
     /**
      * A person logged in to Studio who has access to the project: a member in any role, or an
-     * administrator. A public host lets anybody in, except to its /larapilot dashboard, which
-     * still wants the login. An address list narrows both: from anywhere else, nobody gets in.
+     * administrator. A public host, or a host of a domain that is online ($online), lets anybody
+     * in, except to its /larapilot dashboard, which still wants the login. An address list
+     * narrows both: from anywhere else, nobody gets in.
      *
      * @param  'site'|'preview'  $kind
      * @return self::ALLOW|self::LOGIN|self::FORBIDDEN
      */
-    public function decide(Project $project, string $kind, ?Workspace $workspace, string $ip, ?User $user, ?string $branch = null, string $path = '/'): string
+    public function decide(Project $project, string $kind, ?Workspace $workspace, string $ip, ?User $user, ?string $branch = null, string $path = '/', bool $online = false): string
     {
         $branch = $kind === 'site' ? $project->default_branch : ($branch ?? $workspace?->branch);
         $rule = $project->accessRuleFor($kind, $branch);
@@ -85,7 +89,7 @@ final class SiteAccess
             return self::FORBIDDEN;
         }
 
-        if ($project->isPublic($kind) && ! self::isDashboard($path)) {
+        if (($online || $project->isPublic($kind)) && ! self::isDashboard($path)) {
             return self::ALLOW;
         }
 

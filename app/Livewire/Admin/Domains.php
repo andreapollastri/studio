@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin;
 
 use App\Enums\DomainStatus;
+use App\Jobs\ConfigureProjectSite;
 use App\Models\Domain;
 use App\Server\DomainDns;
 use Flux\Flux;
@@ -16,7 +17,7 @@ use Livewire\Component;
 /**
  * Domains other than Studio's own, for the projects: added here, accepted once their DNS
  * points at this server, then chosen in a project's Settings → Server for its site or its
- * previews. Checked again every day.
+ * previews. Checked again every day. Online, its hosts open to anybody without the Studio login.
  */
 #[Layout('layouts::app')]
 #[Title('Domains · Administration')]
@@ -71,6 +72,24 @@ class Domains extends Component
         Flux::toast(variant: $domain->isVerified() ? 'success' : 'warning', text: $domain->isVerified()
             ? __(':name points here.', ['name' => $domain->name])
             : (string) $domain->last_error);
+    }
+
+    /**
+     * Online: the sites and previews at this domain open to anybody, without the Studio login
+     * (an address list still narrows them, the /larapilot dashboard still wants the login), and
+     * never show a debug page. The projects that use it are set up again on the server.
+     */
+    public function toggleOnline(string $uuid): void
+    {
+        $domain = $this->domain($uuid);
+        $domain->update(['online' => ! $domain->online]);
+        Log::notice("Domain {$domain->name} ".($domain->online ? 'online' : 'not online').' by '.auth()->user()->email);
+
+        $domain->projects()->each(fn ($project) => ConfigureProjectSite::dispatch($project));
+
+        Flux::toast(variant: $domain->online ? 'warning' : 'success', text: $domain->online
+            ? __(':name is online: its sites and previews open to anybody, without the Studio login.', ['name' => $domain->name])
+            : __(':name is not online: its sites and previews want the Studio login again.', ['name' => $domain->name]));
     }
 
     public function remove(string $uuid): void

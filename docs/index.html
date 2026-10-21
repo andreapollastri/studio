@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.7">v2.4.7</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.8">v2.4.8</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1895,7 +1895,7 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6 and 2.4.7</h3>
+        <h3>New in 2.4.6 to 2.4.8</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -1904,6 +1904,11 @@
             Files, Db</em>. See <a href="#work-panes">The right pane</a>.</dd></dl>
           <dl><dt>Fewer switches, more room (2.4.7)</dt><dd>The terminal's <em>Remote</em> shows only on a project with SSH
             connections, as Db's does with database connections; in a short pane the Db client scrolls to the last row.</dd></dl>
+          <dl><dt>The Terminal after an update (2.4.8)</dt><dd>A workspace's shell no longer depends on the release its
+            bridge started in: it opens even after an update removed that release.</dd></dl>
+          <dl><dt>Online domains (2.4.8)</dt><dd>A client's domain can be put online in <em>Administration → Domains</em>: its
+            sites and previews open to anybody, while the team's address stays behind the login. See
+            <a href="#setup-domains">Clients' domains</a>.</dd></dl>
         </div>
 
         <h3>The team works in projects</h3>
@@ -3141,10 +3146,16 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           points here, which is also the proof that it is yours: Caddy gets a certificate only for a name that sends the CA to
           this server. It asks the DNS again every day; a domain that stops pointing here is marked <em>DNS lost</em> and gets no
           new certificate, one still waiting is accepted the day its records arrive. A domain a project uses cannot be removed.</p>
+        <p>Each domain is <strong>online</strong> or <strong>not online</strong>. Not online (the default), its hosts want the
+          Studio login like every other project host. <em>Put online</em> opens the sites and previews at that domain to anybody,
+          without the login, as a <a href="#setup-settings-access">public site</a> does: they run with <code>APP_ENV=staging</code>
+          and <code>APP_DEBUG=false</code>, the address lists still narrow them, the <code>/larapilot</code> dashboard still wants
+          the login, and the team's <code>&lt;key&gt;.&lt;domain&gt;</code> address of the same site stays behind it. <em>Take
+          offline</em> puts the login back. A project's <em>Settings → Server → Addresses</em> says which one its domain is.</p>
         <figure class="shot">
           <img src="img/admin-domains.png" alt="Administration → Domains: a verified domain used by a project, one waiting for its DNS" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Administration → Domains.</strong> The records to create, what the DNS answered, the projects
-            that use each domain.</figcaption>
+          <figcaption><strong>Administration → Domains.</strong> The records to create, online or not, what the DNS answered,
+            the projects that use each domain.</figcaption>
         </figure>
         <p>Then, in a project's <a href="#setup-settings-server">Settings → Server → Addresses</a>: the <strong>site</strong> at
           the domain itself or at a subdomain of it (<code>staging.client.com</code>), with <code>&lt;key&gt;.&lt;domain&gt;</code>

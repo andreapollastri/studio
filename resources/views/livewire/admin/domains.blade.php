@@ -32,6 +32,7 @@
                 <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800">
                     <tr>
                         <th class="px-4 py-2 text-start">{{ __('Domain') }}</th>
+                        <th class="px-4 py-2 text-start">{{ __('Status') }}</th>
                         <th class="px-4 py-2 text-start">{{ __('DNS') }}</th>
                         <th class="px-4 py-2 text-start">{{ __('Used by') }}</th>
                         <th class="px-4 py-2"></th>
@@ -46,6 +47,16 @@
                                     <flux:badge size="sm" :color="$domain->status->color()">{{ $domain->status->label() }}</flux:badge>
                                     @if ($domain->wildcard)<flux:badge size="sm">{{ __('with subdomains') }}</flux:badge>@endif
                                 </div>
+                            </td>
+                            <td class="px-4 py-2" data-label="{{ __('Status') }}">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <flux:badge size="sm" :color="$domain->online ? 'green' : 'zinc'" :icon="$domain->online ? 'globe-alt' : 'lock-closed'">{{ $domain->online ? __('online') : __('not online') }}</flux:badge>
+                                    <flux:button size="xs" :variant="$domain->online ? 'ghost' : 'filled'" wire:click="toggleOnline('{{ $domain->uuid }}')"
+                                        wire:confirm="{{ $domain->online
+                                            ? __('Take :name offline? Its sites and previews want the Studio login again.', ['name' => $domain->name])
+                                            : __('Put :name online? Its sites and previews open to anybody, without the Studio login.', ['name' => $domain->name]) }}">{{ $domain->online ? __('Take offline') : __('Put online') }}</flux:button>
+                                </div>
+                                <div class="mt-1 text-xs text-zinc-500">{{ $domain->online ? __('Public: no Studio login.') : __('Behind the Studio login.') }}</div>
                             </td>
                             <td class="px-4 py-2 text-xs" data-cell="wide">
                                 <div class="font-mono">

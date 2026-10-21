@@ -128,11 +128,11 @@ class DemoSeeder extends Seeder
             'slug' => Project::newKey('API'), 'default_branch' => 'develop', 'php_version' => '8.4', 'db_engine' => 'mariadb', 'deploy_user_id' => $andrea->id,
         ]);
 
-        // Acme's own domain: the shop's site at staging.acme.test and its previews under it; Globex's is on its way
+        // Acme's own domain, online: the shop's site at staging.acme.test and its previews under it, open to the client; Globex's is on its way
         $ip = ['expected' => ['203.0.113.10']];
         $acme = Domain::query()->updateOrCreate(['name' => 'acme.test'], [
             'wildcard' => true, 'status' => DomainStatus::Verified, 'records' => [...$ip, 'name' => ['203.0.113.10'], 'wildcard' => ['203.0.113.10']],
-            'checked_at' => now()->subHours(3), 'verified_at' => now()->subDays(12), 'user_id' => $andrea->id,
+            'checked_at' => now()->subHours(3), 'verified_at' => now()->subDays(12), 'user_id' => $andrea->id, 'online' => true,
         ]);
         Domain::query()->updateOrCreate(['name' => 'globex.test'], [
             'wildcard' => true, 'status' => DomainStatus::Pending, 'records' => [...$ip, 'name' => ['198.51.100.7'], 'wildcard' => []],

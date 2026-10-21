@@ -93,7 +93,7 @@ final class Sandboxes
                     'db_engine' => $project->db_engine,
                     'preview_host' => (string) $conversation->sandbox_host,
                     'timezone' => $project->timezone(),
-                    'public' => $project->isPublic('preview') ? '1' : '0',
+                    'public' => $project->opensToEveryone('preview') ? '1' : '0',
                 ]);
                 $url = (string) ($result['app_url'] ?? 'https://'.$conversation->sandbox_host);
             }

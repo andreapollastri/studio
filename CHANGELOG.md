@@ -4,6 +4,11 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.8
+
+- **A client's domain can be online.** *Administration → Domains* shows each domain as *online* or *not online*, with *Put online* and *Take offline*. Online, the sites and previews at that domain open to anybody, without the Studio login, as a public site does: no debug page (`APP_ENV=staging`), address lists still apply, the `/larapilot` dashboard still wants the login, and the team's `<key>.<domain>` address stays behind it. Domains start as not online, so nothing changes until an administrator says so. A project's *Settings → Server → Addresses* tells which one its domain is.
+- **The Terminal tab opens again after an update.** A workspace's bridge runs for days, and it kept looking for its terminal helper in the release it had started in. Once an update removed that release (only the newest three stay), the tab answered `python3: can't open file '/opt/studio/releases/v2.4.3/bridge/src/terminal.py'`. The bridge now finds the helper in the live release, and this update restarts every bridge once so that each runs the new code. A conversation running at that moment stops and goes on from where it was with the next message.
+
 ## 2.4.7
 
 - **The Db tab scrolls.** In a short pane, with the tables stacked over the rows, the database client was cut at the bottom and could not be scrolled: the last rows, the Structure tab and the editor's results were out of reach. The client now scrolls as a whole and what is open keeps room enough. *Tools → Databases* is unchanged.

@@ -1,12 +1,26 @@
 import { spawn as spawnProcess } from 'node:child_process';
-import { lstatSync, realpathSync, symlinkSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { existsSync, lstatSync, realpathSync, symlinkSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StringDecoder } from 'node:string_decoder';
 import { NdjsonParser } from './ndjson.js';
 
-// -I: Python's isolated mode, nothing from the workspace or its environment is imported
-const TERMINAL = fileURLToPath(new URL('./terminal.py', import.meta.url));
+const BESIDE = fileURLToPath(new URL('./terminal.py', import.meta.url));
+
+/**
+ * Where terminal.py is. A bridge runs for days from /opt/studio/current/bridge, and Node
+ * resolves that link to the release the bridge started in: an update later removes old
+ * releases, and with them the file next to this one ("can't open file …/releases/v2.4.3/…").
+ * The path the bridge was started through (process.argv[1] keeps the link) has it in the
+ * live release; the file next to this one is for development and the tests.
+ */
+export function terminalScript(started = process.argv[1]) {
+  if (started) {
+    const live = join(dirname(started), '..', 'src', 'terminal.py');
+    if (existsSync(live)) return live;
+  }
+  return BESIDE;
+}
 
 /**
  * The Terminal tab's shell: the workspace user's login shell on a real
@@ -28,7 +42,8 @@ export class ShellSession {
     const program = shell || process.env.SHELL || '/bin/bash';
     // the workspace through its link in the home: the prompt reads ~/<workspace>, not /srv/studio/…
     const start = home ? homeLink(cwd, home) : cwd;
-    this.#child = spawn('python3', ['-I', TERMINAL, String(cols), String(rows), program, '-l'], {
+    // -I: Python's isolated mode, nothing from the workspace or its environment is imported
+    this.#child = spawn('python3', ['-I', terminalScript(), String(cols), String(rows), program, '-l'], {
       cwd: start,
       env: { ...shellEnv(process.env), PWD: start },
       stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
