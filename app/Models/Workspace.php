@@ -135,7 +135,7 @@ class Workspace extends Model
     public function serviceInput(): array
     {
         // a public preview runs as staging, without debug pages; behind the login, as local
-        return [...$this->project->serviceInput(), 'reverb_port' => $this->reverbPort(), 'public' => $this->project->opensToEveryone('preview') ? '1' : '0'];
+        return [...$this->project->serviceInput(), 'reverb_port' => $this->reverbPort(), 'public' => '0'];
     }
 
     /**

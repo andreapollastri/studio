@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.8">v2.4.8</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.9">v2.4.9</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1895,7 +1895,7 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6 to 2.4.8</h3>
+        <h3>New in 2.4.6 to 2.4.9</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -1906,9 +1906,9 @@
             connections, as Db's does with database connections; in a short pane the Db client scrolls to the last row.</dd></dl>
           <dl><dt>The Terminal after an update (2.4.8)</dt><dd>A workspace's shell no longer depends on the release its
             bridge started in: it opens even after an update removed that release.</dd></dl>
-          <dl><dt>Online domains (2.4.8)</dt><dd>A client's domain can be put online in <em>Administration → Domains</em>: its
-            sites and previews open to anybody, while the team's address stays behind the login. See
-            <a href="#setup-domains">Clients' domains</a>.</dd></dl>
+          <dl><dt>Public addresses (2.4.9)</dt><dd>A project's own addresses, the team's, are always behind the login; its
+            site can get a public address on a client's domain, public or behind the browser's sign-in, per project. See
+            <a href="#setup-settings-server">Settings → Server</a>.</dd></dl>
         </div>
 
         <h3>The team works in projects</h3>
@@ -2757,8 +2757,15 @@
             preview.</figcaption>
         </figure>
         <div class="walkthrough-grid">
-          <dl><dt>Addresses</dt><dd>Where the site and the previews live: under Studio's domain, or on a
-            <a href="#setup-domains">client's domain</a> that points here, the usual address kept for the team.</dd></dl>
+          <dl><dt>Addresses</dt><dd>The team's, always under Studio's domain and behind the login: the site at
+            <code>&lt;key&gt;.&lt;domain&gt;</code>, the previews and sandboxes at <code>&lt;person&gt;-&lt;key&gt;.&lt;domain&gt;</code>.
+            Besides them, optionally, a <strong>public address</strong> for the site on a <a href="#setup-domains">client's
+            domain</a> that points here (<code>project-a.client.com</code>), <strong>public</strong> or <strong>not
+            public</strong> for this project alone. Public, anybody opens it with no sign-in, from the addresses listed in
+            <a href="#setup-settings-access">Who opens the hosts</a>; it runs with <code>APP_ENV=staging</code> and
+            <code>APP_DEBUG=false</code>, so <code>/larapilot</code> asks for a Larapilot user of its own. Not public, the
+            browser asks for the email and password of a Studio account on the project (basic authentication): no Studio page
+            on the client's domain.</dd></dl>
           <dl><dt>Scheduler</dt><dd>A cron line runs <code>php artisan schedule:run</code> every minute as the host's own
             Linux user. On by default, for the site and for every preview.</dd></dl>
           <dl><dt>Queues</dt><dd>One <code>queue:work</code> worker per queue name, as a systemd unit that restarts on
@@ -2784,26 +2791,38 @@
         <h3 id="setup-settings-access">Who opens the hosts</h3>
         <figure class="shot">
           <img src="img/project-settings-access.png" alt="The Who opens the hosts section: address lists for the site and for the previews, and branch overrides" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Settings → Who opens the hosts.</strong> The Studio login and the project, unless the site (and
-            the previews) are made public; address lists narrow it, per site, previews and branch.</figcaption>
+          <figcaption><strong>Settings → Who opens the hosts.</strong> The Studio login and the project, except the public
+            address, open when public and behind the browser's sign-in when not; address lists narrow every one, per site,
+            previews and branch.</figcaption>
         </figure>
         <p>Every address of a project is behind the Studio login: the site, its <code>/larapilot</code> dashboard and API,
           each workspace preview, any path. The visitor must be logged in to Studio and assigned to the project, in any
           role (developer, PM, client), or be an administrator; anyone else is sent to the Studio login page and comes back
           after it, and a logged-in person who is not on the project gets a 403. That is the default, and the right one: a
           preview runs with <code>APP_DEBUG</code> on, a site with work not yet released.</p>
-        <p>When a project is meant for the open internet, an administrator turns on <em>Public site</em>: the site opens to
-          anyone, with no login, as a real public website. <em>Public workspace previews too</em> does the same for every
-          preview and sandbox of the project, and only along with the site; both are off by default. The address lists still
-          apply to a public host, and <code>/larapilot</code> always asks for the login. A public host never shows a debug
-          page: the site gets <code>APP_DEBUG=false</code>, and public previews and sandboxes switch from
-          <code>APP_ENV=local</code>, <code>APP_DEBUG=true</code> to <code>APP_ENV=staging</code>,
-          <code>APP_DEBUG=false</code> (in their <code>.env</code> and in their Caddy host), and back when they return behind
-          the login.</p>
+        <p>For the client and the open internet, a project gets a <strong>public address</strong> on a
+          <a href="#setup-domains">client's domain</a> (<a href="#setup-settings-server">Settings → Server → Addresses</a>),
+          <em>public</em> or <em>not public</em>:</p>
+        <ul>
+          <li><strong>Public</strong>: the site opens there to anyone, with no sign-in, as a real public website, and never
+            shows a debug page (<code>APP_ENV=staging</code>, <code>APP_DEBUG=false</code>). In staging Larapilot's
+            <code>/larapilot</code> asks for a Larapilot user of its own, so Studio adds nothing there.</li>
+          <li><strong>Not public</strong>: the browser's own sign-in box (basic authentication) asks for the email and password
+            of a Studio account that is on the project, or of an administrator: no Studio page ever shows on the client's
+            domain. Five wrong tries a minute lock an account from an address, and every refusal goes to the security log,
+            where fail2ban bans the address, as for the login form. Caddy drops the credentials before the app, which never
+            sees a Studio password; a checked pair is remembered for ten minutes, so the pictures of a page do not each
+            check the password again. Two-factor authentication is not asked there: the browser's box has no room for it.</li>
+        </ul>
+        <p>Studio's own addresses of the project, the team's (the site's <code>&lt;key&gt;.&lt;domain&gt;</code>, every
+          preview and sandbox), keep the Studio login whatever happens. On one client's domain each project is public or not
+          on its own: <code>project-a.client.com</code> public, <code>project-b.client.com</code> not public,
+          <code>progetto-bello-c.client.com</code> public.</p>
         <div class="walkthrough-grid">
           <dl><dt>Only from</dt><dd>An address list for the site, one for the previews: one IP or CIDR per line. It narrows the
-            login, it never replaces it: from a listed address the visitor still logs in (or walks in, on a public host),
-            from any other nobody gets in. Empty means from anywhere.</dd></dl>
+            sign-in, it never replaces it: from a listed address the visitor still signs in (or walks in, at a public address
+            that is public), from any other nobody gets in, at the team's address and at the public address alike. Empty
+            means from anywhere.</dd></dl>
           <dl><dt>Branch overrides</dt><dd>A list for <code>feature/secret</code> replaces the site's list while that is the
             deploy branch, and the previews' list for every workspace that is on that branch. Studio remembers each
             workspace's branch from its Git tab.</dd></dl>
@@ -3146,23 +3165,16 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           points here, which is also the proof that it is yours: Caddy gets a certificate only for a name that sends the CA to
           this server. It asks the DNS again every day; a domain that stops pointing here is marked <em>DNS lost</em> and gets no
           new certificate, one still waiting is accepted the day its records arrive. A domain a project uses cannot be removed.</p>
-        <p>Each domain is <strong>online</strong> or <strong>not online</strong>. Not online (the default), its hosts want the
-          Studio login like every other project host. <em>Put online</em> opens the sites and previews at that domain to anybody,
-          without the login, as a <a href="#setup-settings-access">public site</a> does: they run with <code>APP_ENV=staging</code>
-          and <code>APP_DEBUG=false</code>, the address lists still narrow them, the <code>/larapilot</code> dashboard still wants
-          the login, and the team's <code>&lt;key&gt;.&lt;domain&gt;</code> address of the same site stays behind it. <em>Take
-          offline</em> puts the login back. A project's <em>Settings → Server → Addresses</em> says which one its domain is.</p>
         <figure class="shot">
-          <img src="img/admin-domains.png" alt="Administration → Domains: a verified domain used by a project, one waiting for its DNS" loading="lazy" width="2880" height="1800" />
-          <figcaption><strong>Administration → Domains.</strong> The records to create, online or not, what the DNS answered,
-            the projects that use each domain.</figcaption>
+          <img src="img/admin-domains.png" alt="Administration → Domains: a verified domain with a project's public address, public, one waiting for its DNS" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Administration → Domains.</strong> The records to create, what the DNS answered, the projects
+            at each domain, public or not.</figcaption>
         </figure>
-        <p>Then, in a project's <a href="#setup-settings-server">Settings → Server → Addresses</a>: the <strong>site</strong> at
-          the domain itself or at a subdomain of it (<code>staging.client.com</code>), with <code>&lt;key&gt;.&lt;domain&gt;</code>
-          kept as a second address for the team; the <strong>previews and sandboxes</strong> under a domain with its subdomains
-          (<code>&lt;person&gt;-&lt;key&gt;.client.com</code>). Saving moves the site and every workspace on the server, their
-          <code>APP_URL</code> included; sandboxes already open keep their address until they are removed. The login in front of
-          every host, the access rules and the agent's browser work the same on any domain. A name on a client's domain that no
+        <p>Then, in a project's <a href="#setup-settings-server">Settings → Server → Addresses</a>: the site's <strong>public
+          address</strong> at the domain itself or at a subdomain of it (<code>project-a.client.com</code>), public or not
+          public for that project alone, with <code>&lt;key&gt;.&lt;domain&gt;</code> kept for the team behind the login. Previews and
+          sandboxes always live under Studio's domain, the team's. Saving applies it to the site on the server, its
+          <code>APP_URL</code> included. The access rules and the agent's browser work the same on any domain. A name on a client's domain that no
           project uses gets no certificate and no welcome page. When Studio's own domain changes (<code>studio-domain change</code>),
           the clients' domains stay as they are.</p>
 

@@ -5,6 +5,8 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Server\IpMatcher;
 use App\Server\SiteAccess;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 
 beforeEach(fn () => config(['studio.domain' => 'dev.example.test']));
 
@@ -141,55 +143,99 @@ test('someone who is not a member is stopped at the Studio hop, and an outside p
     expect($query['r'])->toBe('/');
 });
 
-test('a public site opens to anybody but its dashboard; its previews stay behind the login until they are public too', function () {
+test('a public address that is public lets anybody in; not public it asks the browser; the team\'s addresses and the previews keep the Studio login', function () {
     $member = User::factory()->create();
-    $project = Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    $project = Project::factory()->create(['slug' => 'shop', 'site_host' => 'project-a.prove.test', 'settings' => ['access' => ['public' => ['site' => true, 'previews' => true]]]]);
     $project->members()->attach($member);
     $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $member->id]);
     $access = new SiteAccess;
 
-    expect($access->decide($project, 'site', null, '198.51.100.7', null, path: '/orders'))->toBe(SiteAccess::ALLOW)
-        ->and($access->decide($project, 'site', null, '198.51.100.7', User::factory()->create(), path: '/'))->toBe(SiteAccess::ALLOW)
-        ->and($access->decide($project, 'preview', $workspace, '198.51.100.7', null, path: '/'))->toBe(SiteAccess::LOGIN);
+    expect($project->isPublished())->toBeTrue()
+        ->and($project->access()['public'])->toBe(['site' => true, 'previews' => false])
+        // public at the public address: anybody, /larapilot included (it asks for a Larapilot user of its own in staging)
+        ->and($access->decide($project, 'site', null, '198.51.100.7', null, public: true, basic: true))->toBe(SiteAccess::ALLOW)
+        // not public there: the browser asks, and a stranger's account is asked again
+        ->and($access->decide($project, 'site', null, '198.51.100.7', null, basic: true))->toBe(SiteAccess::BASIC)
+        ->and($access->decide($project, 'site', null, '198.51.100.7', User::factory()->create(), basic: true))->toBe(SiteAccess::BASIC)
+        ->and($access->decide($project, 'site', null, '198.51.100.7', $member, basic: true))->toBe(SiteAccess::ALLOW)
+        // the team's address and a preview: Studio's login
+        ->and($access->decide($project, 'site', null, '198.51.100.7', null))->toBe(SiteAccess::LOGIN)
+        ->and($access->decide($project, 'preview', $workspace, '198.51.100.7', null))->toBe(SiteAccess::LOGIN)
+        ->and($access->decide($project, 'site', null, '198.51.100.7', User::factory()->create()))->toBe(SiteAccess::FORBIDDEN);
 
-    foreach (['/larapilot', '/larapilot/board', '/LaraPilot/', '/%6carapilot', '//larapilot', '/index.php/larapilot', '/assets/../larapilot', '/./larapilot/api'] as $path) {
-        expect($access->decide($project, 'site', null, '198.51.100.7', null, path: $path))->toBe(SiteAccess::LOGIN, $path);
-    }
-
-    expect(SiteAccess::isDashboard('/larapilotx'))->toBeFalse()
-        ->and(SiteAccess::isDashboard('/docs/larapilot'))->toBeFalse()
-        ->and($access->decide($project, 'site', null, '198.51.100.7', $member, path: '/larapilot'))->toBe(SiteAccess::ALLOW);
-
-    $project->update(['settings' => ['access' => ['public' => ['site' => true, 'previews' => true]]]]);
-
-    expect($access->decide($project->fresh(), 'preview', $workspace, '198.51.100.7', null, path: '/'))->toBe(SiteAccess::ALLOW)
-        ->and($access->decide($project->fresh(), 'preview', $workspace, '198.51.100.7', null, path: '/larapilot'))->toBe(SiteAccess::LOGIN);
+    // without a public address, nothing is public
+    $project->update(['site_host' => null]);
+    expect($project->fresh()->isPublished())->toBeFalse();
 });
 
-test('public previews need a public site, and an address list still narrows a public host', function () {
-    $project = Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => [
-        'public' => ['site' => false, 'previews' => true],
-        'previews' => ['ips' => []],
-    ]]]);
-    $workspace = Workspace::factory()->running()->create(['project_id' => $project->id]);
+test('an address list still narrows the public address, public or not', function () {
+    $member = User::factory()->create();
+    $project = Project::factory()->create(['slug' => 'shop', 'site_host' => 'project-a.prove.test', 'settings' => ['access' => ['public' => ['site' => true], 'site' => ['ips' => ['203.0.113.0/24']]]]]);
+    $project->members()->attach($member);
     $access = new SiteAccess;
 
-    expect($project->access()['public'])->toBe(['site' => false, 'previews' => false])
-        ->and($access->decide($project, 'preview', $workspace, '198.51.100.7', null))->toBe(SiteAccess::LOGIN);
-
-    $project->update(['settings' => ['access' => ['public' => ['site' => true], 'site' => ['ips' => ['203.0.113.0/24']]]]]);
-
-    expect($access->decide($project->fresh(), 'site', null, '203.0.113.9', null))->toBe(SiteAccess::ALLOW)
-        ->and($access->decide($project->fresh(), 'site', null, '198.51.100.7', null))->toBe(SiteAccess::FORBIDDEN);
+    expect($access->decide($project, 'site', null, '203.0.113.9', null, public: true, basic: true))->toBe(SiteAccess::ALLOW)
+        ->and($access->decide($project, 'site', null, '198.51.100.7', null, public: true, basic: true))->toBe(SiteAccess::FORBIDDEN)
+        ->and($access->decide($project, 'site', null, '198.51.100.7', $member, basic: true))->toBe(SiteAccess::FORBIDDEN);
 });
 
-test('the gatekeeper lets anybody through to a public site, and sends them to the login for /larapilot', function () {
+test('on one domain each project is public or not on its own, and its team address keeps the Studio login', function () {
     config(['app.url' => 'https://studio.dev.example.test']);
-    Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => ['public' => ['site' => true]]]]);
-    $headers = ['X-Forwarded-Host' => 'shop.dev.example.test', 'X-Forwarded-Method' => 'GET', 'X-Forwarded-For' => '198.51.100.7'];
+    Project::factory()->create(['slug' => 'a', 'site_host' => 'project-a.prove.test', 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    Project::factory()->create(['name' => 'B', 'slug' => 'b', 'site_host' => 'project-b.prove.test', 'settings' => ['access' => ['public' => ['site' => false]]]]);
+    Project::factory()->create(['slug' => 'c', 'site_host' => 'progetto-bello-c.prove.test', 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    $ask = fn (string $host, string $uri = '/orders?page=2') => $this->withHeaders(['X-Forwarded-Host' => $host, 'X-Forwarded-Uri' => $uri, 'X-Forwarded-Method' => 'GET', 'X-Forwarded-For' => '198.51.100.7'])->get('/api/site-auth');
 
-    $this->withHeaders([...$headers, 'X-Forwarded-Uri' => '/orders?page=2'])->get('/api/site-auth')->assertNoContent();
-    $this->withHeaders([...$headers, 'X-Forwarded-Uri' => '/larapilot?page=2'])->get('/api/site-auth')
-        ->assertRedirect('https://studio.dev.example.test/site-login?host=shop.dev.example.test&r='.urlencode('/larapilot?page=2'));
-    $this->withHeaders([...$headers, 'X-Forwarded-Uri' => '//larapilot?page=2'])->get('/api/site-auth')->assertRedirect();
+    $ask('project-a.prove.test')->assertNoContent()->assertHeaderMissing('X-Studio-Strip-Auth');
+    $ask('project-a.prove.test', '/larapilot')->assertNoContent();
+    // credentials meant for the app (its own API) are not Studio's business: they go through untouched
+    $this->withHeaders(['X-Forwarded-Host' => 'project-a.prove.test', 'X-Forwarded-Uri' => '/api/orders', 'X-Forwarded-For' => '198.51.100.7', 'Authorization' => 'Basic '.base64_encode('api:secret')])
+        ->get('/api/site-auth')->assertNoContent()->assertHeaderMissing('X-Studio-Strip-Auth');
+    $ask('project-b.prove.test')->assertUnauthorized()->assertHeader('WWW-Authenticate', 'Basic realm="B · project-b.prove.test", charset="UTF-8"');
+    $ask('progetto-bello-c.prove.test')->assertNoContent();
+
+    // the team's address of a public site: Studio's login, as ever
+    $ask('a.dev.example.test')->assertRedirect('https://studio.dev.example.test/site-login?host=a.dev.example.test&r='.urlencode('/orders?page=2'));
+});
+
+test('at a public address that is not public, a member signs in with the browser, and Caddy is told to keep the password from the app', function () {
+    $member = User::factory()->create(['email' => 'maria@agency.test', 'password' => 'correct horse battery']);
+    $stranger = User::factory()->create(['email' => 'luca@agency.test', 'password' => 'another long password']);
+    $project = Project::factory()->create(['slug' => 'b', 'site_host' => 'project-b.prove.test']);
+    $project->members()->attach($member);
+    $ask = fn (?string $credentials, string $ip = '198.51.100.7') => $this->withHeaders(array_filter([
+        'X-Forwarded-Host' => 'project-b.prove.test', 'X-Forwarded-Uri' => '/', 'X-Forwarded-Method' => 'GET', 'X-Forwarded-For' => $ip,
+        'Authorization' => $credentials === null ? null : 'Basic '.base64_encode($credentials),
+    ]))->get('/api/site-auth');
+
+    $ask(null)->assertUnauthorized();
+    $ask('maria@agency.test:wrong')->assertUnauthorized();
+    $ask('luca@agency.test:another long password')->assertUnauthorized();
+    $ask('MARIA@agency.test:correct horse battery')->assertNoContent()->assertHeader('X-Studio-Strip-Auth', '1');
+    // the pair is remembered: the next request of the page does not hash the password again
+    expect(Cache::get('site-basic-ok|'.hash('sha256', $member->id.'|correct horse battery|'.$member->fresh()->password)))->toBe($member->id);
+    $ask('maria@agency.test:correct horse battery')->assertNoContent();
+
+    // a new password ends what was remembered
+    $member->update(['password' => 'a brand new password']);
+    $ask('maria@agency.test:correct horse battery')->assertUnauthorized();
+    $ask('maria@agency.test:a brand new password')->assertNoContent();
+});
+
+test('the browser sign-in is limited as the login form is: five tries on an account from an address', function () {
+    $member = User::factory()->create(['email' => 'maria@agency.test', 'password' => 'correct horse battery']);
+    $project = Project::factory()->create(['slug' => 'b', 'site_host' => 'project-b.prove.test']);
+    $project->members()->attach($member);
+    $ask = fn (string $credentials) => $this->withHeaders([
+        'X-Forwarded-Host' => 'project-b.prove.test', 'X-Forwarded-Uri' => '/', 'X-Forwarded-Method' => 'GET', 'X-Forwarded-For' => '198.51.100.7',
+        'Authorization' => 'Basic '.base64_encode($credentials),
+    ])->get('/api/site-auth');
+
+    foreach (range(1, 5) as $try) {
+        $ask('maria@agency.test:wrong '.$try)->assertUnauthorized();
+    }
+
+    // locked for a minute, even with the right password
+    $ask('maria@agency.test:correct horse battery')->assertUnauthorized();
+    expect(RateLimiter::tooManyAttempts('site-basic|maria@agency.test|198.51.100.7', 5))->toBeTrue();
 });

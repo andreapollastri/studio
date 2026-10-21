@@ -66,7 +66,18 @@ https:// {
     # Here and not in each host's file, so that no host is ever served without it.
     forward_auth @not_studio 127.0.0.1:8081 {
         uri /api/site-auth
+        copy_headers X-Studio-Strip-Auth
     }
+    # A site's public address that is not public asks the browser for a Studio email and
+    # password (basic authentication): once Studio took them it says so, and they are dropped
+    # here, so the app behind never sees a Studio password. Credentials meant for the app (a
+    # public site's API) carry no such answer and go through as they came.
+    @studio_signed_in {
+        not host studio.__DOMAIN__
+        header X-Studio-Strip-Auth 1
+    }
+    request_header @studio_signed_in -Authorization
+    request_header @not_studio -X-Studio-Strip-Auth
 
     # Project sites and previews show inside Studio's right pane. An app that refuses every
     # frame (X-Frame-Options: DENY, frame-ancestors 'none') becomes "refused to connect"

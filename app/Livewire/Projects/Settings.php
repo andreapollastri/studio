@@ -65,14 +65,14 @@ class Settings extends Component
 
     // ---- Server
 
-    /** uuid of the domain the site lives at; '' = `<key>.<domain>` only */
+    /** uuid of the domain of the site's public address; '' = none, only the team's `<key>.<domain>` */
     public string $site_domain = '';
 
     /** the site's subdomain on a wildcard domain; '' = the domain itself */
     public string $site_label = '';
 
-    /** uuid of the wildcard domain the previews live under; '' = Studio's */
-    public string $preview_domain = '';
+    /** Public: the site opens to anybody at its public address; not public, the browser asks for a Studio email and password there. */
+    public bool $site_public = false;
 
     public bool $scheduler = true;
 
@@ -88,12 +88,6 @@ class Settings extends Component
     public string $timezone = 'UTC';
 
     // ---- Who may open the hosts
-
-    /** The site opens without the Studio login (its /larapilot dashboard still asks for it). */
-    public bool $site_public = false;
-
-    /** The workspace previews too; only along with the site. */
-    public bool $previews_public = false;
 
     public string $site_ips = '';
 
@@ -163,7 +157,6 @@ class Settings extends Component
         $this->site_domain = (string) $project->siteDomain?->uuid;
         $this->site_label = $project->site_host && $project->siteDomain && $project->site_host !== $project->siteDomain->name
             ? substr($project->site_host, 0, -strlen('.'.$project->siteDomain->name)) : '';
-        $this->preview_domain = (string) $project->previewDomain?->uuid;
         $this->scheduler = $features['scheduler'];
         $this->queues = implode(', ', $features['queues']);
         $this->reverb = $features['reverb'];
@@ -173,8 +166,7 @@ class Settings extends Component
         $this->agent_browser = $agent['browser'];
         $this->agent_sandboxes = $agent['sandboxes'];
         $this->agent_sandbox_limit = $agent['sandbox_limit'];
-        $this->site_public = $access['public']['site'];
-        $this->previews_public = $access['public']['previews'];
+        $this->site_public = $project->isPublished();
         $this->site_ips = implode("\n", $access['site']['ips']);
         $this->previews_ips = implode("\n", $access['previews']['ips']);
         $this->branch_rules = array_map(fn (array $rule) => ['branch' => $rule['branch'], 'ips' => implode(', ', $rule['ips'])], $access['branches']);
@@ -268,14 +260,6 @@ class Settings extends Component
 
     /* ---------------------------------------------------------------- server, access, agent */
 
-    /** Previews are public only along with the site: a private site takes them back. */
-    public function updatedSitePublic(): void
-    {
-        if (! $this->site_public) {
-            $this->previews_public = false;
-        }
-    }
-
     public function addBranchRule(): void
     {
         $this->branch_rules[] = ['branch' => '', 'ips' => ''];
@@ -337,9 +321,13 @@ class Settings extends Component
                 'site' => ['ips' => $this->ipList($this->site_ips)],
                 'previews' => ['ips' => $this->ipList($this->previews_ips)],
                 'branches' => array_map(fn (array $rule) => ['branch' => trim($rule['branch']), 'ips' => $this->ipList($rule['ips'])], $this->branch_rules),
-                'public' => ['site' => $this->site_public, 'previews' => $this->site_public && $this->previews_public],
+                // public only at a public address; the team's previews never
+                'public' => ['site' => $this->site_public && $addresses['site_host'] !== null, 'previews' => false],
             ],
         ])]);
+
+        // the switch shows what was saved: public needs a public address
+        $this->site_public = $project->isPublished();
 
         if ($project->site_status !== SiteStatus::New || $project->workspaces()->exists()) {
             ConfigureProjectSite::dispatch($project);
@@ -353,20 +341,21 @@ class Settings extends Component
     {
         $domain = $this->site_domain === '' ? null : Domain::query()->where('uuid', $this->site_domain)->first();
         $this->site_label = $domain && $domain->wildcardPointsHere() && ! $domain->namePointsHere() ? $this->project->slug : '';
+        // no public address, nothing public
+        $this->site_public = $domain !== null && $this->site_public;
         $this->resetValidation(['site_domain', 'site_label']);
     }
 
     /**
-     * The site's address and the previews' domain, checked: a domain that points here for that
-     * use (the one already in use may keep its place while its DNS is lost), a host no other
-     * site has. Null, with the error on the field, when it is not right.
+     * The site's public address, checked: a domain that points here for that use (the one
+     * already in use may keep its place while its DNS is lost), a host no other site has.
+     * Null, with the error on the field, when it is not right.
      *
-     * @return array{site_host: string|null, site_domain_id: int|null, preview_domain_id: int|null}|null
+     * @return array{site_host: string|null, site_domain_id: int|null}|null
      */
     private function addresses(Project $project): ?array
     {
         $site = $this->site_domain === '' ? null : Domain::query()->where('uuid', $this->site_domain)->first();
-        $previews = $this->preview_domain === '' ? null : Domain::query()->where('uuid', $this->preview_domain)->first();
         $label = $site?->wildcard ? strtolower(trim($this->site_label)) : '';
         $host = null;
 
@@ -402,13 +391,7 @@ class Settings extends Component
             }
         }
 
-        if ($previews !== null && $previews->id !== $project->preview_domain_id && ! $previews->wildcardPointsHere()) {
-            $this->addError('preview_domain', __('*.:name does not point at this server: previews cannot live there.', ['name' => $previews->name]));
-
-            return null;
-        }
-
-        return ['site_host' => $host, 'site_domain_id' => $site?->id, 'preview_domain_id' => $previews?->id];
+        return ['site_host' => $host, 'site_domain_id' => $site?->id];
     }
 
     /* ---------------------------------------------------------------- MCP */
@@ -540,7 +523,7 @@ class Settings extends Component
             'timezones' => $this->tab === 'server' ? timezone_identifiers_list() : [],
             // the verified domains, and the ones this project uses whatever their state
             'domains' => $this->tab === 'server' ? Domain::query()->where(fn ($q) => $q->where('status', 'verified')
-                ->orWhereKey(array_filter([$this->project->site_domain_id, $this->project->preview_domain_id])))->orderBy('name')->get() : collect(),
+                ->orWhereKey(array_filter([$this->project->site_domain_id])))->orderBy('name')->get() : collect(),
             'mcpServers' => $this->tab === 'mcp' ? $this->project->mcpServers()->orderBy('name')->get() : collect(),
             'nativeMcp' => $this->tab === 'mcp' ? NativeServers::describe($this->project) : [],
         ]);

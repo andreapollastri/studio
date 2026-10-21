@@ -1,9 +1,11 @@
 <?php
 
+use App\Enums\DomainStatus;
 use App\Enums\SiteStatus;
 use App\Jobs\ConfigureProjectSite;
 use App\Livewire\Admin\Projects;
 use App\Livewire\Projects\Settings as ProjectSettings;
+use App\Models\Domain;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
@@ -146,29 +148,57 @@ test('applying the settings runs project-configure for the site and workspace-co
         ->not->toContain('preview_auth');
 });
 
-test('an administrator makes the site public, then the previews too; a private site takes the previews back', function () {
+test('the site is public only at a public address; without one, or not public, nobody walks in', function () {
     Queue::fake();
+    config(['studio.domain' => 'dev.example.test']);
     $admin = User::factory()->admin()->create();
     $project = Project::factory()->online()->create(['slug' => 'shop']);
+    $domain = Domain::query()->create(['name' => 'prove.test', 'wildcard' => true, 'status' => DomainStatus::Verified, 'verified_at' => now(),
+        'records' => ['expected' => ['203.0.113.10'], 'name' => ['203.0.113.10'], 'wildcard' => ['203.0.113.10']]]);
 
     $settings = Livewire::actingAs($admin)
-        ->test(ProjectSettings::class, ['project' => $project, 'tab' => 'access'])
+        ->test(ProjectSettings::class, ['project' => $project, 'tab' => 'server'])
         ->assertSet('site_public', false)
-        ->assertSet('previews_public', false)
-        ->assertSee('Public access')
+        ->assertSee('Public address')
+        ->assertDontSee('Public at')
+        // public with no public address: nothing to open
         ->set('site_public', true)
-        ->set('previews_public', true)
         ->call('saveSettings')
         ->assertHasNoErrors();
 
-    expect($project->fresh()->access()['public'])->toBe(['site' => true, 'previews' => true]);
+    expect($project->fresh()->isPublished())->toBeFalse()
+        ->and($project->fresh()->access()['public'])->toBe(['site' => false, 'previews' => false]);
 
-    $settings->set('site_public', false)
-        ->assertSet('previews_public', false)
-        ->set('previews_public', true)
+    $settings->set('site_domain', $domain->uuid)
+        ->set('site_label', 'project-a')
+        ->assertSee('Not public at project-a.prove.test')
+        ->assertSee('basic authentication')
+        ->set('site_public', true)
+        ->assertSee('project-a.prove.test will open to anyone')
         ->call('saveSettings')
         ->assertHasNoErrors();
 
-    expect($project->fresh()->access()['public'])->toBe(['site' => false, 'previews' => false]);
+    $project->refresh();
+    expect($project->site_host)->toBe('project-a.prove.test')
+        ->and($project->isPublished())->toBeTrue()
+        ->and($project->serviceInput()['public'])->toBe('1');
+
+    // the public address goes: so does public
+    $settings->set('site_domain', '')->assertSet('site_public', false)->call('saveSettings')->assertHasNoErrors();
+    expect($project->fresh()->site_host)->toBeNull()->and($project->fresh()->isPublished())->toBeFalse();
     Queue::assertPushed(ConfigureProjectSite::class);
+});
+
+test('studio:configure-projects queues the settings of every project with a site or a workspace', function () {
+    Queue::fake();
+    $live = Project::factory()->online()->create(['slug' => 'live']);
+    $withWorkspace = Project::factory()->create(['slug' => 'ws']);
+    Workspace::factory()->create(['project_id' => $withWorkspace->id]);
+    Project::factory()->create(['slug' => 'new', 'site_status' => SiteStatus::New]);
+
+    $this->artisan('studio:configure-projects')->assertSuccessful()->expectsOutputToContain('2 projects queued.');
+
+    Queue::assertPushed(ConfigureProjectSite::class, 2);
+    Queue::assertPushed(ConfigureProjectSite::class, fn ($job) => $job->project->is($live));
+    Queue::assertPushed(ConfigureProjectSite::class, fn ($job) => $job->project->is($withWorkspace));
 });

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Project;
 use App\Server\DashboardVisibility;
 use App\Server\SiteAccess;
+use App\Server\SiteBasicAuth;
 use App\Server\SitePass;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,14 +13,16 @@ use Illuminate\Http\Response;
 
 /**
  * Caddy's `forward_auth` target for every project host: 2xx lets the request
- * through to the app (a public host, or a member), anything else goes back to
- * the visitor as is.
- * It runs without a session; the visitor proves membership with the pass
- * cookie of that host (see SitePass), never with Studio's own cookie.
+ * through to the app (a public address made public, or a member), anything else
+ * goes back to the visitor as is.
+ * It runs without a session; on the team's addresses the visitor proves
+ * membership with the pass cookie of that host (see SitePass), never with
+ * Studio's own cookie; on a site's public address, with the browser's own
+ * sign-in (SiteBasicAuth), whose credentials Caddy then keeps from the app.
  */
 class SiteAuthController extends Controller
 {
-    public function __invoke(Request $request, SiteAccess $access, SitePass $passes): Response|RedirectResponse
+    public function __invoke(Request $request, SiteAccess $access, SitePass $passes, SiteBasicAuth $basic): Response|RedirectResponse
     {
         $host = strtolower((string) ($request->header('X-Forwarded-Host') ?: $request->getHost()));
         $target = $access->resolveHost($host);
@@ -37,11 +40,27 @@ class SiteAuthController extends Controller
             return $this->redeem($uri, $host, $passes, $target['project']);
         }
 
+        $ip = $this->clientIp($request);
         $user = $passes->userFromPass($request->cookies->get(SitePass::COOKIE), $host);
-        $decision = $access->decide($target['project'], $target['kind'], $target['workspace'], $this->clientIp($request), $user, $target['branch'] ?? null, $path, $target['online']);
+        $signedIn = false;
+
+        // the public address asks the browser; credentials meant for the app itself (a public site's API) are left alone
+        if ($user === null && $target['public_address'] && ! $target['public']) {
+            $user = $basic->user($request, $host, $ip);
+            $signedIn = $user !== null;
+        }
+
+        $decision = $access->decide($target['project'], $target['kind'], $target['workspace'], $ip, $user, $target['branch'] ?? null, $target['public'], $target['public_address']);
 
         if ($decision === SiteAccess::ALLOW) {
-            return response('', 204);
+            return response('', 204, $signedIn ? [SiteBasicAuth::STRIP_HEADER => '1'] : []);
+        }
+
+        if ($decision === SiteAccess::BASIC) {
+            return response(__('Sign in with your Studio email and password.'), 401, [
+                'WWW-Authenticate' => 'Basic realm="'.str_replace('"', '', $target['project']->name.' · '.$host).'", charset="UTF-8"',
+                'Cache-Control' => 'no-store',
+            ]);
         }
 
         if ($decision === SiteAccess::LOGIN && strtoupper((string) $request->header('X-Forwarded-Method', 'GET')) === 'GET') {

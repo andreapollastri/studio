@@ -13,7 +13,9 @@ use App\Models\Workspace;
 use App\Server\DomainDns;
 use App\Server\ProjectSites;
 use App\Server\SiteAccess;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 
 /** A DNS that answers from a table: a host, or `*.name` for any name under it. */
@@ -120,7 +122,7 @@ test('administrators add, check and remove domains; one a project uses stays', f
     $this->actingAs(User::factory()->create())->get(route('admin.domains'))->assertForbidden();
 });
 
-test('a project puts its site and its previews on a domain that points here, and the server is told', function () {
+test('a project gives its site a public address on a domain that points here; previews stay on Studio\'s domain', function () {
     Queue::fake();
     $admin = User::factory()->admin()->create();
     $project = Project::factory()->create(['slug' => 'shop', 'site_status' => SiteStatus::Ready]);
@@ -132,17 +134,18 @@ test('a project puts its site and its previews on a domain that points here, and
         ->assertSee('client.test')->assertDontSee('later.test');
 
     $page->set('site_domain', $pending->uuid)->call('saveSettings')->assertHasErrors('site_domain');
-    $page->set('site_domain', $apexOnly->uuid)->set('preview_domain', $apexOnly->uuid)->call('saveSettings')->assertHasErrors('preview_domain');
+    $page->set('site_domain', $apexOnly->uuid)->set('site_label', 'www')->call('saveSettings')->assertHasNoErrors();
+    expect($project->fresh()->site_host)->toBe('brand.test');
 
-    $page->set('site_domain', $wild->uuid)->set('site_label', 'Staging')->set('preview_domain', $wild->uuid)->call('saveSettings')->assertHasNoErrors();
+    $page->set('site_domain', $wild->uuid)->set('site_label', 'Staging')->call('saveSettings')->assertHasNoErrors();
 
     $project->refresh();
     $maria = User::factory()->create(['handle' => 'maria']);
     expect($project->siteHost())->toBe('staging.client.test')
         ->and($project->siteAliases())->toBe(['shop.dev.example.test'])
         ->and($project->siteUrl())->toBe('https://staging.client.test')
-        ->and($project->previewHostFor($maria))->toBe('maria-shop.client.test')
-        ->and($project->sandboxHostFor($maria, 7))->toBe('maria-shop--c7.client.test');
+        ->and($project->previewHostFor($maria))->toBe('maria-shop.dev.example.test')
+        ->and($project->sandboxHostFor($maria, 7))->toBe('maria-shop--c7.dev.example.test');
     Queue::assertPushed(ConfigureProjectSite::class);
 
     // another project cannot take the same address
@@ -151,7 +154,7 @@ test('a project puts its site and its previews on a domain that points here, and
         ->set('site_domain', $wild->uuid)->set('site_label', 'staging')->call('saveSettings')->assertHasErrors('site_label');
 
     // back to Studio's domain
-    $page->set('site_domain', '')->set('preview_domain', '')->call('saveSettings')->assertHasNoErrors();
+    $page->set('site_domain', '')->call('saveSettings')->assertHasNoErrors();
     expect($project->fresh()->siteHost())->toBe('shop.dev.example.test')->and($project->fresh()->siteAliases())->toBe([]);
 });
 
@@ -168,22 +171,21 @@ test('a project keeps a domain whose DNS was lost, but cannot pick one that is l
         ->set('site_label', 'www')->call('saveSettings')->assertHasErrors('site_domain');
 });
 
-test('the gatekeeper and Caddy find a site and a preview on a domain of their own', function () {
+test('the gatekeeper and Caddy find a site at its public address, and the previews under Studio\'s domain', function () {
     $domain = verifiedDomain('client.test');
     $user = User::factory()->create(['handle' => 'maria']);
-    $project = Project::factory()->create(['slug' => 'shop', 'site_host' => 'staging.client.test', 'site_domain_id' => $domain->id, 'preview_domain_id' => $domain->id]);
-    $workspace = Workspace::factory()->create(['project_id' => $project->id, 'user_id' => $user->id, 'app_url' => 'https://maria-shop.client.test']);
-    Conversation::factory()->create(['workspace_id' => $workspace->id, 'user_id' => $user->id, 'sandbox_host' => 'maria-shop--c3.client.test', 'sandbox' => ['branch' => 'sandbox/maria-3']]);
+    $project = Project::factory()->create(['slug' => 'shop', 'site_host' => 'staging.client.test', 'site_domain_id' => $domain->id]);
+    $workspace = Workspace::factory()->create(['project_id' => $project->id, 'user_id' => $user->id, 'app_url' => 'https://maria-shop.dev.example.test']);
+    Conversation::factory()->create(['workspace_id' => $workspace->id, 'user_id' => $user->id, 'sandbox_host' => 'maria-shop--c3.dev.example.test', 'sandbox' => ['branch' => 'sandbox/maria-3']]);
     $access = app(SiteAccess::class);
 
-    expect($access->resolveHost('staging.client.test'))->toMatchArray(['kind' => 'site'])
+    expect($access->resolveHost('staging.client.test'))->toMatchArray(['kind' => 'site', 'public_address' => true, 'public' => false])
         ->and($access->resolveHost('shop.dev.example.test')['project']->is($project))->toBeTrue()
-        ->and($access->resolveHost('maria-shop.client.test'))->toMatchArray(['kind' => 'preview'])
-        ->and($access->resolveHost('maria-shop--c3.client.test')['branch'])->toBe('sandbox/maria-3')
+        ->and($access->resolveHost('maria-shop.dev.example.test'))->toMatchArray(['kind' => 'preview', 'public_address' => false, 'public' => false])
+        ->and($access->resolveHost('maria-shop--c3.dev.example.test')['branch'])->toBe('sandbox/maria-3')
         ->and($access->resolveHost('nobody.client.test'))->toBeNull();
 
     $this->get('/api/tls/ask?domain=staging.client.test')->assertOk();
-    $this->get('/api/tls/ask?domain=maria-shop.client.test')->assertOk();
     $this->get('/api/tls/ask?domain=shop.dev.example.test')->assertOk();
     $this->get('/api/tls/ask?domain=studio.dev.example.test')->assertOk();
     // no welcome page, and no certificate, for an unknown name on a client's domain
@@ -194,15 +196,16 @@ test('the gatekeeper and Caddy find a site and a preview on a domain of their ow
     $this->get('/api/tls/ask?domain=shop.dev.example.test')->assertOk();
 });
 
-test('the server gets the site with its aliases, and every workspace moves to the previews\' domain', function () {
+test('the server gets the site with its aliases, and every workspace comes back under Studio\'s domain', function () {
     config(['studio.driver' => 'native', 'studio.native.helper' => base_path('tests/fixtures/fake-studio-admin'), 'studio.native.sudo' => false]);
     $log = tempnam(sys_get_temp_dir(), 'studio-admin-');
     $_ENV['FAKE_STUDIO_ADMIN_LOG'] = $_SERVER['FAKE_STUDIO_ADMIN_LOG'] = $log;
 
     $domain = verifiedDomain('client.test');
     $maria = User::factory()->create(['handle' => 'maria']);
-    $project = Project::factory()->create(['slug' => 'shop', 'site_status' => SiteStatus::Ready, 'site_host' => 'staging.client.test', 'site_domain_id' => $domain->id, 'preview_domain_id' => $domain->id]);
-    $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $maria->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/shop', 'app_url' => 'https://maria-shop.dev.example.test']);
+    $project = Project::factory()->create(['slug' => 'shop', 'site_status' => SiteStatus::Ready, 'site_host' => 'staging.client.test', 'site_domain_id' => $domain->id]);
+    // a preview left on a client's domain by an older release
+    $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $maria->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/shop', 'app_url' => 'https://maria-shop.client.test']);
 
     app(ProjectSites::class)->configure($project);
     $calls = file_get_contents($log);
@@ -211,62 +214,48 @@ test('the server gets the site with its aliases, and every workspace moves to th
 
     expect($calls)->toContain('"site_host":"staging.client.test"')
         ->toContain('"site_aliases":"shop.dev.example.test"')
-        ->toContain('"preview_host":"maria-shop.client.test"')
-        ->and($workspace->fresh()->app_url)->toBe('https://maria-shop.client.test');
+        ->toContain('"preview_host":"maria-shop.dev.example.test"')
+        ->and($workspace->fresh()->app_url)->toBe('https://maria-shop.dev.example.test');
 });
 
-test('administrators put a domain online or take it offline, and the projects on it are set up again', function () {
-    Queue::fake();
+test('the Domains page lists each project at its public address, public or not', function () {
     $admin = User::factory()->admin()->create();
-    $domain = verifiedDomain('client.test');
-    $site = Project::factory()->create(['slug' => 'shop', 'site_host' => 'client.test', 'site_domain_id' => $domain->id]);
-    $previews = Project::factory()->create(['slug' => 'api', 'preview_domain_id' => $domain->id]);
-    Project::factory()->create(['slug' => 'other']);
-
-    expect($domain->online)->toBeFalse();
+    $domain = verifiedDomain('prove.test');
+    Project::factory()->create(['slug' => 'a', 'site_host' => 'project-a.prove.test', 'site_domain_id' => $domain->id, 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    Project::factory()->create(['slug' => 'b', 'site_host' => 'project-b.prove.test', 'site_domain_id' => $domain->id]);
 
     Livewire::actingAs($admin)->test(Domains::class)
-        ->assertSee('not online')
-        ->call('toggleOnline', $domain->uuid)
-        ->assertSee('Take offline');
-
-    expect($domain->fresh()->online)->toBeTrue();
-    Queue::assertPushed(ConfigureProjectSite::class, 2);
-    Queue::assertPushed(ConfigureProjectSite::class, fn ($job) => $job->project->is($site));
-    Queue::assertPushed(ConfigureProjectSite::class, fn ($job) => $job->project->is($previews));
-
-    Livewire::actingAs($admin)->test(Domains::class)->call('toggleOnline', $domain->uuid);
-    expect($domain->fresh()->online)->toBeFalse();
-
-    Livewire::actingAs(User::factory()->create())->test(Domains::class)->assertForbidden();
+        ->assertSeeInOrder(['project-a.prove.test', 'public', 'project-b.prove.test', 'not public'])
+        ->assertDontSee('Put online');
 });
 
-test('a host of a domain that is online opens to anybody; Studio\'s address of the same site keeps the login', function () {
-    config(['app.url' => 'https://studio.dev.example.test']);
-    $domain = verifiedDomain('client.test');
-    $maria = User::factory()->create(['handle' => 'maria']);
-    $project = Project::factory()->create(['slug' => 'shop', 'site_host' => 'staging.client.test', 'site_domain_id' => $domain->id, 'preview_domain_id' => $domain->id]);
-    $workspace = Workspace::factory()->create(['project_id' => $project->id, 'user_id' => $maria->id, 'app_url' => 'https://maria-shop.client.test']);
-    $ask = fn (string $host, string $uri = '/') => $this->withHeaders(['X-Forwarded-Host' => $host, 'X-Forwarded-Uri' => $uri, 'X-Forwarded-Method' => 'GET', 'X-Forwarded-For' => '203.0.113.9'])->get('/api/site-auth');
+test('the upgrade to public addresses keeps what was open open at the public address only, and previews come home', function () {
+    $migration = require database_path('migrations/2026_11_05_000001_public_address_per_project.php');
+    $migration->down();
 
-    // not online: the login, as everywhere
-    $ask('staging.client.test')->assertRedirect();
-    expect($project->serviceInput()['public'])->toBe('0')
-        ->and($workspace->serviceInput()['public'])->toBe('0');
+    DB::table('domains')->insert([
+        ['id' => 901, 'uuid' => 'd-on', 'name' => 'on.test', 'wildcard' => true, 'status' => 'verified', 'online' => true, 'created_at' => now(), 'updated_at' => now()],
+        ['id' => 902, 'uuid' => 'd-off', 'name' => 'off.test', 'wildcard' => true, 'status' => 'verified', 'online' => false, 'created_at' => now(), 'updated_at' => now()],
+    ]);
+    $row = fn (int $id, string $slug, ?string $host, ?int $site, ?int $previews, ?array $public) => [
+        'id' => $id, 'uuid' => "p-$slug", 'name' => strtoupper($slug), 'slug' => $slug, 'repo_url' => 'https://github.com/acme/'.$slug.'.git',
+        'default_branch' => 'main', 'php_version' => '8.4', 'db_engine' => 'mariadb', 'site_host' => $host, 'site_domain_id' => $site,
+        'preview_domain_id' => $previews, 'settings' => $public === null ? null : json_encode(['access' => ['public' => $public]]), 'created_at' => now(), 'updated_at' => now(),
+    ];
+    DB::table('projects')->insert([
+        $row(901, 'ondomain', 'a.on.test', 901, 901, ['site' => false, 'previews' => false]),
+        $row(902, 'publicsite', 'b.off.test', 902, null, ['site' => true, 'previews' => true]),
+        $row(903, 'publicnoaddress', null, null, null, ['site' => true, 'previews' => true]),
+        $row(904, 'closed', 'd.off.test', 902, 902, null),
+    ]);
 
-    $domain->update(['online' => true]);
-    $project->refresh();
+    $migration->up();
 
-    $ask('staging.client.test')->assertNoContent();
-    $ask('maria-shop.client.test')->assertNoContent();
-    // the team's address stays behind the login, and so does the Larapilot dashboard
-    $ask('shop.dev.example.test')->assertRedirect();
-    $ask('staging.client.test', '/larapilot')->assertRedirect();
-    // a public site never shows a debug page: the server is told so
-    expect($project->serviceInput()['public'])->toBe('1')
-        ->and($workspace->fresh()->serviceInput()['public'])->toBe('1');
-
-    // an address list still narrows it
-    $project->update(['settings' => ['access' => ['site' => ['ips' => ['198.51.100.0/24']]]]]);
-    $ask('staging.client.test')->assertForbidden();
+    $public = fn (string $slug) => Project::query()->where('slug', $slug)->firstOrFail()->access()['public'];
+    expect($public('ondomain'))->toBe(['site' => true, 'previews' => false])
+        ->and($public('publicsite'))->toBe(['site' => true, 'previews' => false])
+        ->and($public('publicnoaddress'))->toBe(['site' => false, 'previews' => false])
+        ->and($public('closed'))->toBe(['site' => false, 'previews' => false])
+        ->and(Schema::hasColumn('projects', 'preview_domain_id'))->toBeFalse()
+        ->and(Schema::hasColumn('domains', 'online'))->toBeFalse();
 });

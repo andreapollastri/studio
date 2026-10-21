@@ -3,7 +3,6 @@
 namespace App\Server;
 
 use App\Models\Conversation;
-use App\Models\Domain;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
@@ -20,14 +19,18 @@ final class SiteAccess
 
     public const FORBIDDEN = 'forbidden';
 
+    /** The browser's own sign-in (basic authentication): the public address of a site asks this way, never with Studio's page. */
+    public const BASIC = 'basic';
+
     /**
      * The project behind a host, by the hosts Studio keeps: a project's site at its own address
      * (`site_host`) or at `<slug>.<domain>`, a workspace's `app_url` (a preview), a sandboxed
      * conversation's host (a preview too, with the sandbox's branch, which the access rules may
-     * single out). Whatever the domain: Studio's, or one of Administration → Domains; `online`
-     * says the host is under one of those that is online.
+     * single out). `public_address`: the host is the site's public address, on a domain of
+     * Administration → Domains; `public`: the project made it public there. Studio's own
+     * addresses, the team's, are neither.
      *
-     * @return array{project: Project, kind: 'site'|'preview', workspace: Workspace|null, branch?: string|null, online: bool}|null
+     * @return array{project: Project, kind: 'site'|'preview', workspace: Workspace|null, branch?: string|null, public_address: bool, public: bool}|null
      */
     public function resolveHost(string $host): ?array
     {
@@ -37,23 +40,24 @@ final class SiteAccess
             return null;
         }
 
-        $online = (bool) Domain::covering($host)?->online;
         $project = Project::query()->where('site_host', $host)->first() ?? $this->defaultSite($host);
 
         if ($project) {
-            return ['project' => $project, 'kind' => 'site', 'workspace' => null, 'online' => $online];
+            $publicAddress = $project->site_host === $host;
+
+            return ['project' => $project, 'kind' => 'site', 'workspace' => null, 'public_address' => $publicAddress, 'public' => $publicAddress && $project->isPublished()];
         }
 
         $workspace = Workspace::query()->with('project')->where('app_url', 'https://'.$host)->first();
 
         if ($workspace) {
-            return ['project' => $workspace->project, 'kind' => 'preview', 'workspace' => $workspace, 'online' => $online];
+            return ['project' => $workspace->project, 'kind' => 'preview', 'workspace' => $workspace, 'public_address' => false, 'public' => false];
         }
 
         $conversation = Conversation::query()->with('workspace.project')->where('sandbox_host', $host)->first();
 
         if ($conversation) {
-            return ['project' => $conversation->workspace->project, 'kind' => 'preview', 'workspace' => $conversation->workspace, 'branch' => $conversation->sandbox['branch'] ?? null, 'online' => $online];
+            return ['project' => $conversation->workspace->project, 'kind' => 'preview', 'workspace' => $conversation->workspace, 'branch' => $conversation->sandbox['branch'] ?? null, 'public_address' => false, 'public' => false];
         }
 
         return null;
@@ -72,15 +76,17 @@ final class SiteAccess
     }
 
     /**
-     * A person logged in to Studio who has access to the project: a member in any role, or an
-     * administrator. A public host, or a host of a domain that is online ($online), lets anybody
-     * in, except to its /larapilot dashboard, which still wants the login. An address list
-     * narrows both: from anywhere else, nobody gets in.
+     * A person with access to the project: a member in any role, or an administrator. On the
+     * team's addresses they come through Studio's login; on the public address ($basic) through
+     * the browser's own sign-in, with the email and password of their Studio account, so the
+     * client's domain never shows Studio. A public address the project made public ($public)
+     * lets anybody in: it runs with APP_ENV=staging, where Larapilot's /larapilot dashboard asks
+     * for a sign-in of its own. An address list narrows all of it: from anywhere else, nobody gets in.
      *
      * @param  'site'|'preview'  $kind
-     * @return self::ALLOW|self::LOGIN|self::FORBIDDEN
+     * @return self::ALLOW|self::LOGIN|self::BASIC|self::FORBIDDEN
      */
-    public function decide(Project $project, string $kind, ?Workspace $workspace, string $ip, ?User $user, ?string $branch = null, string $path = '/', bool $online = false): string
+    public function decide(Project $project, string $kind, ?Workspace $workspace, string $ip, ?User $user, ?string $branch = null, bool $public = false, bool $basic = false): string
     {
         $branch = $kind === 'site' ? $project->default_branch : ($branch ?? $workspace?->branch);
         $rule = $project->accessRuleFor($kind, $branch);
@@ -89,37 +95,19 @@ final class SiteAccess
             return self::FORBIDDEN;
         }
 
-        if (($online || $project->isPublic($kind)) && ! self::isDashboard($path)) {
+        if ($public) {
             return self::ALLOW;
         }
 
-        if ($user === null) {
-            return self::LOGIN;
+        if ($user !== null && $user->canAccess($project)) {
+            return self::ALLOW;
         }
 
-        return $user->canAccess($project) ? self::ALLOW : self::FORBIDDEN;
-    }
-
-    /**
-     * Larapilot's dashboard, /larapilot and below, however the path is spelled: any case,
-     * percent-encoded, with doubled slashes, dot segments or behind /index.php.
-     */
-    public static function isDashboard(string $path): bool
-    {
-        $segments = [];
-
-        foreach (explode('/', strtolower(rawurldecode($path))) as $segment) {
-            match ($segment) {
-                '', '.' => null,
-                '..' => array_pop($segments),
-                default => $segments[] = $segment,
-            };
+        // the browser asks again: somebody else may have the account it takes
+        if ($basic) {
+            return self::BASIC;
         }
 
-        if (($segments[0] ?? null) === 'index.php') {
-            array_shift($segments);
-        }
-
-        return ($segments[0] ?? null) === 'larapilot';
+        return $user === null ? self::LOGIN : self::FORBIDDEN;
     }
 }

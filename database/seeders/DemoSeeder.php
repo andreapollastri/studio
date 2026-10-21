@@ -128,17 +128,17 @@ class DemoSeeder extends Seeder
             'slug' => Project::newKey('API'), 'default_branch' => 'develop', 'php_version' => '8.4', 'db_engine' => 'mariadb', 'deploy_user_id' => $andrea->id,
         ]);
 
-        // Acme's own domain, online: the shop's site at staging.acme.test and its previews under it, open to the client; Globex's is on its way
+        // Acme's own domain: the shop's site online at its public address, staging.acme.test, for the client; Globex's is on its way
         $ip = ['expected' => ['203.0.113.10']];
         $acme = Domain::query()->updateOrCreate(['name' => 'acme.test'], [
             'wildcard' => true, 'status' => DomainStatus::Verified, 'records' => [...$ip, 'name' => ['203.0.113.10'], 'wildcard' => ['203.0.113.10']],
-            'checked_at' => now()->subHours(3), 'verified_at' => now()->subDays(12), 'user_id' => $andrea->id, 'online' => true,
+            'checked_at' => now()->subHours(3), 'verified_at' => now()->subDays(12), 'user_id' => $andrea->id,
         ]);
         Domain::query()->updateOrCreate(['name' => 'globex.test'], [
             'wildcard' => true, 'status' => DomainStatus::Pending, 'records' => [...$ip, 'name' => ['198.51.100.7'], 'wildcard' => []],
             'last_error' => 'globex.test points at 198.51.100.7, not at this server (203.0.113.10).', 'checked_at' => now()->subMinutes(20), 'user_id' => $andrea->id,
         ]);
-        $shop->update(['site_host' => 'staging.acme.test', 'site_domain_id' => $acme->id, 'preview_domain_id' => $acme->id]);
+        $shop->update(['site_host' => 'staging.acme.test', 'site_domain_id' => $acme->id, 'settings' => array_merge($shop->settings ?? [], ['access' => ['public' => ['site' => true]]])]);
 
         // the role is each project's: Luca develops the shop and is the PM of the loyalty app; Giulia is the client of the shop
         $shop->syncMembers([$maria->id => 'pm', $luca->id => 'dev', $giulia->id => 'client']);

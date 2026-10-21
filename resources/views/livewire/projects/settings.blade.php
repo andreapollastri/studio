@@ -24,8 +24,11 @@
                 @endforeach
             </nav>
             <div class="mt-6 space-y-1 text-xs text-zinc-500 max-md:hidden">
-                <div>{{ __('Site') }}: <span class="font-mono">{{ $project->siteHost() }}</span></div>
+                <div>{{ __('Site') }}: <span class="font-mono">{{ $project->defaultSiteHost() }}</span></div>
                 <div>{{ __('Previews') }}: <span class="font-mono">&lt;person&gt;-{{ $project->slug }}.{{ $project->previewDomainName() }}</span></div>
+                @if ($project->site_host)
+                    <div>{{ __('Public address') }}: <span class="font-mono">{{ $project->site_host }}</span> · {{ $project->isPublished() ? __('public') : __('not public') }}</div>
+                @endif
                 <flux:link :href="route('admin.projects')" wire:navigate class="text-xs">{{ __('All projects') }}</flux:link>
             </div>
         </aside>
@@ -118,17 +121,20 @@
                             <flux:heading size="lg">{{ __('Server') }}</flux:heading>
                             <flux:text class="mt-1">{{ __('Applied on the server to the project site and to every workspace preview of the project.') }}</flux:text>
                         </div>
-                        {{-- Where the site and the previews live --}}
+                        {{-- The team's addresses, and the site's public one --}}
                         @php($siteChoice = $domains->firstWhere('uuid', $site_domain))
-                        @php($previewChoice = $domains->firstWhere('uuid', $preview_domain))
                         <div class="space-y-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
                             <div>
                                 <flux:heading>{{ __('Addresses') }}</flux:heading>
-                                <flux:text class="mt-1 text-sm">{{ __('Under Studio\'s domain by default. A domain of Administration → Domains gives the site and the previews the client\'s own address; the usual :host keeps working for the team.', ['host' => $project->defaultSiteHost()]) }}</flux:text>
+                                <flux:text class="mt-1 text-sm">{{ __('The team\'s, always behind the Studio login: the site at :host, the previews and sandboxes at <person>-:key.:domain.', ['host' => $project->defaultSiteHost(), 'key' => $project->slug, 'domain' => config('studio.domain')]) }}</flux:text>
+                            </div>
+                            <div>
+                                <flux:heading size="sm">{{ __('Public address') }} <span class="ms-1 text-xs font-normal text-zinc-500">{{ __('optional') }}</span></flux:heading>
+                                <flux:text class="mt-1 text-xs">{{ __('The site on a domain of Administration → Domains, for the client and the world. Public, anybody opens it; not public, the browser asks for the email and password of a Studio account on the project, with no Studio page on the client\'s domain.') }}</flux:text>
                             </div>
                             <div class="grid gap-3 sm:grid-cols-[1fr_1fr]">
-                                <flux:select wire:model.live="site_domain" :label="__('Site')">
-                                    <flux:select.option value="">{{ $project->defaultSiteHost() }}</flux:select.option>
+                                <flux:select wire:model.live="site_domain" :label="__('Domain')">
+                                    <flux:select.option value="">{{ __('None: only :host', ['host' => $project->defaultSiteHost()]) }}</flux:select.option>
                                     @foreach ($domains as $domain)
                                         @if ($domain->namePointsHere() || $domain->wildcardPointsHere() || $domain->id === $project->site_domain_id)
                                             <flux:select.option value="{{ $domain->uuid }}">{{ $domain->name }}{{ $domain->isVerified() ? '' : ' · '.$domain->status->label() }}</flux:select.option>
@@ -142,24 +148,14 @@
                             @error('site_domain')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
                             @error('site_label')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
                             @if ($siteChoice)
-                                <flux:text class="text-xs">{{ __('The site at :host, and at :default for the team.', ['host' => (trim($site_label) !== '' ? strtolower(trim($site_label)).'.' : '').$siteChoice->name, 'default' => $project->defaultSiteHost()]) }}</flux:text>
-                                @include('livewire.projects.partials.domain-online', ['choice' => $siteChoice])
-                            @endif
-
-                            <flux:select wire:model.live="preview_domain" :label="__('Previews and sandboxes')">
-                                <flux:select.option value="">&lt;person&gt;-{{ $project->slug }}.{{ config('studio.domain') }}</flux:select.option>
-                                @foreach ($domains as $domain)
-                                    @if ($domain->wildcardPointsHere() || $domain->id === $project->preview_domain_id)
-                                        <flux:select.option value="{{ $domain->uuid }}">&lt;person&gt;-{{ $project->slug }}.{{ $domain->name }}{{ $domain->isVerified() ? '' : ' · '.$domain->status->label() }}</flux:select.option>
-                                    @endif
-                                @endforeach
-                            </flux:select>
-                            @error('preview_domain')<flux:text class="text-sm text-red-600 dark:text-red-400">{{ $message }}</flux:text>@enderror
-                            @if ($previewChoice)
-                                @include('livewire.projects.partials.domain-online', ['choice' => $previewChoice])
-                            @endif
-                            @if (($previewChoice?->id) !== $project->preview_domain_id)
-                                <flux:text class="text-xs">{{ __('Every workspace moves there when you save; sandboxes already open keep their address until they are removed.') }}</flux:text>
+                                @php($publicHost = (trim($site_label) !== '' ? strtolower(trim($site_label)).'.' : '').$siteChoice->name)
+                                <flux:switch wire:model.live="site_public" :label="$site_public ? __('Public at :host', ['host' => $publicHost]) : __('Not public at :host', ['host' => $publicHost])"
+                                    :description="$site_public
+                                        ? __('Anybody opens :host, with no sign-in, only from the addresses listed in Who opens the hosts (empty: from anywhere). It runs with APP_ENV=staging and APP_DEBUG=false, so /larapilot asks for a Larapilot user of its own.', ['host' => $publicHost])
+                                        : __('The browser asks for the email and password of a Studio account that is on the project, or of an administrator (basic authentication): no Studio page on the client domain, and the password never reaches the app.')" />
+                                @if ($site_public !== $project->isPublished() || $publicHost !== $project->site_host)
+                                    <flux:callout :variant="$site_public ? 'warning' : 'secondary'" :icon="$site_public ? 'globe-alt' : 'lock-closed'" :heading="$site_public ? __(':host will open to anyone.', ['host' => $publicHost]) : __(':host will ask for a Studio email and password.', ['host' => $publicHost])" :text="__('Saving applies it to the server. :team stays with the team, behind the Studio login.', ['team' => $project->defaultSiteHost()])" />
+                                @endif
                             @endif
                             @if ($domains->isEmpty())
                                 <flux:text class="text-xs">{{ __('No domain points here yet:') }} <flux:link :href="route('admin.domains')" wire:navigate>{{ __('add one in Administration → Domains') }}</flux:link>.</flux:text>
@@ -182,22 +178,11 @@
                     @if ($tab === 'access')
                         <div>
                             <flux:heading size="lg">{{ __('Who opens the hosts') }}</flux:heading>
-                            <flux:text class="mt-1">{{ __('Every address of the project (the site, its /larapilot dashboard, every workspace preview) asks for a person logged in to Studio who is on the project, in any role, or an administrator, unless you make it public below. An address list narrows it further: one IP or CIDR per line, and from anywhere else nobody gets in. HTTPS is automatic on every host, previews included.') }}</flux:text>
-                        </div>
-                        <div class="space-y-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
-                            <div>
-                                <flux:heading>{{ __('Public access') }}</flux:heading>
-                                <flux:text class="mt-1 text-sm">{{ __('Off by default. A public host skips the Studio login: anyone with the address opens it, as a real public website. The address lists still apply, and /larapilot always asks for the login.') }}</flux:text>
-                            </div>
-                            <flux:switch wire:model.live="site_public" :label="__('Public site')" :description="__('The site of the deploy branch, at :host and at every address of it. It runs with APP_ENV=staging and APP_DEBUG=false while public.', ['host' => $project->site_host ?: $project->defaultSiteHost()])" />
-                            <flux:switch wire:model.live="previews_public" :disabled="! $site_public" :label="__('Public workspace previews too')" :description="__('Every developer\'s preview and every sandbox of the project. While public they switch to APP_ENV=staging and APP_DEBUG=false, so no debug page or local-only tool reaches the open internet; behind the login again, they go back to APP_ENV=local and APP_DEBUG=true.')" />
-                            @if ($site_public)
-                                <flux:callout variant="warning" icon="globe-alt" :heading="$previews_public ? __('The site and every preview open to anyone, without the login.') : __('The site opens to anyone, without the login.')" :text="__('Saving applies it to the server: the hosts that change get their new APP_ENV and APP_DEBUG.')" />
-                            @endif
+                            <flux:text class="mt-1">{{ __('Every address of the project (the site, its /larapilot dashboard, every workspace preview) asks for a person logged in to Studio who is on the project, in any role, or an administrator, and the public address of the site (Server → Addresses): public, nobody signs in there; not public, the browser asks for a Studio email and password. An address list narrows every one of them, public or not: one IP or CIDR per line, and from anywhere else nobody gets in. HTTPS is automatic on every host, previews included.') }}</flux:text>
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
-                            <flux:textarea wire:model="site_ips" :label="__('Site (deploy branch): only from')" :description="__('Empty: from anywhere, after the login.')" rows="3" placeholder="203.0.113.0/24" class="font-mono text-xs" />
-                            <flux:textarea wire:model="previews_ips" :label="__('Workspace previews: only from')" :description="__('Empty: from anywhere, after the login.')" rows="3" placeholder="203.0.113.9" class="font-mono text-xs" />
+                            <flux:textarea wire:model="site_ips" :label="__('Site (deploy branch): only from')" :description="__('At the team address and at the public address, public or not. Empty: from anywhere.')" rows="3" placeholder="203.0.113.0/24" class="font-mono text-xs" />
+                            <flux:textarea wire:model="previews_ips" :label="__('Workspace previews: only from')" :description="__('The team previews and sandboxes, always behind the Studio login. Empty: from anywhere.')" rows="3" placeholder="203.0.113.9" class="font-mono text-xs" />
                         </div>
                         <div>
                             <div class="mb-2 flex items-center justify-between">
@@ -211,7 +196,7 @@
                                     <flux:button size="sm" variant="ghost" icon="trash" wire:click="removeBranchRule({{ $i }})">{{ __('Remove') }}</flux:button>
                                 </div>
                             @endforeach
-                            <flux:text class="text-xs">{{ __('A branch rule replaces the address list of the site when that is the deploy branch, and of every workspace that is on that branch. The login is asked unless the host is public.') }}</flux:text>
+                            <flux:text class="text-xs">{{ __('A branch rule replaces the address list of the site when that is the deploy branch, and of every workspace that is on that branch. The sign-in is asked everywhere but at a public address that is public.') }}</flux:text>
                         </div>
                     @endif
 

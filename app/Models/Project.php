@@ -29,7 +29,6 @@ use Throwable;
  * @property string $slug
  * @property string|null $site_host the site's own address on a domain of Administration → Domains; null = `<slug>.<domain>`
  * @property int|null $site_domain_id
- * @property int|null $preview_domain_id the wildcard domain the previews live under; null = Studio's
  * @property string $repo_url
  * @property string $default_branch
  * @property string $php_version
@@ -46,13 +45,12 @@ use Throwable;
  * @property array<string, mixed>|null $settings
  * @property-read User|null $deployUser
  * @property-read Domain|null $siteDomain
- * @property-read Domain|null $previewDomain
  * @property-read ConnectorAccount|null $repositoryAccount
  * @property-read Collection<int, ProjectMcpServer> $mcpServers
  * @property-read ProjectMember|null $membership the person's membership, when read through User::projects()
  */
 #[Fillable([
-    'name', 'slug', 'site_host', 'site_domain_id', 'preview_domain_id', 'repo_url', 'default_branch', 'php_version', 'db_engine', 'deploy_user_id', 'git_account_id',
+    'name', 'slug', 'site_host', 'site_domain_id', 'repo_url', 'default_branch', 'php_version', 'db_engine', 'deploy_user_id', 'git_account_id',
     'site_status', 'larapilot_api_token', 'webhook_secret', 'webhook_id', 'deployed_sha', 'deployed_at', 'last_error', 'settings',
 ])]
 class Project extends Model
@@ -232,12 +230,6 @@ class Project extends Model
         return $this->belongsTo(Domain::class, 'site_domain_id');
     }
 
-    /** @return BelongsTo<Domain, $this> */
-    public function previewDomain(): BelongsTo
-    {
-        return $this->belongsTo(Domain::class, 'preview_domain_id');
-    }
-
     /** `<slug>.<domain>`: the address every site has on Studio's own domain. */
     public function defaultSiteHost(): string
     {
@@ -251,8 +243,8 @@ class Project extends Model
     }
 
     /**
-     * The site's other addresses: `<slug>.<domain>` stays when the site moves to a domain of its
-     * own, so that the team's links keep working.
+     * The site's other addresses: `<slug>.<domain>`, the team's, stays when the site gets a public
+     * address of its own, so that the team's links keep working.
      *
      * @return list<string>
      */
@@ -261,10 +253,10 @@ class Project extends Model
         return $this->site_host ? [$this->defaultSiteHost()] : [];
     }
 
-    /** The domain the previews and sandboxes live under: the project's wildcard domain, or Studio's. */
+    /** The domain the previews and sandboxes live under: always Studio's, the team's, behind the login. */
     public function previewDomainName(): string
     {
-        return $this->previewDomain->name ?? (string) config('studio.domain');
+        return (string) config('studio.domain');
     }
 
     public function siteUrl(): string
@@ -379,8 +371,8 @@ class Project extends Model
             'horizon' => $features['horizon'] ? '1' : '0',
             'pulse' => $features['pulse'] ? '1' : '0',
             'timezone' => $this->timezone(),
-            // a site anybody may open (public, or on a domain that is online) never shows a debug page
-            'public' => $this->opensToEveryone('site') ? '1' : '0',
+            // a site anybody may open (public at its public address) never shows a debug page
+            'public' => $this->isPublished() ? '1' : '0',
         ];
     }
 
@@ -392,10 +384,10 @@ class Project extends Model
 
     /**
      * Where the project hosts may be opened from. Every host (the deploy site, each workspace
-     * preview) wants a person logged in to Studio with access to the project, unless an
-     * administrator made the site, or the site and the previews, public; an address list narrows
-     * either to people coming from those addresses, for the site, the previews, or a single
-     * branch. Public previews come only with a public site. An old "public" mode is ignored.
+     * preview) wants a person logged in to Studio with access to the project, except the site at
+     * its public address: none when it is public (public.site, see isPublished), the browser's sign-in when not; an address
+     * list narrows either to people coming from those addresses, for the site, the previews, or
+     * a single branch. Previews are never public. An old "public" mode is ignored.
      *
      * @return array{site: array{ips: list<string>}, previews: array{ips: list<string>}, branches: list<array{branch: string, ips: list<string>}>, public: array{site: bool, previews: bool}}
      */
@@ -404,7 +396,7 @@ class Project extends Model
         $stored = (array) ($this->settings['access'] ?? []);
         $ips = fn (mixed $raw): array => array_values(array_filter(array_map(fn ($ip) => trim((string) $ip), (array) (((array) $raw)['ips'] ?? [])), fn (string $ip) => $ip !== ''));
         $branches = [];
-        $public = ['site' => (((array) ($stored['public'] ?? []))['site'] ?? false) === true, 'previews' => (((array) ($stored['public'] ?? []))['previews'] ?? false) === true];
+        $public = ['site' => (((array) ($stored['public'] ?? []))['site'] ?? false) === true];
 
         foreach ((array) ($stored['branches'] ?? []) as $override) {
             $branch = trim((string) (((array) $override)['branch'] ?? ''));
@@ -418,10 +410,8 @@ class Project extends Model
             'site' => ['ips' => $ips($stored['site'] ?? [])],
             'previews' => ['ips' => $ips($stored['previews'] ?? [])],
             'branches' => $branches,
-            'public' => [
-                'site' => $public['site'],
-                'previews' => $public['site'] && $public['previews'],
-            ],
+            // public at the public address; the team's previews are never public
+            'public' => ['site' => $public['site'], 'previews' => false],
         ];
     }
 
@@ -486,26 +476,14 @@ class Project extends Model
     }
 
     /**
-     * Whether a host of that kind opens without the Studio login. Previews (sandboxes included)
-     * are public only along with the site.
-     *
-     * @param  'site'|'preview'  $kind
+     * Public: the site opens to anybody at its public address (a domain of Administration →
+     * Domains), with no sign-in. Not public, the browser asks there for a Studio email and
+     * password (SiteBasicAuth). Studio's own addresses, the team's (the site's `<slug>.<domain>`,
+     * the previews, the sandboxes), always want the Studio login.
      */
-    public function isPublic(string $kind): bool
+    public function isPublished(): bool
     {
-        return $this->access()['public'][$kind === 'site' ? 'site' : 'previews'];
-    }
-
-    /**
-     * Anybody may open the site (or the previews): made public, or at an address of a domain that is online.
-     *
-     * @param  'site'|'preview'  $kind
-     */
-    public function opensToEveryone(string $kind): bool
-    {
-        $domain = $kind === 'site' ? $this->siteDomain : $this->previewDomain;
-
-        return $this->isPublic($kind) || (bool) $domain?->online;
+        return $this->site_host !== null && $this->access()['public']['site'];
     }
 
     /** The repository path on its git host (`owner/repo`…), or null when no enabled host knows the address. */

@@ -3,7 +3,6 @@
 namespace App\Livewire\Admin;
 
 use App\Enums\DomainStatus;
-use App\Jobs\ConfigureProjectSite;
 use App\Models\Domain;
 use App\Server\DomainDns;
 use Flux\Flux;
@@ -15,9 +14,9 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
- * Domains other than Studio's own, for the projects: added here, accepted once their DNS
- * points at this server, then chosen in a project's Settings → Server for its site or its
- * previews. Checked again every day. Online, its hosts open to anybody without the Studio login.
+ * Domains other than Studio's own, for the public addresses of the projects' sites: added
+ * here, accepted once their DNS points at this server, then chosen in a project's Settings →
+ * Server, where the project puts its site there online or offline. Checked again every day.
  */
 #[Layout('layouts::app')]
 #[Title('Domains · Administration')]
@@ -74,24 +73,6 @@ class Domains extends Component
             : (string) $domain->last_error);
     }
 
-    /**
-     * Online: the sites and previews at this domain open to anybody, without the Studio login
-     * (an address list still narrows them, the /larapilot dashboard still wants the login), and
-     * never show a debug page. The projects that use it are set up again on the server.
-     */
-    public function toggleOnline(string $uuid): void
-    {
-        $domain = $this->domain($uuid);
-        $domain->update(['online' => ! $domain->online]);
-        Log::notice("Domain {$domain->name} ".($domain->online ? 'online' : 'not online').' by '.auth()->user()->email);
-
-        $domain->projects()->each(fn ($project) => ConfigureProjectSite::dispatch($project));
-
-        Flux::toast(variant: $domain->online ? 'warning' : 'success', text: $domain->online
-            ? __(':name is online: its sites and previews open to anybody, without the Studio login.', ['name' => $domain->name])
-            : __(':name is not online: its sites and previews want the Studio login again.', ['name' => $domain->name]));
-    }
-
     public function remove(string $uuid): void
     {
         $domain = $this->domain($uuid);
@@ -117,7 +98,7 @@ class Domains extends Component
         $addresses = app(DomainDns::class)->serverAddresses();
 
         return view('livewire.admin.domains', [
-            'domains' => Domain::query()->with(['sites:id,uuid,name,slug,site_domain_id', 'previewProjects:id,uuid,name,slug,preview_domain_id'])->orderBy('name')->get(),
+            'domains' => Domain::query()->with(['sites:id,uuid,name,slug,site_host,site_domain_id,settings'])->orderBy('name')->get(),
             'ip' => $addresses[0] ?? __('this server\'s IP'),
             'studioDomain' => (string) config('studio.domain'),
         ]);

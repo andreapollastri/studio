@@ -285,9 +285,9 @@ test('no Claude key is left in a workspace: the account of the project goes with
         ->and($line)->not->toContain('sk-ant-api03-key');
 });
 
-test('a public preview is configured as staging without debug, and goes back to local behind the login', function () {
+test('a preview is always configured behind the login, with its debug pages; the site is staging only while online at its public address', function () {
     $user = connectedUser();
-    $project = Project::factory()->create(['slug' => 'shop', 'settings' => ['access' => ['public' => ['site' => true]]]]);
+    $project = Project::factory()->create(['slug' => 'shop', 'site_host' => 'project-a.prove.test', 'settings' => ['access' => ['public' => ['site' => true, 'previews' => true]]]]);
     $workspace = Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $user->id, 'driver' => 'native', 'path' => '/srv/studio/workspaces/maria/shop']);
     $driver = app(NativeDriver::class);
     $sent = function (): array {
@@ -296,16 +296,16 @@ test('a public preview is configured as staging without debug, and goes back to 
         return json_decode($line, true);
     };
 
-    // only the site is public: the previews keep their debug pages behind the login
+    // online: the site is public, the previews (the team's) never
     $driver->configure($workspace);
     expect($sent()['public'])->toBe('0')
         ->and($project->serviceInput()['public'])->toBe('1');
 
-    $project->update(['settings' => ['access' => ['public' => ['site' => true, 'previews' => true]]]]);
-    $driver->configure($workspace->fresh());
-    expect($sent()['public'])->toBe('1');
+    // offline, or without a public address: nothing is public
+    $project->update(['settings' => ['access' => ['public' => ['site' => false]]]]);
+    expect($project->fresh()->serviceInput()['public'])->toBe('0');
 
-    $project->update(['settings' => ['access' => ['public' => ['site' => false, 'previews' => true]]]]);
+    $project->update(['site_host' => null, 'settings' => ['access' => ['public' => ['site' => true]]]]);
     $driver->configure($workspace->fresh());
     expect($sent()['public'])->toBe('0')
         ->and($project->fresh()->serviceInput()['public'])->toBe('0');
