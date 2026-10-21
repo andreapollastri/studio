@@ -4,6 +4,10 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.10
+
+- **PHP with the security fixes of 21 October 2026.** PHP 8.2.35, 8.3.36, 8.4.27 and 8.5.12 fix two critical vulnerabilities, CVE-2026-109618 and CVE-2026-109619, that can allow remote code execution without authentication; php.net says updating is the only safe choice. Until now a Studio update installed a PHP that was missing and left an installed one where it was: only the nightly server update upgraded it. `installer/requirements.env` now names the first patch of each branch with the fixes (`PHP_FIXED`), and every update, this one first, brings each PHP on the server that is older to its newest package and restarts its PHP-FPM and every service still on the old PHP (queues, Reverb, site daemons; never a workspace bridge). Where ppa:ondrej/php does not serve the fix yet, the update says so and the nightly server update installs it once it does. PHP from Ubuntu's archive (Ubuntu 26.04) goes to its newest build: Ubuntu backports the fixes and keeps the version number.
+
 ## 2.4.9
 
 - **A public address per project, public or not public.** A project's own addresses, the team's, are always under Studio's domain and behind the Studio login: the site at `<key>.<domain>`, the previews and the sandboxes. Besides them, *Settings → Server → Addresses* can give the site a public address on a domain of *Administration → Domains* (`project-a.client.com`), **public** or **not public** for that project alone: on one domain `project-a.client.com` can be public, `project-b.client.com` not public and `progetto-bello-c.client.com` public.

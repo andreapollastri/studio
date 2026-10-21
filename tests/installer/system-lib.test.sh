@@ -126,5 +126,60 @@ report=$(sort "$T/report" | tr '\n' '|')
 [ "$(sort "$T/handshakes" | tr '\n' ' ')" = "shop.example.test stuck.example.test " ] || fail "handshakes: $(cat "$T/handshakes")"
 ok "check_certificates: renews the late ones, reports what stays late, skips hosts Studio no longer serves"
 
+# ensure_php_fixed with apt in files: $T/php/<v> is PHP_VERSION, $T/php/<v>.deb the package's
+# version, $T/php/<v>.next what apt upgrades to ("8.4.27 8.4.27-1+deb.sury.org+1")
+mkdir -p "$T/php"
+php_patch_level() { cat "$T/php/$1" 2>/dev/null || true; }
+dpkg-query() {
+    local v
+    case "$*" in
+        *'${Version}'*) v=${*: -1}; v=${v#php}; cat "$T/php/${v%-fpm}.deb" ;;
+        *) v=${*: -1}; v=${v#php}; v=${v%-\*}; printf 'ii  php%s-cli\nii  php%s-fpm\nrc  php%s-gone\n' "$v" "$v" "$v" ;;
+    esac
+}
+studio_apt() {
+    echo "apt $*" >> "$T/php/log"
+    [ "$1" = install ] || return 0
+    local v=${*: -1}; v=${v#php}; v=${v%-fpm}
+    [ -f "$T/php/$v.next" ] || return 0
+    read -r p d < "$T/php/$v.next"; echo "$p" > "$T/php/$v"; echo "$d" > "$T/php/$v.deb"
+}
+systemctl() { echo "systemctl $*" >> "$T/php/log"; }
+restart_outdated_services() { echo needrestart >> "$T/php/log"; }
+fake_php() { # fake_php V VERSION DEB [NEXT_VERSION NEXT_DEB]
+    echo "$2" > "$T/php/$1"; echo "$3" > "$T/php/$1.deb"; rm -f "$T/php/$1.next"
+    [ -z "${4:-}" ] || echo "$4 $5" > "$T/php/$1.next"
+}
+export PHP_FIXED="8.2.35 8.3.36 8.4.27 8.5.12" APT_UPDATED=1
+
+: > "$T/php/log"
+fake_php 8.4 8.4.26 8.4.26-1+deb.sury.org+1 8.4.27 8.4.27-1+deb.sury.org+1
+out=$(ensure_php_fixed 8.4 2>&1)
+[ "$(cat "$T/php/log")" = "$(printf 'apt install --only-upgrade php8.4-cli php8.4-fpm\nsystemctl restart php8.4-fpm\nneedrestart')" ] || fail "upgrade: $(cat "$T/php/log")"
+[[ $out == *"PHP 8.4 is 8.4.27"* ]] || fail "upgrade says: $out"
+ok "a PHP before the security fixes goes to its newest package and PHP-FPM restarts"
+
+: > "$T/php/log"
+fake_php 8.4 8.4.27 8.4.27-1+deb.sury.org+1
+fake_php 8.3 8.3.40 8.3.40-1+deb.sury.org+1
+ensure_php_fixed 8.4; ensure_php_fixed 8.3; ensure_php_fixed 8.6
+[ ! -s "$T/php/log" ] || fail "a fixed PHP was touched: $(cat "$T/php/log")"
+ok "a PHP on the fixes or later, or of a branch the release does not name, is left alone"
+
+: > "$T/php/log"
+fake_php 8.5 8.5.11 8.5.11-1+deb.sury.org+1
+out=$(ensure_php_fixed 8.5 2>&1)
+[ "$(cat "$T/php/log")" = "apt install --only-upgrade php8.5-cli php8.5-fpm" ] || fail "no new build restarted: $(cat "$T/php/log")"
+[[ $out == *"ppa:ondrej/php does not serve 8.5.12 yet"* ]] || fail "late PPA says: $out"
+ok "while the PPA lacks the fix, nothing restarts and the update says so"
+
+: > "$T/php/log"
+fake_php 8.5 8.5.4 8.5.4-1ubuntu1 8.5.4 8.5.4-1ubuntu1.1
+out=$(ensure_php_fixed 8.5 2>&1)
+[ "$(tail -n1 "$T/php/log")" = needrestart ] || fail "Ubuntu's new build did not restart: $(cat "$T/php/log")"
+[[ $out == *"Ubuntu's security fixes keep the version number"* && $out != *"does not serve"* ]] || fail "Ubuntu's PHP says: $out"
+ok "Ubuntu's PHP goes to its newest build, whose number stays"
+
 [ "$(env_get "$HERE/../../installer/requirements.env" STUDIO_PHP)" != "" ] || fail "installer/requirements.env has no STUDIO_PHP"
+[ "$(env_get "$HERE/../../installer/requirements.env" PHP_FIXED)" != "" ] || fail "installer/requirements.env has no PHP_FIXED"
 ok "installer/requirements.env is readable"

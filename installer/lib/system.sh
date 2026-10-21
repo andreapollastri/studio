@@ -82,11 +82,11 @@ install_file() {
 }
 
 load_requirements() { # load_requirements RELEASE_DIR
-    STUDIO_PHP=8.4; PHP_VERSIONS="8.3 8.4 8.5"; NODE_MAJOR=22
+    STUDIO_PHP=8.4; PHP_VERSIONS="8.3 8.4 8.5"; PHP_FIXED=""; NODE_MAJOR=22
     # shellcheck disable=SC1091
     [ -f "$1/installer/requirements.env" ] && . "$1/installer/requirements.env"
     resolve_studio_php
-    export STUDIO_PHP PHP_VERSIONS NODE_MAJOR
+    export STUDIO_PHP PHP_VERSIONS PHP_FIXED NODE_MAJOR
 }
 
 # The PHP that runs Studio: the release's choice when it is installed, otherwise the
@@ -179,9 +179,50 @@ INI
         systemctl enable --now "php${v}-fpm" >/dev/null 2>&1
     done
 
+    # every PHP here, also one an older release installed and this one no longer names
+    for v in $(installed_php_versions | tr ',' ' '); do ensure_php_fixed "$v"; done
+
     resolve_studio_php
     export STUDIO_PHP
     update-alternatives --set php "/usr/bin/php${STUDIO_PHP}" >/dev/null 2>&1 || true
+}
+
+# php_patch_level V -> the PHP of branch V installed here (8.4.27), empty without one
+php_patch_level() { "/usr/bin/php$1" -r 'echo PHP_VERSION;' 2>/dev/null || true; }
+
+# php_from_ppa V: PHP V comes from ppa:ondrej/php, whose versions are PHP's own. Ubuntu's
+# archive backports security fixes and keeps the version number it shipped.
+php_from_ppa() { dpkg-query -W -f='${Version}' "php$1-fpm" 2>/dev/null | grep -q 'sury'; }
+
+# ensure_php_fixed V — PHP V on the patch PHP_FIXED names for its branch or later: an
+# apt update leaves an installed PHP where it is (apt_ensure installs only what is
+# missing), so its packages go to their newest version here, and the services still
+# on the old PHP restart, PHP-FPM first: no worker keeps state from before.
+ensure_php_fixed() {
+    local v=$1 min cur pkgs build
+    min=$(printf '%s\n' $PHP_FIXED | grep -E "^${v//./\\.}\.[0-9]+$" | head -n1 || true)
+    [ -n "$min" ] || return 0
+    cur=$(php_patch_level "$v")
+    ver_ge "${cur:-0}" "$min" && return 0
+    mapfile -t pkgs < <(dpkg-query -W -f='${db:Status-Abbrev} ${binary:Package}\n' "php${v}-*" 2>/dev/null | awk '$1 ~ /^ii/ {print $2}')
+    [ "${#pkgs[@]}" -gt 0 ] || return 0
+    sys_note "· PHP $v ${cur:-?}: security fixes from $min, upgrading its packages"
+    [ "${APT_UPDATED:-0}" = 1 ] || { studio_apt update; APT_UPDATED=1; }
+    build=$(dpkg-query -W -f='${Version}' "php${v}-fpm" 2>/dev/null || true)
+    studio_apt install --only-upgrade "${pkgs[@]}" || { sys_warn "PHP $v could not be upgraded"; return 0; }
+    # Ubuntu's PHP keeps its number with the fixes in: restart only when the build changed
+    if [ "$(dpkg-query -W -f='${Version}' "php${v}-fpm" 2>/dev/null || true)" != "$build" ]; then
+        systemctl restart "php${v}-fpm" >/dev/null 2>&1 || sys_warn "php${v}-fpm did not restart"
+        restart_outdated_services
+    fi
+    cur=$(php_patch_level "$v")
+    if ver_ge "${cur:-0}" "$min"; then
+        sys_note "  PHP $v is $cur"
+    elif php_from_ppa "$v"; then
+        sys_warn "PHP $v is still $cur: ppa:ondrej/php does not serve $min yet; the nightly server update installs it once it does"
+    else
+        sys_note "  PHP $v is Ubuntu's ($cur), on its newest package: Ubuntu's security fixes keep the version number"
+    fi
 }
 
 # The PHP versions really installed, comma separated, for Studio's project form.
