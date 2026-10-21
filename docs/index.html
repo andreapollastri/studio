@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.9">v2.4.9</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.10">v2.4.10</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1895,7 +1895,7 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6 to 2.4.9</h3>
+        <h3>New in 2.4.6 to 2.4.10</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -1909,6 +1909,10 @@
           <dl><dt>Public addresses (2.4.9)</dt><dd>A project's own addresses, the team's, are always behind the login; its
             site can get a public address on a client's domain, public or behind the browser's sign-in, per project. See
             <a href="#setup-settings-server">Settings → Server</a>.</dd></dl>
+          <dl><dt>PHP with the October 2026 fixes (2.4.10)</dt><dd>PHP 8.3.36, 8.4.27 and 8.5.12 fix CVE-2026-109618 and
+            CVE-2026-109619, remote code execution without authentication. The update brings every older PHP on the server to
+            its newest package and restarts what runs on it, without waiting for the nightly server update. See
+            <a href="#setup-server-updates">The server itself</a>.</dd></dl>
         </div>
 
         <h3>The team works in projects</h3>
@@ -3042,8 +3046,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           upgrade script. Three releases and five database dumps stay on disk.</p>
 
         <h3 id="setup-server-updates">The server itself</h3>
-        <p>Studio's update installs what a release needs and adds what is missing; it does not upgrade what is already there.
-          That is the job of the <strong>server update</strong>, <code>studio-update system</code>: every night between 03:00
+        <p>Studio's update installs what a release needs and adds what is missing; it does not upgrade what is already there,
+          except a PHP older than the security fixes the release names (<code>PHP_FIXED</code> in <code>requirements.env</code>),
+          which goes to its newest package with its PHP-FPM restarted. The rest is the job of the <strong>server update</strong>, <code>studio-update system</code>: every night between 03:00
           and 03:30 (an hour before Studio's own update, which waits for it), from <em>Administration → System</em> with
           <em>Update the server now</em>, or by hand. It brings every package and tool on the server to its newest version:</p>
         <ul>
