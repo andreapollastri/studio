@@ -4,6 +4,10 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.12
+
+- **Vite+ 1.3.0, with Vitest 5.0.5.** The asset build moves from Vite+ 0.3.3 to 1.3.0, and the `vite` alias and its override with it to `@voidzero-dev/vite-plus-core@1.3.0`: `vp build` refuses a core that is not its own version. Vite+ 1.x brings Vitest 5, whose dev servers before 5.0.5 served files that `server.fs.deny` should refuse (`.env`, keys and certificates, `.npmrc`, `.git`, Vitest's own API token) from the UI and Browser Mode. 1.3.0 has the fix. Studio's servers were never exposed: 2.4.11 and earlier build with Vitest 4, and Studio runs no Vitest server. Vite+ 1.x wants Node 22.18 or newer on Node 22, as 0.3 did.
+
 ## 2.4.11
 
 - **PHP 8.5 by default; 8.4 and 8.3 on request.** A new server installs PHP 8.5 alone: it runs Studio, and new projects start on it. *Administration → System → Server → PHP* lists 8.5 as the default and offers *Install* next to 8.4 and 8.3: the queue asks the root helper (`studio-admin php-install`), which installs that version from packages.sury.org with its extensions and PHP-FPM, brings it to the security fixes, and refreshes Studio's configuration so the project forms offer it. One install at a time, never during an update; a failed one says why on the page. Once installed, a version stays and every update looks after it like 8.5. `installer/requirements.env` says it: `STUDIO_PHP=8.5`, `PHP_VERSIONS="8.5"`, `PHP_OPTIONAL="8.3 8.4"`.
