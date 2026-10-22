@@ -498,6 +498,31 @@ class Terminal extends Component
     }
 
     /**
+     * A ticket to take back a session the page left (another page of Studio, a reload): the
+     * gateway gives the shell back to its own person only. Nothing is said when the connection
+     * is gone or no longer theirs: the page forgets that session.
+     *
+     * @return array{ticket: string, url: string, name: string, address: string, connection_id: string}|null
+     */
+    public function resume(string $id): ?array
+    {
+        $user = auth()->user();
+        $connection = SshConnection::query()->visibleTo($user)->with('key')->where('uuid', $id)->first();
+
+        if ($connection === null || ! $connection->canConnect($user)) {
+            return null;
+        }
+
+        return [
+            'ticket' => Gateway::issue($connection, $user),
+            'url' => Gateway::url(),
+            'name' => $connection->name,
+            'address' => $connection->address(),
+            'connection_id' => $connection->uuid,
+        ];
+    }
+
+    /**
      * The file manager of a connection (Files), in place of its terminal: over
      * SFTP with the same credential, and only on a host whose key was accepted.
      */

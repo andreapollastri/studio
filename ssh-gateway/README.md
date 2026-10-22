@@ -9,7 +9,13 @@ browser (xterm.js) is a WebSocket to this gateway, which opens the SSH session w
   `studio-ssh-gateway`) and only then gets host, user and the private key or password.
 - A host seen for the first time waits for the person to accept its fingerprint; a host whose key
   differs from the accepted one is refused.
-- At most `SSH_GATEWAY_MAX_PER_USER` (12) sessions per person; only the page's origin may connect.
+- At most `SSH_GATEWAY_MAX_PER_USER` (12) sessions per person, the waiting ones included; only the page's origin may connect.
+- A shell outlives its page. When the WebSocket goes without a `close` (another page of Studio, a
+  reload, a closed tab), the session waits `SSH_GATEWAY_LINGER` seconds (1800; 0 ends a shell with its
+  page), keeping the last `SSH_GATEWAY_REPLAY_CHARS` (200000) characters it wrote. A page takes it back
+  with `&resume=<token>` (the token of its `session` message) and a fresh ticket of the same person for
+  the same connection: the ticket is still redeemed, so the person must still be signed in and allowed.
+  The page that comes back gets the session, the one before it is let go (4409).
 
 ## Run
 
@@ -27,10 +33,10 @@ On a server the `studio-ssh` unit runs it with Studio's `.env`; Caddy forwards
 
 | Direction | Message |
 | --- | --- |
-| page → gateway | `{type: 'data', data}` · `{type: 'resize', cols, rows}` · `{type: 'hostkey', accept}` |
-| gateway → page | `{type: 'status', state: 'connecting'\|'ready'}` · `{type: 'data', data}` · `{type: 'hostkey', fingerprint, host}` · `{type: 'error', message}` · `{type: 'closed'}` |
+| page → gateway | `{type: 'data', data}` · `{type: 'resize', cols, rows}` · `{type: 'hostkey', accept}` · `{type: 'close'}` (ends the session for good) |
+| gateway → page | `{type: 'status', state: 'connecting'\|'ready'}` · `{type: 'data', data}` · `{type: 'hostkey', fingerprint, host}` · `{type: 'session', resume}` · `{type: 'replay', data}` (what the shell wrote, to a page that takes it back) · `{type: 'error', message}` · `{type: 'closed'}` |
 
-Close codes: 4401 unknown or spent ticket, 4403 another origin, 4429 too many sessions, 4502 Studio unreachable.
+Close codes: 4401 unknown or spent ticket, 4403 another origin, 4409 taken back on another page, 4410 nothing to take back (ended, or not this person's), 4429 too many sessions, 4502 Studio unreachable.
 
 ## Tests
 

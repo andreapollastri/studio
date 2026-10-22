@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import ssh2 from 'ssh2';
 
@@ -13,13 +13,22 @@ export function fingerprint(key) {
  * One terminal of the page: a WebSocket on one side, an SSH shell on the
  * other. Messages are JSON both ways:
  *   page → gateway  {type: 'data', data} · {type: 'resize', cols, rows} · {type: 'hostkey', accept}
+ *                   {type: 'close'}: the person closed the session, it ends
  *   gateway → page  {type: 'status', state} · {type: 'data', data} · {type: 'hostkey', fingerprint}
+ *                   {type: 'session', resume}: the token that takes the session back
+ *                   {type: 'replay', data}: what the shell wrote, when a page takes it back
  *                   {type: 'error', message} · {type: 'closed', code}
  * A host seen for the first time waits for the person to accept its key; a
  * host whose key changed is refused.
+ *
+ * A shell outlives its page: when the WebSocket goes without a 'close' (the
+ * person went to another page of Studio, reloaded, closed the tab), the
+ * session waits config.linger ms for a page to come back with its resume
+ * token, keeping the last config.replayChars of what the shell wrote. The
+ * page that comes back takes the session over, the one before it is let go.
  */
 export class SshSession {
-  #ws;
+  #ws = null;
   #target;
   #config;
   #client;
@@ -29,18 +38,30 @@ export class SshSession {
   #closed = false;
   #failed = false;
   #log;
+  #onEnd;
+  #onResumable;
+  #replay = '';
+  #parkTimer = null;
+  /** The token a page shows to take the session back; set once the shell runs. */
+  resume = null;
 
-  constructor(ws, target, config, { size, log = () => {}, ClientImpl = Client } = {}) {
-    this.#ws = ws;
+  constructor(ws, target, config, { size, log = () => {}, ClientImpl = Client, onEnd = () => {}, onResumable = () => {} } = {}) {
     this.#target = target;
     this.#config = config;
     this.#size = size;
     this.#log = log;
+    this.#onEnd = onEnd;
+    this.#onResumable = onResumable;
     this.#client = new ClientImpl();
+    this.#bind(ws);
+  }
 
-    ws.on('message', (raw) => this.#onMessage(raw));
-    ws.on('close', () => this.close());
-    ws.on('error', () => this.close());
+  get userId() {
+    return String(this.#target.user_id ?? 'unknown');
+  }
+
+  get connectionId() {
+    return this.#target.connection_id ?? null;
   }
 
   start() {
@@ -67,14 +88,57 @@ export class SshSession {
     });
   }
 
+  /** A page came back with the resume token: it gets what the shell wrote, then the shell itself. */
+  attach(ws, size) {
+    // the page before goes: what it still sends, and its closing, no longer count (#bind)
+    const previous = this.#ws;
+    this.#ws = null;
+    if (previous) {
+      try { previous.close(4409, 'The session was opened on another page.'); } catch {}
+    }
+    clearTimeout(this.#parkTimer);
+    this.#parkTimer = null;
+    this.#bind(ws);
+
+    if (size) this.#resize(size.cols, size.rows);
+    this.#send({ type: 'status', state: 'ready' });
+    this.#send({ type: 'session', resume: this.resume });
+    this.#send({ type: 'replay', data: this.#replay });
+    this.#log(`resumed ${this.#target.username}@${this.#target.host} (user ${this.userId})`);
+  }
+
   close() {
     if (this.#closed) return;
     this.#closed = true;
+    clearTimeout(this.#parkTimer);
     this.#pendingHostKey?.(false);
     try { this.#stream?.end(); } catch {}
     try { this.#client.end(); } catch {}
     this.#send({ type: 'closed' });
-    try { this.#ws.close(1000); } catch {}
+    try { this.#ws?.close(1000); } catch {}
+    this.#onEnd(this);
+  }
+
+  #bind(ws) {
+    this.#ws = ws;
+    ws.on('message', (raw) => { if (this.#ws === ws) this.#onMessage(raw); });
+    ws.on('close', () => this.#gone(ws));
+    ws.on('error', () => {});
+  }
+
+  /** The page went: a running shell waits for it, anything else ends. */
+  #gone(ws) {
+    if (this.#ws !== ws) return;
+    this.#ws = null;
+    if (this.#closed) return;
+    if (!this.#stream || this.resume === null || !(this.#config.linger > 0)) return this.close();
+
+    this.#log(`parked ${this.#target.username}@${this.#target.host} (user ${this.userId}) for ${Math.round(this.#config.linger / 1000)} s`);
+    this.#parkTimer = setTimeout(() => {
+      this.#log(`ended ${this.#target.username}@${this.#target.host} (user ${this.userId}): nobody came back`);
+      this.close();
+    }, this.#config.linger);
+    this.#parkTimer.unref?.();
   }
 
   #verifyHost(key, verify) {
@@ -107,14 +171,23 @@ export class SshSession {
     this.#client.shell({ term: 'xterm-256color', cols, rows }, (error, stream) => {
       if (error) return this.#fail(describe(error));
       this.#stream = stream;
-      this.#log(`open ${this.#target.username}@${this.#target.host}:${this.#target.port ?? 22} (user ${this.#target.user_id ?? '?'})`);
+      this.#log(`open ${this.#target.username}@${this.#target.host}:${this.#target.port ?? 22} (user ${this.userId})`);
       this.#send({ type: 'status', state: 'ready' });
+
+      // the page keeps the token: with it, the shell outlives the page
+      if (this.#config.linger > 0) {
+        this.resume = randomBytes(24).toString('base64url');
+        this.#onResumable(this);
+        this.#send({ type: 'session', resume: this.resume });
+      }
 
       const out = new StringDecoder('utf8');
       const err = new StringDecoder('utf8');
       stream.on('data', (chunk) => this.#data(out.write(chunk)));
       stream.stderr.on('data', (chunk) => this.#data(err.write(chunk)));
       stream.on('close', () => this.close());
+      // the page left while the shell opened
+      if (this.#ws === null) this.#gone(null);
     });
   }
 
@@ -129,17 +202,35 @@ export class SshSession {
     if (message.type === 'data' && typeof message.data === 'string') {
       this.#stream?.write(message.data);
     } else if (message.type === 'resize') {
-      const cols = clamp(message.cols, 2, 1000);
-      const rows = clamp(message.rows, 1, 500);
-      this.#size = { cols, rows };
-      this.#stream?.setWindow(rows, cols, 0, 0);
+      this.#resize(message.cols, message.rows);
     } else if (message.type === 'hostkey') {
       this.#pendingHostKey?.(message.accept === true);
+    } else if (message.type === 'close') {
+      this.close();
     }
   }
 
+  #resize(cols, rows) {
+    this.#size = { cols: clamp(cols, 2, 1000), rows: clamp(rows, 1, 500) };
+    this.#stream?.setWindow(this.#size.rows, this.#size.cols, 0, 0);
+  }
+
   #data(text) {
-    if (text !== '') this.#send({ type: 'data', data: text });
+    if (text === '') return;
+    this.#keep(text);
+    this.#send({ type: 'data', data: text });
+  }
+
+  /** The last replayChars of the output, cut at a line so that a replay does not start inside an escape sequence. */
+  #keep(text) {
+    const max = this.#config.replayChars ?? 0;
+    if (!(max > 0)) return;
+    this.#replay += text;
+    if (this.#replay.length > max) {
+      const tail = this.#replay.slice(-max);
+      const line = tail.indexOf('\n');
+      this.#replay = line === -1 ? tail : tail.slice(line + 1);
+    }
   }
 
   /** The first reason wins: a refused host key also ends in a generic handshake error. */
@@ -150,7 +241,7 @@ export class SshSession {
   }
 
   #send(message) {
-    if (this.#ws.readyState === 1) this.#ws.send(JSON.stringify(message));
+    if (this.#ws?.readyState === 1) this.#ws.send(JSON.stringify(message));
   }
 }
 

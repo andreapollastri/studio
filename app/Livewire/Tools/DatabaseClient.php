@@ -173,6 +173,7 @@ class DatabaseClient extends Component
             return;
         }
 
+        $this->restorePlace();
         $this->db ??= $connection->driver === Driver::Sqlite ? 'main' : (filled($connection->database) ? (string) $connection->database : null);
         $this->schema ??= $connection->driver === Driver::Pgsql ? 'public' : null;
         $this->tab = in_array($this->tab, ['data', 'structure', 'ddl', 'sql', 'transfers'], true) ? $this->tab : 'data';
@@ -199,6 +200,53 @@ class DatabaseClient extends Component
         $this->openLink?->close();
         $this->openLink = null;
         $this->openDialect = null;
+        $this->keepPlace();
+    }
+
+    /** Where the person is in this connection, for this session: kept on every request. */
+    private function placeKey(): string
+    {
+        return 'databases.place.'.$this->connection->id;
+    }
+
+    private function keepPlace(): void
+    {
+        if ($this->connection->driver->isRedis()) {
+            return;
+        }
+
+        session()->put($this->placeKey(), [
+            'db' => $this->db, 'schema' => $this->schema, 'table' => $this->table, 'tab' => $this->tab,
+            'filters' => $this->filters, 'sort' => $this->sort, 'direction' => $this->direction, 'page' => $this->page, 'perPage' => $this->perPage,
+        ]);
+        // the Databases page offers to go back to the last one opened on it
+        if (! $this->embedded) {
+            session()->put('databases.last', $this->connection->id);
+        }
+    }
+
+    /**
+     * Back to where the person was in this connection (database, table, tab, filters, sort, page)
+     * when the address says nothing else: another page of Studio in between loses nothing.
+     */
+    private function restorePlace(): void
+    {
+        $place = session()->get($this->placeKey());
+
+        if (! is_array($place) || $this->db !== null || $this->schema !== null || $this->table !== null || $this->tab !== 'data') {
+            return;
+        }
+
+        $text = fn (string $key): ?string => is_string($place[$key] ?? null) && $place[$key] !== '' ? $place[$key] : null;
+        $this->db = $text('db');
+        $this->schema = $text('schema');
+        $this->table = $text('table');
+        $this->tab = $text('tab') ?? 'data';
+        $this->filters = array_values(array_filter((array) ($place['filters'] ?? []), fn (mixed $f): bool => is_array($f) && is_string($f['column'] ?? null) && is_string($f['op'] ?? null) && is_string($f['value'] ?? null)));
+        $this->sort = $text('sort');
+        $this->direction = ($place['direction'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+        $this->page = max(1, (int) ($place['page'] ?? 1));
+        $this->perPage = in_array((int) ($place['perPage'] ?? 100), [50, 100, 250, 500, 1000], true) ? (int) $place['perPage'] : 100;
     }
 
     private function cacheKey(string $what): string

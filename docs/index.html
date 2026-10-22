@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.14">v2.4.14</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.15">v2.4.15</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1896,7 +1896,7 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6 to 2.4.14</h3>
+        <h3>New in 2.4.6 to 2.4.15</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -1927,6 +1927,9 @@
           <dl><dt>Uploads up to 512 MB (2.4.14)</dt><dd>The drive, the file managers and the imports of
             <em>Databases</em> take files up to 512 MB: an SQL dump of that size imports from your computer or your
             drive. See <a href="#tools-databases">Databases</a>.</dd></dl>
+          <dl><dt>SSH sessions that stay open (2.4.15)</dt><dd>Leave the SSH page for another one, or reload it: the
+            terminals come back as they were, with what they wrote meanwhile, for half an hour. A database opens again on
+            the table, filters and order you left. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
           <dl><dt>SSH groups (2.4.14)</dt><dd>The SSH page's connections go in groups of your own with a colour, as the
             databases', with a chip per group to show it alone and a search by name, host, project or group. See
             <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -3911,6 +3914,10 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <div class="walkthrough-grid">
           <dl><dt>Connections</dt><dd>Host, port, user and a key or a password, saved per person; favourites stay on top. A
             click opens a terminal; open as many as you like, in tabs or all side by side.</dd></dl>
+          <dl><dt>Sessions stay open</dt><dd>Another page of Studio, a reload, even a closed tab: the shell keeps running on
+            the server and the SSH page (or the project's Terminal tab) takes it back when you return, with what it wrote
+            meanwhile. A session waits half an hour for you (<code>SSH_GATEWAY_LINGER</code>, in seconds), only for you;
+            <em>×</em> ends it for good.</dd></dl>
           <dl><dt>Groups, search</dt><dd>Put connections in groups of your own, with a colour (Clients, Agency…), as in
             <a href="#tools-databases">Databases</a>: from <em>Move to group</em> in a connection's menu, or in its form; the
             connections shared with you go in your groups too, and nobody else sees how you sorted them. A chip per group

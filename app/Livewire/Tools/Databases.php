@@ -801,6 +801,10 @@ class Databases extends Component
 
         $sshPicked = $this->via === 'ssh' ? $this->sshConnections->firstWhere('uuid', $this->ssh) : null;
 
+        // the connection last opened in this session, to go back to where the person was in it
+        $last = $this->connections->first(fn (array $row) => $row['connection']->id === session('databases.last'));
+        $lastPlace = $last ? (array) session('databases.place.'.$last['connection']->id, []) : [];
+
         return view('livewire.tools.databases', [
             'sections' => $sections,
             'total' => $this->connections->count(),
@@ -808,6 +812,8 @@ class Databases extends Component
             'pickedProject' => $this->project ? Project::query()->where('uuid', $this->project)->first() : null,
             'audience' => $this->audience(),
             'sshPicked' => $sshPicked,
+            'last' => $last['connection'] ?? null,
+            'lastTable' => is_string($lastPlace['table'] ?? null) ? $lastPlace['table'] : null,
             'hasPassword' => $this->editing !== null && filled($user->databaseConnections()->where('uuid', $this->editing)->first()?->password),
         ]);
     }

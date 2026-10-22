@@ -18,6 +18,10 @@ export function loadConfig(env = process.env) {
     maxPerUser: Number(env.SSH_GATEWAY_MAX_PER_USER || 12),
     readyTimeout: Number(env.SSH_GATEWAY_READY_TIMEOUT || 20) * 1000,
     hostKeyTimeout: Number(env.SSH_GATEWAY_HOST_KEY_TIMEOUT || 120) * 1000,
+    // How long a shell waits for its page to come back (another page of Studio, a reload, a closed tab), and how
+    // much of what it wrote meanwhile the page gets back; 0 ends a shell with its page.
+    linger: Number(env.SSH_GATEWAY_LINGER ?? 1800) * 1000,
+    replayChars: Number(env.SSH_GATEWAY_REPLAY_CHARS || 200_000),
     log: env.SSH_GATEWAY_LOG !== '0',
     // The person's `claude auth login` and `agent login` go through the privileged helper, as their Linux user.
     loginCommand: loginCommand(env.SSH_GATEWAY_HELPER || '/usr/local/sbin/studio-admin', env.SSH_GATEWAY_HELPER_SUDO !== '0'),

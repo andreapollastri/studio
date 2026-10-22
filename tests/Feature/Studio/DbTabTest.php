@@ -156,10 +156,11 @@ test('Remote opens the project\'s Databases connections its role may use, inside
         ->assertSee('120')
         ->assertSee('Read only');
 
-    // the conversation's URL is not the client's: no ?table=… read from it
+    // the conversation's URL is not the client's: no ?table=… read from it; the pane opens where the person left it
     Livewire::actingAs($dev)->withQueryParams(['table' => 'other', 'tab' => 'sql'])->test(PaneDatabase::class, ['connection' => $shared])
-        ->assertSet('table', null)
-        ->assertSet('tab', 'data');
+        ->assertSet('table', 'loyalty_points')
+        ->assertSet('tab', 'data')
+        ->assertSee('120');
 
     @unlink($path);
 });

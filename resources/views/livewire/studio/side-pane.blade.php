@@ -128,7 +128,8 @@
         @endif
         @if ($remoteMounted && $canUseRemote)
             {{-- The remote terminals: the project's SSH hosts through the gateway, kept alive while the pane shows something else. --}}
-            <div x-data="sshTerminals" @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'terminal' || $terminalMode !== 'remote'])>
+            {{-- its sessions are this project's: they come back here, not on the SSH page --}}
+            <div x-data="sshTerminals('project-{{ $workspace->project->uuid }}')" @class(['absolute inset-0 flex flex-col', 'hidden' => $tab !== 'terminal' || $terminalMode !== 'remote'])>
                 <div class="border-b border-zinc-200 p-3 dark:border-zinc-700">
                     @include('livewire.studio.partials.terminal-modes')
                     @if (! $this->remoteConfirmed())

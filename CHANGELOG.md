@@ -4,6 +4,11 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## 2.4.15
+
+- **SSH sessions stay open across pages.** A terminal of the SSH page (or of a project's Terminal tab, *Remote*) used to end as soon as you went to another page of Studio. The shell now outlives the page: the SSH gateway keeps it running for half an hour (`SSH_GATEWAY_LINGER`, in seconds; 0 ends a shell with its page) and the page takes it back when you come back, after another page, a reload or even a closed tab, with the last 200,000 characters it wrote meanwhile (`SSH_GATEWAY_REPLAY_CHARS`). Taking a session back needs a fresh ticket from Studio for the same person and the same connection, so it stays yours, and only while you may still use it. *×* ends a session for good; a session taken back in another tab says so in the first one. Sessions waiting for you count toward the 12 a person may have. The page no longer asks before you leave it. An update of Studio restarts the gateway, and the sessions waiting with it.
+- **A database opens where you left it.** Back to a connection from the list, the client opens on the database, table, tab, filters, order and page you were on (the SQL editor already kept its text); an address that names a table still wins. The Databases page offers *Continue in* the connection you last opened.
+
 ## 2.4.14
 
 - **Groups on the SSH page.** Connections go in groups of your own (Clients, Production, Agency…), each with a colour and its place in the list, as in *Databases*: *New group* next to *New*, *Move to group* in a connection's menu, a *Group* field in its form, *New connection here*, *Edit*, *Move up*/*Move down* and *Delete* in a group's menu. They are each person's own: the connections shared with you through a project go in your groups too, and nobody else sees how you sorted them; a deleted group leaves its connections in no group. Above the list, a chip per group shows that group alone (or *No group*, the connections in none), and the search, now there as soon as you have a group, finds a name, an address, an owner, a project or a group. Filtering happens in the page: the open terminals stay as they are.

@@ -19,6 +19,18 @@
         </div>
     </div>
 
+    @if ($last)
+        {{-- back to the connection last opened, where the person was in it --}}
+        <a href="{{ route('databases.client', $last) }}" wire:navigate class="flex max-w-xl items-center gap-2 self-start rounded-lg border border-zinc-200 px-3 py-2 text-sm hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500">
+            <flux:icon.arrow-uturn-left variant="micro" class="size-4 shrink-0 text-zinc-500" />
+            <span class="text-zinc-500">{{ __('Continue in') }}</span>
+            <span class="truncate font-medium">{{ $last->name }}</span>
+            @if ($lastTable)
+                <span class="truncate font-mono text-xs text-zinc-500">· {{ $lastTable }}</span>
+            @endif
+        </a>
+    @endif
+
     @if ($total > 6 || $search !== '')
         <flux:input wire:model.live.debounce.200ms="search" icon="magnifying-glass" :placeholder="__('Search connections, hosts, projects…')" clearable class="max-w-sm" />
     @endif

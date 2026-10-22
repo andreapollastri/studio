@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Tools\DatabaseClient;
+use App\Livewire\Tools\Databases;
 use App\Models\DatabaseConnection;
 use App\Models\DatabaseQuery;
 use App\Models\Project;
@@ -204,4 +205,30 @@ test('a connection that does not answer says why, without breaking the page', fu
     Livewire::actingAs($admin)->test(DatabaseClient::class, ['connection' => $connection])
         ->assertOk()
         ->assertSee('There is no file /nowhere/at/all.sqlite on this server.');
+});
+
+test('coming back to a connection opens where the person was in it, unless the address says otherwise', function () {
+    [$admin, $connection] = sqliteFixture();
+
+    Livewire::actingAs($admin)->test(DatabaseClient::class, ['connection' => $connection])
+        ->call('openTable', 'customers')
+        ->call('addFilter', 'name')->set('filters.0.op', 'starts')->set('filters.0.value', 'Gr')
+        ->call('sortBy', 'name')->call('sortBy', 'name');
+
+    // another page of Studio, then the connection again from the list: same table, filter and order
+    Livewire::actingAs($admin)->test(DatabaseClient::class, ['connection' => $connection])
+        ->assertSet('table', 'customers')
+        ->assertSet('direction', 'desc')
+        ->assertSet('filters.0.value', 'Gr')
+        ->assertSee('grace@example.com')
+        ->assertDontSee('ada@example.com');
+
+    Livewire::withQueryParams(['table' => 'log'])->actingAs($admin)->test(DatabaseClient::class, ['connection' => $connection])
+        ->assertSet('table', 'log')
+        ->assertSet('filters', [])
+        ->assertSee('second');
+
+    Livewire::actingAs($admin)->test(Databases::class)
+        ->assertSee('Continue in')
+        ->assertSeeHtml(route('databases.client', $connection));
 });

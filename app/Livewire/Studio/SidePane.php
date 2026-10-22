@@ -930,6 +930,34 @@ class SidePane extends Component
         ];
     }
 
+    /**
+     * A ticket to take back a remote session the pane left, as on the SSH page; nothing is said
+     * when it may not be had (password not confirmed yet, connection gone).
+     *
+     * @return array{ticket: string, url: string, name: string, address: string, connection_id: string}|null
+     */
+    public function resume(string $id): ?array
+    {
+        if (! $this->canUseRemote() || ! $this->remoteConfirmed()) {
+            return null;
+        }
+
+        $user = auth()->user();
+        $connection = SshConnection::query()->visibleTo($user)->where('project_id', $this->workspace->project_id)->where('uuid', $id)->first();
+
+        if ($connection === null || ! $connection->canConnect($user)) {
+            return null;
+        }
+
+        return [
+            'ticket' => Gateway::issue($connection, $user),
+            'url' => Gateway::url(),
+            'name' => $connection->name,
+            'address' => $connection->address(),
+            'connection_id' => $connection->uuid,
+        ];
+    }
+
     /** The person accepted the key a new host showed: later connections, of anybody, expect the same one. */
     public function trustHostKey(string $id, string $fingerprint): void
     {

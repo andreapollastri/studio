@@ -51,8 +51,8 @@ async function gateway(target, overrides = {}) {
   return server;
 }
 
-function open(server, ticket, headers = {}) {
-  const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/ssh/ws?ticket=${ticket}&cols=100&rows=30`, { headers });
+function open(server, ticket, headers = {}, query = '') {
+  const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/ssh/ws?ticket=${ticket}&cols=100&rows=30${query}`, { headers });
   const messages = [];
   const waiters = [];
   ws.on('message', (raw) => {
@@ -148,6 +148,111 @@ test('another origin and too many sessions are refused', async (t) => {
   assert.equal(await second.closed, CLOSE.tooMany);
   first.ws.close();
   await first.closed;
+});
+
+/** A page that leaves without closing its session: the WebSocket goes, the shell stays. */
+async function leave(page) {
+  page.ws.close();
+  await page.closed;
+  await new Promise((r) => setTimeout(r, 50));
+}
+
+test('a shell outlives its page: the page comes back with its token and gets what it missed', async (t) => {
+  const ssh = await sshServer();
+  const gw = await gateway(() => ({ user_id: 1, connection_id: 5, host: '127.0.0.1', port: ssh.address().port, username: 'deploy', auth: 'password', password: 'secret', host_key: hostFingerprint }));
+  t.after(() => { gw.close(); ssh.close(); });
+
+  const first = open(gw, 'good');
+  const { resume } = await first.until((m) => m.type === 'session');
+  assert.match(resume, /^[A-Za-z0-9_-]{32}$/);
+  first.send({ type: 'data', data: 'make build\r' });
+  await first.until(() => first.output().includes('echo:make build'));
+  await leave(first);
+
+  const back = open(gw, 'good', {}, `&resume=${resume}`);
+  const replay = await back.until((m) => m.type === 'replay');
+  assert.match(replay.data, /welcome è[\s\S]*echo:make build/);
+  assert.ok(back.messages.some((m) => m.type === 'status' && m.state === 'ready'));
+  assert.equal(back.messages.find((m) => m.type === 'session').resume, resume);
+  back.send({ type: 'data', data: 'ls\r' });
+  await back.until(() => back.output().includes('echo:ls'));
+
+  // the person closes it: it ends, and the token is worth nothing
+  back.send({ type: 'close' });
+  await back.closed;
+  const late = open(gw, 'good', {}, `&resume=${resume}`);
+  assert.equal(await late.closed, CLOSE.gone);
+});
+
+test('only the same person, on the same connection, takes a session back; a newer page takes it over', async (t) => {
+  const ssh = await sshServer();
+  let who = { user_id: 1, connection_id: 5 };
+  const gw = await gateway(() => ({ ...who, host: '127.0.0.1', port: ssh.address().port, username: 'deploy', auth: 'password', password: 'secret', host_key: hostFingerprint }));
+  t.after(() => { gw.close(); ssh.close(); });
+
+  const first = open(gw, 'good');
+  const { resume } = await first.until((m) => m.type === 'session');
+  await leave(first);
+
+  who = { user_id: 2, connection_id: 5 };
+  assert.equal(await open(gw, 'good', {}, `&resume=${resume}`).closed, CLOSE.gone);
+  who = { user_id: 1, connection_id: 6 };
+  assert.equal(await open(gw, 'good', {}, `&resume=${resume}`).closed, CLOSE.gone);
+  assert.equal(await open(gw, 'spent', {}, `&resume=${resume}`).closed, CLOSE.badTicket);
+
+  who = { user_id: 1, connection_id: 5 };
+  const tab = open(gw, 'good', {}, `&resume=${resume}`);
+  await tab.until((m) => m.type === 'replay');
+  const other = open(gw, 'good', {}, `&resume=${resume}`);
+  await other.until((m) => m.type === 'replay');
+  assert.equal(await tab.closed, CLOSE.takenOver);
+  other.send({ type: 'data', data: 'pwd\r' });
+  await other.until(() => other.output().includes('echo:pwd'));
+  other.send({ type: 'close' });
+  await other.closed;
+});
+
+test('a session nobody comes back to ends after the wait, and waiting ones count toward the limit', async (t) => {
+  const ssh = await sshServer();
+  const gw = await gateway(() => ({ user_id: 1, connection_id: 5, host: '127.0.0.1', port: ssh.address().port, username: 'deploy', auth: 'password', password: 'secret', host_key: hostFingerprint }), { linger: 300, maxPerUser: 1 });
+  t.after(() => { gw.close(); ssh.close(); });
+
+  const first = open(gw, 'good');
+  const { resume } = await first.until((m) => m.type === 'session');
+  await leave(first);
+  assert.equal(await open(gw, 'good').closed, CLOSE.tooMany);
+
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(await open(gw, 'good', {}, `&resume=${resume}`).closed, CLOSE.gone);
+  const fresh = open(gw, 'good');
+  await fresh.until((m) => m.type === 'status' && m.state === 'ready');
+  fresh.send({ type: 'close' });
+  await fresh.closed;
+});
+
+test('without a wait a shell ends with its page, and the replay keeps whole lines of the tail', async (t) => {
+  const ssh = await sshServer();
+  const target = () => ({ user_id: 1, connection_id: 5, host: '127.0.0.1', port: ssh.address().port, username: 'deploy', auth: 'password', password: 'secret', host_key: hostFingerprint });
+  const off = await gateway(target, { linger: 0 });
+  const small = await gateway(target, { replayChars: 40 });
+  t.after(() => { off.close(); small.close(); ssh.close(); });
+
+  const once = open(off, 'good');
+  await once.until((m) => m.type === 'status' && m.state === 'ready');
+  assert.ok(!once.messages.some((m) => m.type === 'session'));
+  once.ws.close();
+
+  const page = open(small, 'good');
+  const { resume } = await page.until((m) => m.type === 'session');
+  for (const line of ['one-line-of-output\r', 'two-line-of-output\r', 'three-line-of-output\r']) page.send({ type: 'data', data: line });
+  await page.until(() => page.output().includes('echo:three'));
+  await leave(page);
+  const back = open(small, 'good', {}, `&resume=${resume}`);
+  const { data } = await back.until((m) => m.type === 'replay');
+  assert.ok(data.length <= 40, data);
+  assert.ok(data.endsWith('echo:three-line-of-output\r'), JSON.stringify(data));
+  back.send({ type: 'close' });
+  await back.closed;
 });
 
 test('a claude-login ticket runs the helper\'s sign-in for that person and relays the terminal both ways', async (t) => {
