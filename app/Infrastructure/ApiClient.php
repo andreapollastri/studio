@@ -104,8 +104,9 @@ class ApiClient
             throw new ConnectorException(Str::limit(__('Not reachable: :reason', ['reason' => $e->getMessage()]), 250), previous: $e);
         }
 
+        // the HTTP status rides along as the code: a missing ability (403) is told from a missing endpoint (404)
         if ($response->failed()) {
-            throw new ConnectorException($this->error($response));
+            throw new ConnectorException($this->error($response), $response->status());
         }
 
         return $response;

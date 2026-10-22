@@ -333,6 +333,49 @@ test('a Cipi job is followed until it completes', function () {
     Http::assertSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer cipi-token'));
 });
 
+test('a Cipi app\'s cipi.yml: its plan, applied as a job, auto-apply turned on, and a note for an older server', function () {
+    Sleep::fake();
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/apps/crm/yml' => Http::response(['error' => 'Not Found'], 404),
+        'https://api.server.acme.test/api/apps/crm/yml/apply' => Http::response(['message' => 'Invalid ability provided.'], 403),
+        'https://api.server.acme.test/api/apps/shop/yml' => Http::response(['data' => [
+            'app' => 'shop', 'file' => '/home/shop/current/cipi.yml', 'auto' => false, 'valid' => true, 'in_sync' => false,
+            'errors' => [], 'warnings' => [], 'changes' => [['kind' => 'php', 'summary' => 'PHP 8.3 → 8.4']], 'blockers' => [], 'notes' => [],
+        ]]),
+        'https://api.server.acme.test/api/apps/shop/yml/apply' => Http::response(['job_id' => 'job-yml', 'status' => 'pending'], 202),
+        'https://api.server.acme.test/api/apps/shop/yml/auto/enable' => Http::response(['data' => ['app' => 'shop', 'auto' => true, 'sudoers' => true, 'file' => '/home/shop/current/cipi.yml']]),
+        'https://api.server.acme.test/api/jobs/job-yml' => Http::response(['data' => ['id' => 'job-yml', 'type' => 'app-yml-apply', 'status' => 'completed', 'result' => [
+            'app' => 'shop', 'outcome' => 'applied', 'applied' => 1, 'failed' => 0, 'failures' => [], 'blockers' => [], 'errors' => [],
+        ]]]),
+        'https://api.server.acme.test/api/apps' => Http::response(['data' => [
+            ['app' => 'shop', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.3', 'suspended' => false],
+            ['app' => 'crm', 'domain' => 'crm.acme.test', 'type' => 'laravel', 'php' => '8.3', 'suspended' => false],
+        ]]),
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'apps'])
+        ->call('start', 'yml', 'shop')
+        ->assertSee('PHP 8.3 → 8.4')
+        ->call('start', 'yml-apply', 'shop')
+        ->assertSet('resultPoll', null)
+        ->assertSee('"outcome": "applied"')
+        ->call('start', 'yml-auto', 'shop')
+        ->assertSet('form.auto', 'on')
+        ->call('submit')
+        ->assertHasNoErrors()
+        ->assertSee('"sudoers": true')
+        // a server without the endpoint: a note, not an error
+        ->call('start', 'yml', 'crm')
+        ->assertSee('it needs Cipi 5.6.4 and cipi/api 1.35 or later')
+        ->call('start', 'yml-apply', 'crm')
+        ->assertDispatched('toast-show', fn (string $name, array $params) => str_contains($params['slots']['text'], 'lacks the yml-manage ability'));
+
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://api.server.acme.test/api/apps/shop/yml/auto/enable' && $r->method() === 'POST');
+});
+
 test('creating a Cipi app appends the database link', function () {
     Sleep::fake();
     enable('cipi');

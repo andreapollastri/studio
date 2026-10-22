@@ -1768,7 +1768,7 @@
   <header class="hero">
     <div class="hero-plane" aria-hidden="true"></div>
     <div class="hero-content">
-      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.15">v2.4.15</a></div>
+      <div class="hero-brand">studio<span>.</span><a class="hero-version" href="#whats-new" title="What's new: 2.4.16">v2.4.16</a></div>
       <h1>Your whole studio on one server.</h1>
       <p>
         One server, one script, one DNS record. Studio puts your team's Laravel projects in one place:
@@ -1896,7 +1896,7 @@
             on. The full list is in <code>CHANGELOG.md</code>.</p>
         </div>
 
-        <h3>New in 2.4.6 to 2.4.15</h3>
+        <h3>New in 2.4.6 to 2.4.16</h3>
         <div class="walkthrough-grid">
           <dl><dt>Files on the SSH page</dt><dd>A session switches between <em>Terminal</em> and <em>Files</em>: the file
             manager of a project, on the server, over SFTP with your own key or password. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -1930,6 +1930,10 @@
           <dl><dt>SSH sessions that stay open (2.4.15)</dt><dd>Leave the SSH page for another one, or reload it: the
             terminals come back as they were, with what they wrote meanwhile, for half an hour. A database opens again on
             the table, filters and order you left. See <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
+          <dl><dt>A Cipi app's cipi.yml (2.4.16)</dt><dd>The app's <em>cipi.yml</em> tab shows what applying the file of
+            the live release would change, applies it as a job with what it did, and turns auto-apply after every deploy on
+            or off. Needs Cipi 5.6.4 and a token with <code>yml-view</code> and <code>yml-manage</code>. See
+            <a href="#infra-cipi-project">A Cipi app in a project</a>.</dd></dl>
           <dl><dt>SSH groups (2.4.14)</dt><dd>The SSH page's connections go in groups of your own with a colour, as the
             databases', with a chip per group to show it alone and a search by name, host, project or group. See
             <a href="#tools-ssh">SSH terminal</a>.</dd></dl>
@@ -4698,7 +4702,7 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <p>The server's status, services, PHP and disk by app; apps (create Laravel, custom or Octane apps; deploy, roll back,
           unlock, deploy history, aliases, SSL over HTTP or Cloudflare DNS-01 with wildcards, force HTTPS, www redirect,
           Artisan, whitelisted commands, logs, <code>.env</code> read and set, edit domain, PHP, repository and branch,
-          password protection, health check, limits, fix permissions, suspend, delete), databases (create, backup, new
+          password protection, health check, limits, cipi.yml plan, apply and auto-apply, fix permissions, suspend, delete), databases (create, backup, new
           password), services (restart), the cipi user's SSH keys, PHP versions (install).</p>
 
         <h3>The credentials</h3>
@@ -4710,8 +4714,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             lists them). For everything Studio does: apps-view, apps-create, apps-edit, apps-delete, apps-suspend,
             apps-basicauth, apps-env, apps-artisan, apps-run, deploy-manage, aliases-view, aliases-create, aliases-delete,
             ssl-manage, www-manage, dbs-view, dbs-create, dbs-manage, services-view, services-manage, ssh-view, ssh-manage,
-            php-view, php-manage, health-view, status-view, disk-view. With fewer, the matching tabs and actions answer
-            403.</li>
+            php-view, php-manage, health-view, status-view, disk-view, yml-view, yml-manage. With fewer, the matching tabs and
+            actions answer 403; without yml-view or yml-manage (tokens created before Cipi 5.6.4 lack them) the
+            <em>cipi.yml</em> tab says so.</li>
           <li>If the API's IP allowlist is in use, add Studio's server: <code>cipi api ip-whitelist add &lt;Studio's IP&gt;</code>.</li>
           <li>In Studio: the <strong>API address</strong> (<code>https://api.server1.example.com</code>) and the
             <strong>API token</strong>. Name the account after the server. Revoke an old token with
@@ -4749,6 +4754,14 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <dl><dt>Logs and .env</dt><dd>Laravel, nginx, PHP-FPM, workers and deploy logs, page by page, filtered, refreshed
             every ten seconds if you like. The <code>.env</code> with secrets hidden until shown, and a form that sets and
             removes keys.</dd></dl>
+          <dl><dt>cipi.yml</dt><dd>The <code>cipi.yml</code> of the live release (aliases, PHP and its settings, limits,
+            workers, scheduled commands, databases, backups, deploy steps) and its plan: no file, not valid with the
+            parser's lines, blocked with what to solve first, or the changes one per line, with warnings and notes.
+            <em>Apply cipi.yml</em> runs as a job and ends with what it did (applied, nothing to change, partly applied,
+            blocked, not valid, no file). <em>Turn auto-apply on</em> applies the file after every successful deploy, CLI,
+            panel and Git webhook alike, and asks first: anyone who can commit to the repository then changes the app's
+            server configuration. Needs Cipi 5.6.4 and cipi/api 1.35, and a token with <code>yml-view</code> and
+            <code>yml-manage</code>; an older server or token gets a note, not an error.</dd></dl>
           <dl><dt>An anonymized database</dt><dd>With the <a href="https://cipi.sh/docs/agent#agent-anonymizer" target="_blank" rel="noopener">Cipi
             agent's anonymizer</a> on, a developer asks for a copy of the production database with names, emails, phones
             and passwords replaced: the app dumps it, transforms it and mails a download link, valid a few minutes. Real

@@ -27,9 +27,10 @@ use Throwable;
 
 /**
  * A Cipi app attached to a project, as one place: what runs now and the releases before it,
- * deploy and roll back, the logs, the .env, the server's load and the app's disk, the database
- * (a backup on the server, an anonymized copy for developers and the anonymizer's config), the
- * Cipi agent's MCP servers the project's chats get, and every other action of the connector.
+ * deploy and roll back, the logs, the .env, the server's load and the app's disk, the cipi.yml
+ * of the repository (its plan, apply it, apply it after every deploy), the database (a backup on
+ * the server, an anonymized copy for developers and the anonymizer's config), the Cipi agent's
+ * MCP servers the project's chats get, and every other action of the connector.
  * Each part shows to whom the resource's actions allow it; administrators see everything.
  *
  * @property-read array{enabled: bool, token: string|null, url: string, users_table: string, ttl: int, reason: string|null} $anonymizer
@@ -40,7 +41,7 @@ use Throwable;
  */
 class CipiAppHub extends Component
 {
-    public const TABS = ['deploys', 'logs', 'env', 'database', 'agent', 'actions'];
+    public const TABS = ['deploys', 'logs', 'env', 'yml', 'database', 'agent', 'actions'];
 
     #[Locked]
     public string $resource = '';
@@ -48,7 +49,7 @@ class CipiAppHub extends Component
     #[Url(as: 'view')]
     public string $tab = 'deploys';
 
-    /** @var array{id: string, label: string, status: string, output: string, result: mixed}|null the job of the server being watched */
+    /** @var array{id: string, label: string, status: string, type: string, output: string, result: mixed}|null the job of the server being watched */
     public ?array $job = null;
 
     // ---- logs
@@ -157,6 +158,7 @@ class CipiAppHub extends Component
         return array_values(array_filter(self::TABS, fn (string $tab) => match ($tab) {
             'logs' => $this->can('logs'),
             'env' => $this->can('env') || $this->can('env-set'),
+            'yml' => $this->can('yml') || $this->can('yml-apply') || $this->can('yml-auto'),
             'database' => $this->can('db-backup') || $this->can('anonymize') || $this->can('anonymizer-config') || $this->can('anonymizer-audit'),
             default => true,
         }));
@@ -264,7 +266,7 @@ class CipiAppHub extends Component
         }
 
         Log::info('infrastructure', ['user' => auth()->id(), 'connector' => 'cipi', 'account' => $this->item()->account->uuid, 'section' => 'apps', 'action' => $action, 'row' => $this->item()->resource_id, 'project_resource' => $this->item()->uuid]);
-        $this->job = ['id' => $id, 'label' => $label, 'status' => 'pending', 'output' => '', 'result' => null];
+        $this->job = ['id' => $id, 'label' => $label, 'status' => 'pending', 'type' => '', 'output' => '', 'result' => null];
         $this->forget();
     }
 
@@ -280,7 +282,7 @@ class CipiAppHub extends Component
             return;
         }
 
-        $this->job = ['id' => $this->job['id'], 'label' => $this->job['label'], 'status' => $status['status'], 'output' => $status['output'], 'result' => $status['result']];
+        $this->job = ['id' => $this->job['id'], 'label' => $this->job['label'], 'status' => $status['status'], 'type' => $status['type'], 'output' => $status['output'], 'result' => $status['result']];
 
         if (in_array($status['status'], ['completed', 'failed'], true)) {
             $this->forget();
@@ -297,7 +299,7 @@ class CipiAppHub extends Component
     {
         $this->item()->account->forget();
         NativeServers::forget($this->item());
-        unset($this->details, $this->summary, $this->releases, $this->audit);
+        unset($this->details, $this->summary, $this->releases, $this->audit, $this->yml);
     }
 
     // ------------------------------------------------------------------ logs
@@ -405,6 +407,77 @@ class CipiAppHub extends Component
         $this->forget();
         unset($this->env);
         Flux::toast(variant: 'success', text: __('.env saved: deploy, or clear the config cache, to apply it.'));
+    }
+
+    // ------------------------------------------------------------------ cipi.yml
+
+    /**
+     * The cipi.yml of the live release and its plan, read on its tab and kept 30 seconds (each
+     * read runs cipi yml plan on the server); a note instead when the token or the server's Cipi
+     * cannot give it, an error when it failed.
+     *
+     * @return array<string, mixed>
+     */
+    #[Computed]
+    public function yml(): array
+    {
+        if ($this->tab !== 'yml' || ! $this->can('yml')) {
+            return [];
+        }
+
+        try {
+            return Cache::remember($this->item()->account->cacheKey('cipi-yml', $this->item()->resource_id), 30, fn () => $this->app()->yml());
+        } catch (ConnectorException $e) {
+            $note = CipiApp::ymlUnavailable($e, 'yml-view');
+
+            return $note !== null ? ['note' => $note] : ['error' => $e->getMessage()];
+        } catch (Throwable $e) {
+            report($e);
+
+            return ['error' => __('Studio could not make sense of the answer: :reason', ['reason' => $e->getMessage()])];
+        }
+    }
+
+    public function applyYml(): void
+    {
+        $this->startJob('yml-apply', __('Apply cipi.yml'), function () {
+            try {
+                return $this->app()->applyYml();
+            } catch (ConnectorException $e) {
+                throw new ConnectorException(CipiApp::ymlUnavailable($e, 'yml-manage') ?? $e->getMessage(), $e->getCode(), $e);
+            }
+        });
+    }
+
+    /** Apply the cipi.yml after every successful deploy, or stop; the page asked first when turning it on. */
+    public function setYmlAuto(bool $on): void
+    {
+        abort_unless($this->can('yml-auto'), 403);
+
+        try {
+            $auto = $this->app()->ymlAuto($on);
+        } catch (ConnectorException $e) {
+            Flux::toast(variant: 'danger', text: CipiApp::ymlUnavailable($e, 'yml-manage') ?? $e->getMessage());
+
+            return;
+        } catch (Throwable $e) {
+            report($e);
+            Flux::toast(variant: 'danger', text: __('Studio could not make sense of the answer: :reason', ['reason' => $e->getMessage()]));
+
+            return;
+        }
+
+        Log::info('infrastructure', ['user' => auth()->id(), 'connector' => 'cipi', 'account' => $this->item()->account->uuid, 'section' => 'apps', 'action' => 'yml-auto', 'row' => $this->item()->resource_id, 'auto' => $on, 'project_resource' => $this->item()->uuid]);
+        $this->forget();
+
+        // webhook deploys apply the file through a narrow sudo rule that comes and goes with auto-apply
+        if ($auto['auto'] && ! $auto['sudoers']) {
+            Flux::toast(variant: 'warning', duration: 10000, text: __('Auto-apply is on, but the sudo rule webhook deploys need is missing: run cipi yml auto :app on, on the server.', ['app' => $this->item()->resource_id]));
+
+            return;
+        }
+
+        Flux::toast(variant: 'success', text: $auto['auto'] ? __('cipi.yml is applied after every deploy.') : __('cipi.yml is no longer applied after deploys.'));
     }
 
     // ------------------------------------------------------------------ database

@@ -269,3 +269,140 @@ test('administrators turn the agent\'s servers on and off and type tokens the AP
     $chat = Conversation::factory()->forWorkspace(Workspace::factory()->running()->create(['project_id' => $project->id, 'user_id' => $dev->id]))->create();
     expect((new BridgeClient($chat->workspace))->mcpServers($chat)['cipi-shop']['headers'])->toBe(['Authorization' => 'Bearer typed-token']);
 });
+
+/** The Apply cipi.yml button, disabled (an attribute, not the disabled: classes). */
+const APPLY_DISABLED = '/<button(?=[^>]*wire:click="applyYml")(?=[^>]*\\sdisabled[\\s=>])[^>]*>/';
+
+/** The plan GET /api/apps/shop/yml answers (cipi/api 1.35), with what the test changes in it. */
+function ymlPlan(array $data = []): array
+{
+    return ['data' => [
+        'app' => 'shop',
+        'file' => '/home/shop/current/cipi.yml',
+        'auto' => false,
+        'valid' => true,
+        'in_sync' => false,
+        'errors' => [],
+        'warnings' => ['healthcheck path /up answers 404 today'],
+        'changes' => [['kind' => 'php', 'summary' => 'PHP 8.3 → 8.4'], ['kind' => 'alias-add', 'summary' => 'add alias www.shop.test']],
+        'blockers' => [],
+        'notes' => ['node settings change on the next deploy, before the build:'],
+        ...$data,
+    ]];
+}
+
+test('the cipi.yml tab shows the plan, applies it as a job with its result, and turns auto-apply on and off', function () {
+    Http::fake([
+        'api.cipi.test/api/apps/shop/yml/apply' => Http::response(['job_id' => 'job-yml', 'status' => 'pending'], 202),
+        'api.cipi.test/api/apps/shop/yml/auto/enable' => Http::response(['data' => ['app' => 'shop', 'auto' => true, 'sudoers' => true, 'file' => '/home/shop/current/cipi.yml']]),
+        'api.cipi.test/api/apps/shop/yml/auto/disable' => Http::response(['data' => ['app' => 'shop', 'auto' => false, 'sudoers' => false, 'file' => '/home/shop/current/cipi.yml']]),
+        'api.cipi.test/api/apps/shop/yml' => Http::response(ymlPlan()),
+        // a partial apply fails the job and still says what it did
+        'api.cipi.test/api/jobs/job-yml' => Http::response(['data' => ['id' => 'job-yml', 'type' => 'app-yml-apply', 'status' => 'failed', 'output' => 'cipi.yml: 1 of 2 changes applied', 'result' => [
+            'app' => 'shop', 'outcome' => 'partial', 'applied' => 1, 'failed' => 1, 'failures' => ['add alias www.shop.test'], 'blockers' => [], 'errors' => [],
+        ]]]),
+    ]);
+    $account = cipiServer();
+    $project = Project::factory()->create();
+    $dev = User::factory()->create();
+    $project->syncMembers([$dev->id => 'dev']);
+    $resource = attachShop($project, $account, ['actions' => ['deploy', 'yml', 'yml-apply', 'yml-auto']]);
+
+    $page = Livewire::actingAs($dev)->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->call('setTab', 'yml')
+        ->assertSet('tab', 'yml')
+        ->assertSee('/home/shop/current/cipi.yml')
+        ->assertSee('2 changes')
+        ->assertSee('PHP 8.3 → 8.4')
+        ->assertSee('add alias www.shop.test')
+        ->assertSee('healthcheck path /up answers 404 today')
+        ->assertSee('node settings change on the next deploy')
+        ->assertSee('auto-apply off')
+        ->assertDontSee('Turn auto-apply off')
+        ->assertSee('Anyone who can commit to the repository can then change the app', false);
+
+    expect($page->html())->not->toMatch(APPLY_DISABLED);
+
+    $page->call('applyYml')
+        ->assertSet('job.id', 'job-yml')
+        ->call('pollJob')
+        ->assertSet('job.status', 'failed')
+        ->assertSet('job.type', 'app-yml-apply')
+        ->assertSee('partly applied')
+        ->assertSee('1 change applied')
+        ->assertSee('1 change failed')
+        ->call('setYmlAuto', true)
+        ->call('setYmlAuto', false);
+
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://api.cipi.test/api/apps/shop/yml/apply' && $r->method() === 'POST');
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://api.cipi.test/api/apps/shop/yml/auto/enable' && $r->method() === 'POST');
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://api.cipi.test/api/apps/shop/yml/auto/disable' && $r->method() === 'POST');
+});
+
+test('the cipi.yml tab says when there is no file, when it is invalid and when apply is blocked', function (array $plan, array $see) {
+    Http::fake(['api.cipi.test/api/apps/shop/yml' => Http::response(ymlPlan($plan))]);
+    $account = cipiServer();
+    $resource = attachShop(Project::factory()->create(), $account);
+
+    $page = Livewire::actingAs(User::factory()->admin()->create())->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->call('setTab', 'yml');
+
+    foreach ($see as $text) {
+        $page->assertSee($text);
+    }
+
+    // apply refuses a file it cannot apply: the button waits
+    expect($page->html())->toMatch(APPLY_DISABLED);
+})->with([
+    'no file' => [['file' => null, 'valid' => null, 'in_sync' => null, 'changes' => [], 'warnings' => [], 'notes' => []], ['no cipi.yml', 'The live release has no cipi.yml']],
+    'invalid' => [['valid' => false, 'in_sync' => null, 'changes' => [], 'errors' => ['line 4: unknown key "phpp"']], ['not valid', 'line 4: unknown key', 'The file is not valid']],
+    'blocked' => [['blockers' => ['PHP 8.5 is not installed — run: cipi php install 8.5']], ['blocked', 'PHP 8.5 is not installed']],
+]);
+
+test('a token without yml-view or a Cipi older than 5.6.4 leaves a note on the cipi.yml tab, not an error', function (int $status, array $body, string $note, string $refusal) {
+    Http::fake([
+        'api.cipi.test/api/apps/shop/yml/auto/enable' => Http::response($body, $status),
+        'api.cipi.test/api/apps/shop/yml/apply' => Http::response($body, $status),
+        'api.cipi.test/api/apps/shop/yml' => Http::response($body, $status),
+    ]);
+    $account = cipiServer();
+    $resource = attachShop(Project::factory()->create(), $account);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->call('setTab', 'yml')
+        ->assertSee($note)
+        ->assertSee('Apply cipi.yml')
+        ->assertSee('Turn auto-apply on')
+        ->assertSee('Turn auto-apply off')
+        ->call('applyYml')
+        ->assertSet('job', null)
+        ->assertDispatched('toast-show', fn (string $name, array $params) => ($params['dataset']['variant'] ?? null) === 'danger' && str_contains($params['slots']['text'], $refusal))
+        ->call('setYmlAuto', true)
+        ->assertOk()
+        ->assertDispatched('toast-show', fn (string $name, array $params) => ($params['dataset']['variant'] ?? null) === 'danger' && str_contains($params['slots']['text'], $refusal));
+})->with([
+    'token without the ability' => [403, ['message' => 'Invalid ability provided.'], 'lacks the yml-view ability', 'lacks the yml-manage ability'],
+    'cipi/api before 1.35' => [404, ['message' => 'Not Found'], 'it needs Cipi 5.6.4 and cipi/api 1.35 or later', 'it needs Cipi 5.6.4 and cipi/api 1.35 or later'],
+    'Cipi before 5.6.4' => [503, ['error' => 'cipi yml plan --json: unknown option'], 'unknown option', 'unknown option'],
+]);
+
+test('only the roles handed the cipi.yml actions see the tab and apply it', function () {
+    $account = cipiServer();
+    $project = Project::factory()->create();
+    $dev = User::factory()->create();
+    $project->syncMembers([$dev->id => 'dev']);
+    $resource = attachShop($project, $account);
+
+    Livewire::actingAs($dev)->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->assertDontSee('cipi.yml')
+        ->call('setTab', 'yml')
+        ->assertSet('tab', 'deploys')
+        ->call('applyYml')
+        ->assertForbidden();
+
+    Livewire::actingAs($dev)->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->call('setYmlAuto', true)
+        ->assertForbidden();
+
+    Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/yml'));
+});

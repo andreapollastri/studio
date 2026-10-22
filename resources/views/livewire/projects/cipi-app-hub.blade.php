@@ -56,6 +56,23 @@
                     <flux:button size="xs" variant="ghost" icon="x-mark" wire:click="closeJob" :aria-label="__('Close')" />
                 @endunless
             </div>
+            @php($ymlResult = ($job['type'] ?? '') === 'app-yml-apply' ? \App\Infrastructure\Cipi\CipiApp::ymlResult($job['result']) : null)
+            @if ($ymlResult)
+                {{-- what cipi yml apply did: applied and unchanged complete the job, the rest fail it and say why --}}
+                <div class="mt-2 space-y-1 text-sm">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <flux:badge size="sm" :color="['applied' => 'green', 'unchanged' => 'zinc', 'partial' => 'amber', 'blocked' => 'amber', 'invalid' => 'red', 'no-file' => 'zinc'][$ymlResult['outcome']] ?? 'zinc'">{{ ['applied' => __('applied'), 'unchanged' => __('nothing to change'), 'partial' => __('partly applied'), 'blocked' => __('blocked'), 'invalid' => __('not valid'), 'no-file' => __('no cipi.yml')][$ymlResult['outcome']] ?? $ymlResult['outcome'] }}</flux:badge>
+                        <span class="text-xs text-zinc-500">{{ trans_choice(':count change applied|:count changes applied', $ymlResult['applied']) }}@if ($ymlResult['failed'] > 0) · {{ trans_choice(':count change failed|:count changes failed', $ymlResult['failed']) }}@endif</span>
+                    </div>
+                    @foreach ([['lines' => $ymlResult['failures'], 'class' => 'text-red-700 dark:text-red-300'], ['lines' => $ymlResult['blockers'], 'class' => 'text-amber-700 dark:text-amber-300'], ['lines' => $ymlResult['errors'], 'class' => 'text-red-700 dark:text-red-300']] as $list)
+                        @if ($list['lines'] !== [])
+                            <ul class="list-disc space-y-0.5 ps-5 text-xs {{ $list['class'] }}">
+                                @foreach ($list['lines'] as $line)<li>{{ $line }}</li>@endforeach
+                            </ul>
+                        @endif
+                    @endforeach
+                </div>
+            @endif
             @if ($job['output'] !== '')
                 <pre class="mt-2 max-h-64 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-zinc-100">{{ \App\Support\Ansi::toHtml($job['output']) }}</pre>
             @endif
@@ -70,8 +87,8 @@
                 'border-zinc-900 font-medium text-zinc-900 dark:border-white dark:text-white' => $tab === $key,
                 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200' => $tab !== $key,
             ])>
-                <flux:icon :name="['deploys' => 'rocket-launch', 'logs' => 'document-text', 'env' => 'variable', 'database' => 'circle-stack', 'agent' => 'cpu-chip', 'actions' => 'bolt'][$key]" variant="micro" class="size-4 opacity-80" />
-                {{ ['deploys' => __('Releases'), 'logs' => __('Logs'), 'env' => __('.env'), 'database' => __('Database'), 'agent' => __('Agent & access'), 'actions' => __('All actions')][$key] }}
+                <flux:icon :name="['deploys' => 'rocket-launch', 'logs' => 'document-text', 'env' => 'variable', 'yml' => 'document-check', 'database' => 'circle-stack', 'agent' => 'cpu-chip', 'actions' => 'bolt'][$key]" variant="micro" class="size-4 opacity-80" />
+                {{ ['deploys' => __('Releases'), 'logs' => __('Logs'), 'env' => __('.env'), 'yml' => __('cipi.yml'), 'database' => __('Database'), 'agent' => __('Agent & access'), 'actions' => __('All actions')][$key] }}
             </button>
         @endforeach
     </div>
@@ -262,6 +279,122 @@
                     <flux:text class="text-xs">{{ __('Applied at the next deploy or config cache clear.') }}</flux:text>
                 </form>
             @endif
+        </div>
+    @endif
+
+    {{-- ===================================================== cipi.yml --}}
+    @if ($tab === 'yml')
+        @php($yml = $this->yml)
+        @php($known = array_key_exists('file', $yml))
+        <div class="grid gap-5 lg:grid-cols-[1fr_20rem]">
+            <div class="min-w-0">
+                @if (! $this->can('yml'))
+                    <flux:text>{{ __('Your role does not see the plan.') }}</flux:text>
+                @elseif (isset($yml['note']))
+                    <flux:callout variant="warning" icon="information-circle"><flux:callout.text>{{ $yml['note'] }}</flux:callout.text></flux:callout>
+                @elseif (isset($yml['error']))
+                    <flux:callout variant="danger" icon="exclamation-triangle"><flux:callout.text>{{ $yml['error'] }}</flux:callout.text></flux:callout>
+                @elseif ($known)
+                    <div class="rounded-xl border border-zinc-200 dark:border-zinc-700">
+                        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-700">
+                            <flux:heading size="sm">{{ __('What applying it would change') }}</flux:heading>
+                            <div class="flex flex-wrap gap-1.5">
+                                @if ($yml['file'] === null)
+                                    <flux:badge size="sm">{{ __('no cipi.yml') }}</flux:badge>
+                                @elseif ($yml['valid'] === false)
+                                    <flux:badge size="sm" color="red">{{ __('not valid') }}</flux:badge>
+                                @elseif ($yml['blockers'] !== [])
+                                    <flux:badge size="sm" color="amber">{{ __('blocked') }}</flux:badge>
+                                @elseif ($yml['in_sync'])
+                                    <flux:badge size="sm" color="green">{{ __('in sync') }}</flux:badge>
+                                @else
+                                    <flux:badge size="sm" color="sky">{{ trans_choice(':count change|:count changes', count($yml['changes'])) }}</flux:badge>
+                                @endif
+                                <flux:badge size="sm" :color="$yml['auto'] ? 'green' : 'zinc'">{{ $yml['auto'] ? __('auto-apply on') : __('auto-apply off') }}</flux:badge>
+                            </div>
+                        </div>
+                        <div class="space-y-4 p-4 text-sm">
+                            @if ($yml['file'] === null)
+                                <flux:text class="text-sm">{{ __('The live release has no cipi.yml. Commit one at the root of the repository and deploy: it says which aliases, PHP version and settings, limits, workers, scheduled commands, databases, backups and deploy steps the app expects on the server.') }}</flux:text>
+                            @else
+                                <div class="font-mono text-xs break-all text-zinc-500">{{ $yml['file'] }}</div>
+                            @endif
+
+                            @if ($yml['errors'] !== [])
+                                <div>
+                                    <flux:heading size="sm" class="text-red-700! dark:text-red-300!">{{ __('The file is not valid') }}</flux:heading>
+                                    <ul class="mt-1 list-disc space-y-0.5 ps-5 font-mono text-xs text-red-700 dark:text-red-300">
+                                        @foreach ($yml['errors'] as $line)<li>{{ $line }}</li>@endforeach
+                                    </ul>
+                                </div>
+                            @endif
+
+                            @if ($yml['blockers'] !== [])
+                                <div>
+                                    <flux:heading size="sm" class="text-amber-700! dark:text-amber-300!">{{ __('Apply changes nothing until these are solved') }}</flux:heading>
+                                    <ul class="mt-1 list-disc space-y-0.5 ps-5 text-xs text-amber-700 dark:text-amber-300">
+                                        @foreach ($yml['blockers'] as $line)<li>{{ $line }}</li>@endforeach
+                                    </ul>
+                                </div>
+                            @endif
+
+                            @if ($yml['changes'] !== [])
+                                <ul class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
+                                    @foreach ($yml['changes'] as $change)
+                                        <li class="flex items-center gap-3 px-3 py-1.5" wire:key="yml-change-{{ $loop->index }}">
+                                            <span class="w-28 shrink-0 truncate font-mono text-[11px] text-zinc-500">{{ $change['kind'] }}</span>
+                                            <span class="min-w-0">{{ $change['summary'] }}</span>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @elseif ($yml['in_sync'])
+                                <flux:text class="text-sm">{{ __('The server already matches the file: applying it changes nothing.') }}</flux:text>
+                            @endif
+
+                            @foreach ([__('Warnings') => $yml['warnings'], __('Notes') => $yml['notes']] as $heading => $lines)
+                                @if ($lines !== [])
+                                    <div>
+                                        <flux:heading size="sm">{{ $heading }}</flux:heading>
+                                        <ul class="mt-1 list-disc space-y-0.5 ps-5 text-xs text-zinc-600 dark:text-zinc-400">
+                                            @foreach ($lines as $line)<li>{{ $line }}</li>@endforeach
+                                        </ul>
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+            </div>
+
+            <div class="space-y-4">
+                @if ($this->can('yml-apply'))
+                    @php($applicable = ! $known || ($yml['file'] !== null && $yml['valid'] !== false && $yml['blockers'] === []))
+                    <div class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                        <flux:heading size="sm">{{ __('Apply it now') }}</flux:heading>
+                        <flux:text class="text-sm">{{ __('Cipi changes the server as the plan says (cipi yml apply), as a job; what it did shows above when it ends.') }}</flux:text>
+                        <flux:button size="sm" variant="primary" icon="document-arrow-down" class="w-full" wire:click="applyYml" wire:confirm="{{ __('Apply the cipi.yml of :app to the server now?', ['app' => $item->label]) }}" :disabled="! $applicable">{{ __('Apply cipi.yml') }}</flux:button>
+                    </div>
+                @endif
+                @if ($this->can('yml-auto'))
+                    @php($auto = $known ? $yml['auto'] : null)
+                    @php($warning = __('Apply cipi.yml after every successful deploy of :app (CLI, panel and Git webhook)? Anyone who can commit to the repository can then change the app\'s server configuration: aliases, PHP settings, limits, workers, deploy recipe, scheduled commands, databases and backup schedule (for Node apps also mode, version, build and start).', ['app' => $item->label]))
+                    <div class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                        <div class="flex items-center justify-between gap-2">
+                            <flux:heading size="sm">{{ __('After every deploy') }}</flux:heading>
+                            @if ($auto !== null)
+                                <flux:badge size="sm" :color="$auto ? 'green' : 'zinc'">{{ $auto ? __('auto-apply on') : __('auto-apply off') }}</flux:badge>
+                            @endif
+                        </div>
+                        <flux:text class="text-sm">{{ __('With auto-apply on, each successful deploy applies the cipi.yml it brings: whoever commits to the repository changes the server. Webhook deploys apply it from Cipi 5.6.4.') }}</flux:text>
+                        @if ($auto !== true)
+                            <flux:button size="sm" icon="play" class="w-full" wire:click="setYmlAuto(true)" wire:confirm="{{ $warning }}">{{ __('Turn auto-apply on') }}</flux:button>
+                        @endif
+                        @if ($auto !== false)
+                            <flux:button size="sm" variant="ghost" icon="pause" class="w-full" wire:click="setYmlAuto(false)">{{ __('Turn auto-apply off') }}</flux:button>
+                        @endif
+                    </div>
+                @endif
+            </div>
         </div>
     @endif
 

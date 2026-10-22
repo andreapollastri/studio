@@ -7,6 +7,7 @@ use App\Infrastructure\ApiClient;
 use App\Infrastructure\Cipi\CipiApp;
 use App\Infrastructure\Column;
 use App\Infrastructure\Connector;
+use App\Infrastructure\ConnectorException;
 use App\Infrastructure\Field;
 use App\Infrastructure\Outcome;
 use App\Infrastructure\Section;
@@ -15,8 +16,8 @@ use Illuminate\Support\Sleep;
 /**
  * Cipi servers (https://cipi.sh), one account per server with the Cipi API
  * installed (`cipi api`): the server's status, its apps (create, deploy,
- * rollback, releases, SSL, aliases, .env, Artisan, logs, disk, the anonymized
- * database copy of the Cipi agent, suspend), databases,
+ * rollback, releases, SSL, aliases, .env, Artisan, logs, disk, cipi.yml, the
+ * anonymized database copy of the Cipi agent, suspend), databases,
  * services, SSH keys and PHP versions. Most changes run as background jobs
  * on the server: Studio waits a few seconds, then offers to check again.
  */
@@ -225,6 +226,24 @@ final class Cipi extends Connector
             ->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, $method, '/apps/'.$row['app'].$path, array_filter($data, fn ($value) => $value !== null)));
     }
 
+    /**
+     * A change to an app's cipi.yml: a token without yml-manage, or a Cipi older than 5.6.4, says
+     * so in words of its own instead of the bare 403 or 404.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $change
+     * @return T
+     */
+    private function yml(callable $change): mixed
+    {
+        try {
+            return $change();
+        } catch (ConnectorException $e) {
+            throw new ConnectorException(CipiApp::ymlUnavailable($e, 'yml-manage') ?? $e->getMessage(), $e->getCode(), $e);
+        }
+    }
+
     private function status(): Section
     {
         return Section::info('status', __('Server'), function (ApiClient $api) {
@@ -424,6 +443,29 @@ final class Cipi extends Connector
                 Action::make('anonymizer-audit', __('Anonymizer audit'))->icon('shield-check')
                     ->run(fn (ApiClient $api, array $row) => Outcome::show(__('Anonymization of :app', ['app' => $row['app']]), (new CipiApp($api, (string) $row['app'], '', ''))->anonymizerTool('audit'))),
                 Action::make('limits', __('Limits'))->icon('adjustments-horizontal')->run(fn (ApiClient $api, array $row) => Outcome::show(__('Limits of :app', ['app' => $row['app']]), $api->get('/apps/'.$row['app'].'/limits')['data'] ?? [])),
+                Action::make('yml', __('cipi.yml plan'))->icon('document-check')
+                    ->run(function (ApiClient $api, array $row) {
+                        try {
+                            $plan = (new CipiApp($api, (string) $row['app'], '', ''))->yml();
+                        } catch (ConnectorException $e) {
+                            $plan = CipiApp::ymlUnavailable($e, 'yml-view') ?? throw $e;
+                        }
+
+                        return Outcome::show(__('cipi.yml of :app', ['app' => $row['app']]), $plan);
+                    }),
+                Action::make('yml-apply', __('Apply cipi.yml'))->icon('document-arrow-down')->confirm(__('Apply the app\'s cipi.yml to the server now, as its plan says?'))
+                    ->run(fn (ApiClient $api, array $row) => $this->yml(fn () => $this->job($api, 'POST', '/apps/'.$row['app'].'/yml/apply'))),
+                // Marked danger, so the "safe actions" hand-over leaves it out: turning it on gives the app's
+                // server configuration to whoever can commit to the repository.
+                Action::make('yml-auto', __('cipi.yml after every deploy'))->icon('arrow-path-rounded-square')->fields([
+                    Field::select('auto', __('After every successful deploy'), ['on' => __('Apply cipi.yml (auto-apply on)'), 'off' => __('Leave it as it is (auto-apply off)')])->required()->default('on')
+                        ->help(__('On: anyone who can commit to the repository can change this app\'s server configuration (aliases, PHP settings, limits, workers, deploy recipe, scheduled commands, databases, backups). Webhook deploys apply it from Cipi 5.6.4.')),
+                ])->danger(__('With auto-apply on, anyone who can commit to the repository can change this app\'s server configuration. Go ahead?'))
+                    ->run(fn (ApiClient $api, array $row, array $data) => $this->yml(fn () => Outcome::show(
+                        __('cipi.yml of :app', ['app' => $row['app']]),
+                        (new CipiApp($api, (string) $row['app'], '', ''))->ymlAuto($data['auto'] === 'on'),
+                        $data['auto'] === 'on' ? __('cipi.yml is applied after every deploy.') : __('cipi.yml is no longer applied after deploys.'),
+                    ))),
                 Action::make('details', __('Details'))->icon('eye')->run(fn (ApiClient $api, array $row) => Outcome::show($row['app'], $api->get('/apps/'.$row['app'])['data'] ?? $row)),
                 $this->appJob('fix-permissions', __('Fix permissions'), 'wrench-screwdriver', '/fix-permissions')->confirm(__('Restore the permissions of the app\'s home?')),
                 $this->appJob('suspend', __('Suspend'), 'pause', '/suspend')->confirm(__('Take the app offline with a 503 page?'))->when(fn ($row) => empty($row['suspended'])),

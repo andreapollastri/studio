@@ -15,10 +15,10 @@ use RuntimeException;
 
 /**
  * One app on a Cipi server, through the two doors it has: the server's Cipi API (the app, its
- * deploys and rollbacks, logs, .env, disk, database backups, the server's own MCP server at
- * /mcp) and, inside the app, the Cipi agent (cipi/agent: its MCP server at /cipi/mcp with the
- * releases on disk, its anonymizer at /cipi/db). The agent's tokens are read from the app's
- * .env through the API; the administrators may type them in instead (the resource's settings).
+ * deploys and rollbacks, logs, .env, disk, database backups, its cipi.yml, the server's own MCP
+ * server at /mcp) and, inside the app, the Cipi agent (cipi/agent: its MCP server at /cipi/mcp
+ * with the releases on disk, its anonymizer at /cipi/db). The agent's tokens are read from the
+ * app's .env through the API; the administrators may type them in instead (the resource's settings).
  *
  * @see https://cipi.sh/docs/agent
  */
@@ -177,6 +177,111 @@ final class CipiApp
     public function artisan(string $command): string
     {
         return $this->job('POST', $this->path('/artisan'), ['command' => $command]);
+    }
+
+    // ------------------------------------------------------------------ cipi.yml
+
+    /**
+     * The cipi.yml of the live release and what applying it would change (cipi yml plan): no file
+     * (file null), invalid (errors), blocked (blockers: apply refuses until they are resolved), or
+     * the changes; in sync when nothing would change. Cipi 5.6.4 and cipi/api 1.35, ability yml-view.
+     *
+     * @return array{file: string|null, auto: bool, valid: bool|null, in_sync: bool|null, errors: list<string>, warnings: list<string>, changes: list<array{kind: string, summary: string}>, blockers: list<string>, notes: list<string>}
+     */
+    public function yml(): array
+    {
+        $data = (array) ($this->api->get($this->path('/yml'))['data'] ?? []);
+        $changes = [];
+
+        foreach ((array) ($data['changes'] ?? []) as $change) {
+            if (is_array($change)) {
+                $changes[] = ['kind' => (string) ($change['kind'] ?? ''), 'summary' => (string) ($change['summary'] ?? $change['kind'] ?? '')];
+            } elseif (is_scalar($change)) {
+                $changes[] = ['kind' => '', 'summary' => (string) $change];
+            }
+        }
+
+        return [
+            'file' => is_string($data['file'] ?? null) && $data['file'] !== '' ? $data['file'] : null,
+            'auto' => (bool) ($data['auto'] ?? false),
+            'valid' => isset($data['valid']) ? (bool) $data['valid'] : null,
+            'in_sync' => isset($data['in_sync']) ? (bool) $data['in_sync'] : null,
+            'errors' => self::texts($data['errors'] ?? []),
+            'warnings' => self::texts($data['warnings'] ?? []),
+            'changes' => $changes,
+            'blockers' => self::texts($data['blockers'] ?? []),
+            'notes' => self::texts($data['notes'] ?? []),
+        ];
+    }
+
+    /** Apply the cipi.yml of the live release now (cipi yml apply --yes): a job id, ability yml-manage. */
+    public function applyYml(): string
+    {
+        return $this->job('POST', $this->path('/yml/apply'));
+    }
+
+    /**
+     * Apply the cipi.yml after every successful deploy (CLI, panel and Git webhook), or stop: what Cipi
+     * says now, with whether the sudo rule webhook deploys need is in place. Ability yml-manage.
+     *
+     * @return array{auto: bool, sudoers: bool, file: string|null}
+     */
+    public function ymlAuto(bool $on): array
+    {
+        $data = (array) ($this->api->post($this->path('/yml/auto/'.($on ? 'enable' : 'disable')))['data'] ?? []);
+
+        return [
+            'auto' => (bool) ($data['auto'] ?? $on),
+            'sudoers' => (bool) ($data['sudoers'] ?? $data['auto'] ?? $on),
+            'file' => is_string($data['file'] ?? null) && $data['file'] !== '' ? $data['file'] : null,
+        ];
+    }
+
+    /**
+     * The result of an app-yml-apply job: applied and unchanged complete the job; partial, blocked,
+     * invalid and no-file fail it and still say why. Null for any other result.
+     *
+     * @return array{outcome: string, applied: int, failed: int, failures: list<string>, blockers: list<string>, errors: list<string>}|null
+     */
+    public static function ymlResult(mixed $result): ?array
+    {
+        if (! is_array($result) || ! is_string($result['outcome'] ?? null)) {
+            return null;
+        }
+
+        return [
+            'outcome' => $result['outcome'],
+            'applied' => (int) ($result['applied'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'failures' => self::texts($result['failures'] ?? []),
+            'blockers' => self::texts($result['blockers'] ?? []),
+            'errors' => self::texts($result['errors'] ?? []),
+        ];
+    }
+
+    /**
+     * Why the cipi.yml cannot be read or changed through this server's API, when the answer means
+     * the feature is not there for Studio rather than an error: the token lacks the ability (403),
+     * or the server's Cipi is older than 5.6.4 (404 of a missing route, 503 of a missing command).
+     * Null for any other failure.
+     *
+     * @param  'yml-view'|'yml-manage'  $ability
+     */
+    public static function ymlUnavailable(ConnectorException $e, string $ability): ?string
+    {
+        if ($e->getCode() === 404 && preg_match("/App '[^']*' not found/i", $e->getMessage())) {
+            return null;
+        }
+
+        if ($e->getCode() === 403) {
+            return __('The Cipi API token lacks the :ability ability: create one with it (cipi api token create).', ['ability' => $ability]);
+        }
+
+        if (in_array($e->getCode(), [404, 503], true)) {
+            return __('This server cannot handle cipi.yml through its API: it needs Cipi 5.6.4 and cipi/api 1.35 or later (cipi self-update). Cipi said: :reason', ['reason' => $e->getMessage()]);
+        }
+
+        return null;
     }
 
     /** @param  array<string, mixed>  $body */
@@ -443,6 +548,12 @@ final class CipiApp
         $typed = trim((string) ($this->overrides[$override] ?? ''));
 
         return $typed !== '' ? $typed : $this->envValue($env);
+    }
+
+    /** @return list<string> the lines of a list the API sends, as text */
+    private static function texts(mixed $list): array
+    {
+        return array_values(array_map(fn ($line) => is_scalar($line) ? (string) $line : (string) json_encode($line, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), is_array($list) ? $list : []));
     }
 
     public static function truthy(mixed $value): bool
