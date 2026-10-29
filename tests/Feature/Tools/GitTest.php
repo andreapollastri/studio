@@ -281,7 +281,8 @@ test('Bitbucket asks for several states as the same parameter repeated', functio
 
     Http::fake([
         'api.bitbucket.org/2.0/user' => Http::response(['uuid' => '{u-1}', 'display_name' => 'Ada']),
-        'api.bitbucket.org/2.0/pullrequests/*' => Http::response(['values' => [[
+        'api.bitbucket.org/2.0/user/workspaces*' => Http::response(['values' => [['workspace' => ['slug' => 'acme', 'name' => 'Acme']]]]),
+        'api.bitbucket.org/2.0/workspaces/acme/pullrequests/*' => Http::response(['values' => [[
             'id' => 3, 'title' => 'Fix login', 'state' => 'OPEN', 'author' => ['display_name' => 'Ada'],
             'source' => ['branch' => ['name' => 'login']], 'destination' => ['branch' => ['name' => 'main'], 'repository' => ['full_name' => 'acme/web']],
             'links' => ['html' => ['href' => 'https://bitbucket.org/acme/web/pull-requests/3']],
@@ -295,8 +296,44 @@ test('Bitbucket asks for several states as the same parameter repeated', functio
         ->assertSee('acme/web#3')->assertSee('Fix login')
         ->call('start', 'approve', 'acme/web#3');
 
-    Http::assertSent(fn (Request $r) => str_contains($r->url(), '/pullrequests/%7Bu-1%7D') && str_contains($r->url(), 'state=OPEN&state=MERGED'));
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), '/workspaces/acme/pullrequests/%7Bu-1%7D') && str_contains($r->url(), 'state=OPEN&state=MERGED'));
     Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/pullrequests/3/approve') && $r->hasHeader('Authorization', 'Bearer tok-bitbucket'));
+});
+
+test('Bitbucket reads repositories and pull requests workspace by workspace (the cross-workspace lists are gone)', function () {
+    ConnectorSetting::query()->create(['connector' => 'bitbucket', 'enabled' => true]);
+    $user = User::factory()->create();
+    $account = gitAccount($user, 'bitbucket');
+
+    Http::fake([
+        'api.bitbucket.org/2.0/user' => Http::response(['uuid' => '{u-1}', 'display_name' => 'Ada']),
+        'api.bitbucket.org/2.0/user/workspaces*' => Http::response(['values' => [
+            ['workspace' => ['slug' => 'acme', 'name' => 'Acme']],
+            ['workspace' => ['slug' => 'labs', 'name' => 'Labs']],
+        ]]),
+        'api.bitbucket.org/2.0/repositories/acme/web/pullrequests*' => Http::response(['values' => [[
+            'id' => 7, 'title' => 'Review me', 'state' => 'OPEN', 'updated_on' => '2026-04-20T10:00:00+00:00',
+            'destination' => ['branch' => ['name' => 'main'], 'repository' => ['full_name' => 'acme/web']],
+        ]]]),
+        'api.bitbucket.org/2.0/repositories/labs/tool/pullrequests*' => Http::response(['values' => []]),
+        'api.bitbucket.org/2.0/repositories/acme*' => Http::response(['values' => [['full_name' => 'acme/web', 'updated_on' => '2026-04-20T10:00:00+00:00']]]),
+        'api.bitbucket.org/2.0/repositories/labs*' => Http::response(['values' => [['full_name' => 'labs/tool', 'updated_on' => '2026-04-21T10:00:00+00:00']]]),
+        'api.bitbucket.org/2.0/workspaces/*/pullrequests/*' => Http::response(['values' => []]),
+    ]);
+
+    $overview = $account->definition()->sections()[0];
+    $read = ($overview->list)($account->client(), []);
+
+    expect(array_keys($read)[0])->toContain('(1)')
+        ->and($read[array_keys($read)[0]])->toBe(['acme/web#7' => 'Review me']);
+
+    Livewire::actingAs($user)->test(Git::class, ['connector' => 'bitbucket', 'tab' => 'repositories'])
+        ->assertSee('acme/web')->assertSee('labs/tool');
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), '/workspaces/acme/pullrequests/%7Bu-1%7D'));
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), '/workspaces/labs/pullrequests/%7Bu-1%7D'));
+    Http::assertNotSent(fn (Request $r) => preg_match('#/2\.0/(repositories|workspaces|user/permissions/workspaces)(\?|$)#', $r->url()) === 1
+        || preg_match('#/2\.0/pullrequests/#', $r->url()) === 1);
 });
 
 test('Azure DevOps work items come from WIQL, pull requests get a vote', function () {
