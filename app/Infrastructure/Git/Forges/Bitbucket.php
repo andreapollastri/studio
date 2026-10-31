@@ -161,12 +161,52 @@ final class Bitbucket extends Forge
     }
 
     /**
+     * The slugs of the workspaces the person belongs to. Bitbucket removed its
+     * cross-workspace lists (CHANGE-2770, April 2026): repositories and pull
+     * requests are asked for workspace by workspace.
+     *
+     * @return list<string>
+     */
+    private static function workspaces(GitClient $api): array
+    {
+        /** @var list<string> */
+        return $api->remember('workspaces', fn () => collect(self::every($api, '/user/workspaces', ['sort' => 'slug'], 2))
+            ->map(fn ($access) => (string) data_get($access, 'workspace.slug', ''))
+            ->filter()->unique()->values()->all());
+    }
+
+    /**
      * @param  array<string, mixed>  $query
      * @return list<array<string, mixed>>
      */
     private static function repositoriesOf(GitClient $api, array $query = [], int $maxPages = 5): array
     {
-        return self::every($api, '/repositories', ['role' => 'member', 'sort' => '-updated_on', ...$query], $maxPages);
+        $rows = [];
+
+        foreach (self::workspaces($api) as $workspace) {
+            array_push($rows, ...self::every($api, '/repositories/'.rawurlencode($workspace), ['role' => 'member', 'sort' => '-updated_on', ...$query], $maxPages));
+        }
+
+        return array_values(collect($rows)->sortByDesc('updated_on')->all());
+    }
+
+    /**
+     * The pull requests a person opened, in every workspace they belong to.
+     *
+     * @param  array<string, mixed>  $query
+     * @return list<array<string, mixed>>
+     */
+    private static function pullsBy(GitClient $api, string $uuid, array $query = [], int $maxPages = 3): array
+    {
+        $rows = [];
+
+        foreach (self::workspaces($api) as $workspace) {
+            foreach (self::every($api, '/workspaces/'.rawurlencode($workspace).'/pullrequests/'.rawurlencode($uuid), $query, $maxPages) as $pull) {
+                $rows[] = self::pull($pull);
+            }
+        }
+
+        return array_values(collect($rows)->sortByDesc('updated_on')->all());
     }
 
     /** @return array<string, string> */
@@ -226,7 +266,7 @@ final class Bitbucket extends Forge
         return Section::info('overview', __('Overview'), function (GitClient $api) {
             $me = self::me($api);
             $reviews = self::reviewing($api);
-            $mine = array_map(fn ($p) => self::pull($p), self::every($api, '/pullrequests/'.rawurlencode($me['uuid']), ['state' => 'OPEN'], 2));
+            $mine = self::pullsBy($api, $me['uuid'], ['state' => 'OPEN'], 2);
             $titles = fn (array $rows) => collect($rows)->take(10)->mapWithKeys(fn ($r) => [$r['_ref'] => (string) ($r['title'] ?? '')])->all();
 
             return [
@@ -259,7 +299,7 @@ final class Bitbucket extends Forge
 
                 return match (true) {
                     $child => array_map(fn ($p) => self::pull($p), self::every($api, self::repo($scope['repo']).'/pullrequests', ['state' => $states], 3)),
-                    ($scope['which'] ?? 'reviewing') === 'author' => array_map(fn ($p) => self::pull($p), self::every($api, '/pullrequests/'.rawurlencode(self::me($api)['uuid']), ['state' => $states], 3)),
+                    ($scope['which'] ?? 'reviewing') === 'author' => self::pullsBy($api, self::me($api)['uuid'], ['state' => $states], 3),
                     default => self::reviewing($api, $state),
                 };
             })
@@ -391,7 +431,7 @@ final class Bitbucket extends Forge
                 Column::make('updated_on', __('Updated'))->date(),
             ])
             ->create(__('New repository'), [
-                Field::select('workspace', __('Workspace'), fn (GitClient $api) => collect(self::every($api, '/user/permissions/workspaces', [], 2))
+                Field::select('workspace', __('Workspace'), fn (GitClient $api) => collect(self::every($api, '/user/workspaces', ['sort' => 'slug'], 2))
                     ->mapWithKeys(fn ($p) => [(string) data_get($p, 'workspace.slug') => (string) data_get($p, 'workspace.name')])->all())->required(),
                 Field::text('slug', __('Name'))->required()->rules(['regex:/^[a-z0-9._-]+$/'])->help(__('Lower case letters, digits, dots, dashes and underscores.')),
                 Field::text('project', __('Project key'))->placeholder('PROJ')->help(__('Empty for the workspace\'s default project.')),
