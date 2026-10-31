@@ -13,6 +13,7 @@
  * its open sessions in localStorage, one list per place (the SSH page, each
  * project's Terminal tab); × ends a session for good.
  */
+import { clipPaste, pasteSheetBox, readClipboard } from './terminal-paste';
 import { FONT, loadXterm, THEME } from './xterm';
 
 /** Close codes of the gateway that say why without an error message reaching the page. */
@@ -51,6 +52,124 @@ export function controlOf(char) {
     return code >= 64 && code <= 95 ? String.fromCharCode(code - 64) : char;
 }
 
+/**
+ * Paste on the touch key bar, for the SSH terminals and the workspace shell.
+ * A tap reads the clipboard. A phone often refuses that, so a field opens and
+ * the phone's own paste lands there, then in the terminal (insertPaste) as a
+ * paste: bracketed when the program asked, and not as a Ctrl chord.
+ */
+export function pasteBar() {
+    return {
+        pasteOpen: false,
+        pasteText: '',
+        _pasteBusy: false,
+        _left: false,
+
+        async paste() {
+            if (this._left || this.pasteOpen || this._pasteBusy) return;
+            this._pasteBusy = true;
+            try {
+                const text = clipPaste(await readClipboard());
+                if (this._left || this.pasteOpen) return;
+                if (text) this.deliverPaste(text);
+                else this.openPasteBox();
+            } finally {
+                this._pasteBusy = false;
+            }
+        },
+
+        openPasteBox() {
+            this.pasteText = '';
+            this.pasteOpen = true;
+            this.$nextTick(() => {
+                if (this._left || !this.pasteOpen) return;
+                watchPasteSheet(this);
+                const box = this.$refs.pasteBox;
+                if (!box) return;
+                box.focus();
+            });
+        },
+
+        closePaste() {
+            this.pasteOpen = false;
+            this.pasteText = '';
+            unwatchPasteSheet(this);
+        },
+
+        commitPaste() {
+            this.deliverPaste(this.pasteText);
+        },
+
+        cancelPaste() {
+            this.closePaste();
+            this.focusTerminal();
+        },
+
+        /** A long-press paste into the field goes straight to the terminal. */
+        takePaste(event) {
+            const text = event.clipboardData?.getData('text/plain') || event.clipboardData?.getData('text') || '';
+            if (!text) return;
+            event.preventDefault();
+            this.deliverPaste(text);
+        },
+
+        deliverPaste(text) {
+            const value = clipPaste(text);
+            if (!value) return;
+            this.closePaste();
+            this.insertPaste(value);
+        },
+    };
+}
+
+// one listener per terminal component, kept off Alpine's proxy
+const pasteInsets = new WeakMap();
+
+/** The sheet stays in the key bar, so hiding that pane hides it too, and is
+ *  placed over the bar, above the keyboard. */
+function placePasteSheet(component) {
+    const sheet = component.$refs?.pasteSheet;
+    const bar = sheet?.closest('.ssh-keybar');
+    if (!sheet || !bar || !component.pasteOpen) return;
+    const rect = bar.getBoundingClientRect();
+    if (rect.width < 2) return;
+    const box = pasteSheetBox(
+        { left: rect.left, width: rect.width, bottom: rect.bottom },
+        window.innerHeight,
+        window.visualViewport,
+    );
+    sheet.style.left = `${box.left}px`;
+    sheet.style.width = `${box.width}px`;
+    sheet.style.right = 'auto';
+    sheet.style.bottom = `${box.bottom}px`;
+}
+
+function watchPasteSheet(component) {
+    const vv = window.visualViewport;
+    placePasteSheet(component);
+    if (!vv || pasteInsets.has(component)) return;
+    const apply = () => placePasteSheet(component);
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    pasteInsets.set(component, apply);
+}
+
+function unwatchPasteSheet(component) {
+    const vv = window.visualViewport;
+    const apply = pasteInsets.get(component);
+    if (vv && apply) {
+        vv.removeEventListener('resize', apply);
+        vv.removeEventListener('scroll', apply);
+    }
+    pasteInsets.delete(component);
+    const sheet = component.$refs?.pasteSheet;
+    if (!sheet) return;
+    sheet.style.left = '';
+    sheet.style.width = '';
+    sheet.style.right = '';
+    sheet.style.bottom = '';
+}
+
 /** How long a page remembers a session it left: longer than the gateway keeps one. */
 const REMEMBER_MS = 12 * 60 * 60 * 1000;
 
@@ -73,6 +192,7 @@ function sshTerminals(scope = 'ssh') {
         // the group the list shows: '' all of them, a group's uuid, 'none' the connections in no group
         group: '',
         ctrl: false,
+        ...pasteBar(),
 
         init() {
             try { this.layout = localStorage.getItem('studio.ssh.layout') === 'grid' ? 'grid' : 'tabs'; } catch {}
@@ -85,6 +205,8 @@ function sshTerminals(scope = 'ssh') {
         },
 
         destroy() {
+            this._left = true;
+            this.closePaste();
             window.removeEventListener('pagehide', this.onLeave);
             window.removeEventListener('pageshow', this.onBack);
             // another page of Studio: the sockets go, the shells wait on the gateway for this page to come back
@@ -207,6 +329,24 @@ function sshTerminals(scope = 'ssh') {
             this.focus(id);
         },
 
+        /** Text from Paste, as a paste: bracketed when the program asked, never as a Ctrl chord. */
+        insertPaste(text) {
+            const entry = runtime.get(this.active);
+            if (!entry || !text) return;
+            this.ctrl = false;
+            this._fromPaste = true;
+            try {
+                entry.term.paste(text);
+            } finally {
+                this._fromPaste = false;
+            }
+            this.focusTerminal();
+        },
+
+        focusTerminal() {
+            runtime.get(this.active)?.term.focus();
+        },
+
         /** A key a touch keyboard does not have, from the key bar under the terminal. */
         key(name) {
             if (name === 'ctrl') {
@@ -245,8 +385,9 @@ function sshTerminals(scope = 'ssh') {
             observer.observe(element);
 
             term.onData((data) => {
-                // Ctrl from the touch key bar: the next letter becomes its control character
-                if (this.ctrl && data.length === 1) {
+                // Ctrl from the touch key bar: the next letter becomes its control character.
+                // A paste is not that letter, even when it is one character.
+                if (this.ctrl && !this._fromPaste && data.length === 1) {
                     data = controlOf(data);
                     this.ctrl = false;
                 }

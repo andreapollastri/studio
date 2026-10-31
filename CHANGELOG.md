@@ -4,6 +4,10 @@ Every release is a `vX.Y.Z` tag whose `VERSION` says the same; servers install i
 update (*Administration → System*, or every night). What a release needs done as root on every
 server is in `installer/upgrades/<version>.sh`.
 
+## Unreleased
+
+- **Paste from a phone, in a terminal.** The bar under the SSH terminal (and the workspace and site shells, which share it) gains *Paste*. A tap reads the clipboard when the phone allows it and types the text into the terminal; when it does not, a field opens for a long-press paste and *Insert* sends it. A program that asked for bracketed paste receives it as one paste, so a multi-line paste is not a series of commands.
+
 ## 2.4.16
 
 - **A Cipi app's cipi.yml, from its project.** An app can carry a `cipi.yml` in its repository with the server it expects: aliases, PHP and its settings, limits, workers, scheduled commands, databases, backups, deploy steps. The app's new *cipi.yml* tab shows the file of the live release and what applying it would change: no file; not valid, with the parser's lines; blocked, with what to solve first (*Apply* changes nothing until then); or the changes, one per line, with Cipi's warnings and notes; *in sync* when nothing would change. *Apply cipi.yml* runs `cipi yml apply` as a job, followed like a deploy, and ends with what it did: applied, nothing to change, partly applied with the changes that failed, blocked, not valid, no file. *Turn auto-apply on* applies the file after every successful deploy (CLI, panel and Git webhook) and asks first: from then on, anyone who can commit to the repository changes the app's server configuration. *Turn auto-apply off* stops it.

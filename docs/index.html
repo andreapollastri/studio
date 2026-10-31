@@ -3759,8 +3759,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           checks again when the gateway redeems it. git answers with your own token, as for the agent; the bridge's token and
           the API key it hands to conversations are not in the shell's environment.</p>
         <p>The session stays open while you look at the preview, the changes or the files; when the shell ends (<code>exit</code>,
-          <kbd>Ctrl</kbd>+<kbd>D</kbd>), <em>New shell</em> starts another. A phone gets the keys its keyboard lacks above the
-          keyboard, as on the SSH page. At most <code>BRIDGE_MAX_SHELLS</code> (8) shells are open in a workspace at a time.
+          <kbd>Ctrl</kbd>+<kbd>D</kbd>), <em>New shell</em> starts another. A phone gets the keys its keyboard lacks, and
+          <em>Paste</em>, above the keyboard, as on the SSH page. At most <code>BRIDGE_MAX_SHELLS</code> (8) shells are open
+          in a workspace at a time.
           The shortcuts come from <code>config/studio.php</code>. Clients have no terminal.</p>
         <p><strong>Develop.</strong> For the project's administrators and developers, the switch at the top opens a shell
           on the project's own site, the deploy branch's at <code>&lt;key&gt;.&lt;domain&gt;</code>, not your workspace:
@@ -3931,6 +3932,10 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             are in <a href="#setup-ssh-keys">Settings → Accounts → SSH keys</a>.</dd></dl>
           <dl><dt>Host keys</dt><dd>The first connection shows the server's fingerprint and asks; from then on a different key
             is refused.</dd></dl>
+          <dl><dt>On a phone</dt><dd>Under the terminal, the keys a phone keyboard lacks (Esc, Tab, Ctrl, the arrows) and
+            <em>Paste</em>. Paste reads the clipboard when the phone allows it. When it does not, a field opens: long-press
+            there and paste, then <em>Insert</em>. The text is typed into the terminal as a paste, so a shell or an editor
+            that asked for bracketed paste receives it as one paste.</dd></dl>
           <dl><dt>Files</dt><dd><em>Terminal ⇄ Files</em>, above the terminals (or <em>Browse files</em> in a connection's
             menu), turns a session into the file manager of its host, the same as a project's
             <a href="#work-files">Files</a> tab: tree, editor, uploads of files and folders, drag and drop, <em>Move to…</em>,
