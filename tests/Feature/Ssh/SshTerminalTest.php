@@ -24,6 +24,16 @@ test('administrators and developers get the SSH page after confirming their pass
     }
 });
 
+test('the touch key bar can paste into the terminal from a phone', function () {
+    $this->actingAs(User::factory()->create())
+        ->withSession(['auth.password_confirmed_at' => time()])
+        ->get(route('ssh'))
+        ->assertOk()
+        ->assertSee('Paste into the terminal')
+        ->assertSee('Long-press and paste')
+        ->assertSee('x-on:click="paste()"', false);
+});
+
 test('a key is generated, its public half shown, its private half stored encrypted', function () {
     $user = User::factory()->create(['handle' => 'ada']);
 

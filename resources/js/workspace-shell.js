@@ -6,7 +6,7 @@
  * mounted, hidden, so the session survives switching tabs; a new shell starts
  * when the old one ends.
  */
-import { controlOf, KEYS } from './ssh';
+import { controlOf, KEYS, pasteBar } from './ssh';
 import { FONT, loadXterm, THEME } from './xterm';
 
 const CLOSE_REASONS = {
@@ -30,6 +30,7 @@ function workspaceShell(ticketMethod = 'shellTicket') {
         exitCode: null,
         ctrl: false,
         queued: [],
+        ...pasteBar(),
 
         async init() {
             const { Terminal, FitAddon, WebLinksAddon } = await loadXterm();
@@ -43,7 +44,7 @@ function workspaceShell(ticketMethod = 'shellTicket') {
                 if (this.$refs.box.offsetWidth > 0 && this.$refs.box.offsetHeight > 0) fit.fit();
             }).observe(this.$refs.box);
             term.onData((data) => {
-                if (this.ctrl && data.length === 1) {
+                if (this.ctrl && !this._fromPaste && data.length === 1) {
                     data = controlOf(data);
                     this.ctrl = false;
                 }
@@ -124,6 +125,28 @@ function workspaceShell(ticketMethod = 'shellTicket') {
                 this.send({ type: 'data', data: KEYS[name] });
                 this.ctrl = false;
             }
+        },
+
+        /** Text from Paste, as a paste: bracketed when the program asked, never as a Ctrl chord. */
+        insertPaste(text) {
+            if (!term || !text) return;
+            this.ctrl = false;
+            this._fromPaste = true;
+            try {
+                term.paste(text);
+            } finally {
+                this._fromPaste = false;
+            }
+            this.focusTerminal();
+        },
+
+        focusTerminal() {
+            term?.focus();
+        },
+
+        destroy() {
+            this._left = true;
+            this.closePaste();
         },
     };
 }
