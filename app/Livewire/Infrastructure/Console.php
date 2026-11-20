@@ -608,7 +608,7 @@ class Console extends Component
     /**
      * The choices of a select in the open form, from the provider when they come from there.
      *
-     * @return array{options: array<string, string>, error: string|null}
+     * @return array{options: array<array-key, string>, error: string|null}
      */
     public function options(Field $field): array
     {

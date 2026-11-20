@@ -1923,8 +1923,8 @@
             See <a href="#setup-php">PHP versions</a>.</dd></dl>
           <dl><dt>Chat follow-ups and scroll (2.4.17)</dt><dd>While the agent works, Enter queues the next message and
             sends it when the turn ends; ⌘/Ctrl+Enter (or <em>Send now</em>) interrupts and sends as soon as the bridge is
-            free. The transcript no longer jumps to the bottom while you read above; a stuck “working…” state heals on the
-            next poll. See <a href="#work-chat">The chat</a>.</dd></dl>
+            free. The transcript no longer jumps to the bottom while you read above; a stuck “working…” state heals within
+            a minute. See <a href="#work-chat">The chat</a>.</dd></dl>
           <dl><dt>Models from the chat agent (2.4.17)</dt><dd><em>Model &amp; mode</em> loads models from the provider in
             use: Cursor via <code>agent models</code> for the signed-in account; Claude via the Anthropic Models API (API key),
             a Claude Code gateway cache, or the <code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code>
@@ -1932,7 +1932,7 @@
             Studio adds a <code>test-runner</code> subagent. See <a href="#work-settings">Model, effort, autopilot</a>.</dd></dl>
           <dl><dt>Cipi API 1.36–1.39 (2.4.17)</dt><dd>Environment label per app, live deploy status (a Git push included),
             deploy history with duration, redirects and proxies, databases linked to an app, backup profiles, Node runtimes,
-            and the API version on the server page. Needs Cipi 5.8+ / 5.9+ for each feature; older servers leave them out.
+            and the API version on the server page. Needs Cipi 5.8+ / 5.9+ for each feature; on an older server each one says what it needs.
             See <a href="#infra-cipi">Cipi</a>.</dd></dl>
           <dl><dt>Vite+ 1.3.0 (2.4.12)</dt><dd>The asset build moves to Vite+ 1.3.0, with Vitest 5.0.5, the release with
             the fix for Vitest 5's dev servers serving <code>.env</code> and keys. No server was exposed: earlier releases built
@@ -3476,8 +3476,9 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             Without a websocket the chat polls every few seconds while the agent works, and a short banner says so; nothing
             is lost either way.</dd></dl>
           <dl><dt>Follow-ups</dt><dd>While a turn still runs, Enter (or <em>Queue</em>) keeps your next message on the
-            conversation and sends it when the turn ends. A chip shows what is waiting: <em>Send now</em> (or ⌘/Ctrl+Enter)
-            interrupts and sends as soon as the bridge is free; × drops it. The draft no longer comes back after a refresh.</dd></dl>
+            conversation and sends it when the turn ends; a further message joins the one waiting, after it. A chip shows
+            what is waiting: <em>Send now</em> (or ⌘/Ctrl+Enter) interrupts and sends it, with the draft after it, as soon as
+            the bridge is free; × drops it. The draft no longer comes back after a refresh.</dd></dl>
           <dl><dt>Scroll</dt><dd>The transcript sticks to the bottom only when you were already near it. Reading earlier
             messages while tools stream is left alone; <em>Jump to latest</em> brings you back.</dd></dl>
           <dl><dt>Speed</dt><dd>A message reaches the bridge as soon as it is sent, never through the queue where workspaces
@@ -3489,8 +3490,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             message resumes with the same memory (Claude keeps it across model or mode changes; switching between Claude and
             Cursor starts the other CLI fresh). The title is the first message, trimmed.</dd></dl>
           <dl><dt>Interrupt</dt><dd>Stops the current turn. The process is released; the next message resumes the session. If
-            Studio still said “working…” while the bridge had nothing running, the next poll frees the conversation on its
-            own and sends any queued follow-up.</dd></dl>
+            Studio still said “working…” while the bridge had nothing running, the chat frees the conversation on its own
+            within a minute, with or without a websocket, and sends any queued follow-up.</dd></dl>
           <dl><dt>Status bar</dt><dd>Chips for the state, the Claude or Cursor account the next message runs on, the model, the
             effort (Claude) and the mode; a click opens <a href="#work-settings">Model &amp; mode</a>. A Claude subscription
             shows its plan's usage (the five-hour window and the week); an API key, the estimated cost of the last turn.</dd></dl>
@@ -4768,8 +4769,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
             dbs-create, dbs-manage, backups-view, backups-manage, node-view, node-manage, node-runtimes-manage, services-view,
             services-manage, ssh-view, ssh-manage, php-view, php-manage, health-view, status-view, disk-view, yml-view,
             yml-manage. With fewer, the matching tabs and actions answer 403; without yml-view or yml-manage (tokens created
-            before Cipi 5.6.4 lack them) the <em>cipi.yml</em> tab says so; without the 1.39 abilities, Backups and Node stay
-            empty on an older token.</li>
+            before Cipi 5.6.4 lack them) the <em>cipi.yml</em> tab says so; without the 1.39 abilities, Backups and Node say which
+            one the token lacks.</li>
           <li>If the API's IP allowlist is in use, add Studio's server: <code>cipi api ip-whitelist add &lt;Studio's IP&gt;</code>.</li>
           <li>In Studio: the <strong>API address</strong> (<code>https://api.server1.example.com</code>) and the
             <strong>API token</strong>. Name the account after the server. Revoke an old token with

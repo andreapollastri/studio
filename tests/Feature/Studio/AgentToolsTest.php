@@ -59,6 +59,10 @@ test('a turn hands the bridge the preview and a pass for that host alone, as the
     Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])->set('draft', 'Controlla la home')->call('send');
 
     Http::assertSent(function (Request $request) use ($user) {
+        if (! str_contains($request->url(), '/turns')) {
+            return false;
+        }
+
         $browser = $request['browser'];
         $passes = app(SitePass::class);
 

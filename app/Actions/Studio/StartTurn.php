@@ -45,28 +45,75 @@ final class StartTurn
 
         // One turn at a time on the agent: keep the next message here and send it when free.
         if ($conversation->isBusy()) {
-            $conversation->forceFill(['follow_up' => $text])->save();
+            if ($this->queue($conversation, $text)) {
+                return null;
+            }
 
-            return null;
+            // the turn ended (and took the queue) while this was written: start it now
+            $conversation->refresh();
+
+            if ($conversation->isBusy()) {
+                $this->queue($conversation, $text, force: true);
+
+                return null;
+            }
         }
 
         return $this->begin($conversation, $text);
     }
 
     /**
+     * Add the text to the waiting follow-up: a second message while the turn runs goes after the
+     * first, it does not replace it. Compare-and-set on what was read, so a follow-up the ending
+     * turn takes meanwhile is not written back (and sent twice). False when the queue moved.
+     */
+    public function queue(Conversation $conversation, string $text, bool $force = false): bool
+    {
+        $text = trim($text);
+        $before = $conversation->getRawOriginal('follow_up');
+        $waiting = trim((string) $before);
+        $next = $waiting === '' ? $text : $waiting."\n\n".$text;
+
+        $query = Conversation::query()->whereKey($conversation->getKey());
+
+        if (! $force) {
+            $before === null ? $query->whereNull('follow_up') : $query->where('follow_up', $before);
+        }
+
+        if ($query->update(['follow_up' => $next]) !== 1) {
+            return false;
+        }
+
+        $conversation->follow_up = $next;
+        $conversation->syncOriginalAttribute('follow_up');
+
+        return true;
+    }
+
+    /**
      * After a turn ends (or a stuck conversation is healed), start the waiting follow-up if any.
+     * The follow-up is taken with a conditional update: of two requests that end the same turn
+     * (the bridge's result and the browser's interrupt) only one sends it.
      */
     public function flushFollowUp(Conversation $conversation): ?Message
     {
         $conversation->refresh();
 
-        $text = trim((string) $conversation->follow_up);
+        $waiting = $conversation->getRawOriginal('follow_up');
+        $text = trim((string) $waiting);
 
         if ($text === '' || $conversation->isBusy() || ! $conversation->acceptsMessages() || ! $conversation->workspace->isRunning()) {
             return null;
         }
 
-        $conversation->forceFill(['follow_up' => null])->save();
+        $taken = Conversation::query()->whereKey($conversation->getKey())->where('follow_up', $waiting)->update(['follow_up' => null]);
+
+        if ($taken !== 1) {
+            return null;
+        }
+
+        $conversation->follow_up = null;
+        $conversation->syncOriginalAttribute('follow_up');
 
         return $this->begin($conversation, $text);
     }

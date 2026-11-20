@@ -118,7 +118,7 @@ final class Summary
 
         $live = self::quietly(fn () => $app->deployStatus(0));
 
-        if (is_array($live) && in_array($live['state'] ?? '', ['running', 'queued', 'interrupted'], true)) {
+        if (is_array($live) && in_array($live['state'], ['running', 'queued', 'interrupted'], true)) {
             $card['status'] = match ($live['state']) {
                 'queued' => ['label' => __('deploy queued'), 'color' => 'amber'],
                 'interrupted' => ['label' => __('deploy stuck'), 'color' => 'red'],

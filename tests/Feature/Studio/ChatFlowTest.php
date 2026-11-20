@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Studio\StartTurn;
 use App\Enums\ConversationStatus;
 use App\Enums\PermissionStatus;
 use App\Events\ConversationUpdated;
@@ -183,6 +184,115 @@ test('sendNow interrupts a busy turn and starts the draft as soon as the bridge 
 
     Http::assertSent(fn (Request $request) => str_contains($request->url(), '/interrupt'));
     Http::assertSent(fn (Request $request) => str_contains($request->url(), '/turns') && $request['text'] === 'send this immediately');
+});
+
+test('a second queued message goes after the first instead of replacing it', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running, 'follow_up' => 'first']);
+    Http::fake();
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])->set('draft', 'second')->call('send')->assertHasNoErrors();
+
+    expect($conversation->fresh()->follow_up)->toBe("first\n\nsecond");
+});
+
+test('a follow-up the ending turn already took is not written back with the next message', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running, 'follow_up' => 'first']);
+
+    // meanwhile the turn ended and sent "first"; a new turn runs
+    Conversation::query()->whereKey($conversation->id)->update(['follow_up' => null]);
+
+    expect(app(StartTurn::class)->queue($conversation, 'second'))->toBeFalse()
+        ->and($conversation->fresh()->follow_up)->toBeNull();
+});
+
+test('Send now with a draft and a queued message sends both, in order', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running, 'follow_up' => 'queued one']);
+    Http::fake([
+        'http://bridge.test:4455/*/interrupt' => Http::response(['state' => 'idle', 'interrupted' => false, 'pending_permissions' => []]),
+        'http://bridge.test:4455/*/turns' => Http::response(['accepted' => true], 202),
+    ]);
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])->set('draft', 'half typed')->call('sendNow')->assertHasNoErrors();
+
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/turns') && $request['text'] === "queued one\n\nhalf typed");
+});
+
+test('Send now on a running turn leaves the follow-up to its result, which sends it once', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running]);
+    Http::fake([
+        'http://bridge.test:4455/*/interrupt' => Http::response(['state' => 'idle', 'interrupted' => true, 'pending_permissions' => []]),
+        'http://bridge.test:4455/*/turns' => Http::response(['accepted' => true], 202),
+    ]);
+
+    Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation])->set('draft', 'next please')->call('sendNow')->assertHasNoErrors();
+
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Running)
+        ->and($conversation->fresh()->follow_up)->toBe('next please');
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/turns'));
+
+    // the bridge's interrupt posts error and result in one batch
+    $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), [
+        'conversation' => (string) $conversation->id,
+        'events' => [
+            ['type' => 'error', 'code' => 'interrupted', 'message' => 'Stopped on request.'],
+            ['type' => 'result', 'subtype' => 'interrupted', 'is_error' => false, 'result' => '', 'session_id' => 'sess-1'],
+        ],
+    ])->assertOk(); // the test kernel terminates the request: the turn is handed to the bridge
+
+    // the next turn runs, and the result of the stopped one did not mark it idle
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Running)
+        ->and($conversation->fresh()->follow_up)->toBeNull()
+        ->and($conversation->messages()->where('role', Message::ROLE_USER)->pluck('content')->all())->toBe(['next please'])
+        ->and(Http::recorded(fn (Request $request) => str_contains($request->url(), '/turns'))->map(fn ($pair) => $pair[0]['text'])->values()->all())->toBe(['next please']);
+});
+
+test('a crashed turn\'s error does not start the follow-up before its result', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running, 'follow_up' => 'try again']);
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['accepted' => true], 202)]);
+
+    $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), [
+        'conversation' => (string) $conversation->id,
+        'events' => [
+            ['type' => 'error', 'code' => 'process_exit', 'message' => 'Claude Code exited (1).'],
+            ['type' => 'result', 'subtype' => 'error_during_execution', 'is_error' => true, 'result' => 'Claude Code exited (1).', 'session_id' => 'sess-1'],
+        ],
+    ])->assertOk();
+
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Running)
+        ->and($conversation->messages()->where('role', Message::ROLE_USER)->pluck('content')->all())->toBe(['try again'])
+        ->and(Http::recorded(fn (Request $request) => str_contains($request->url(), '/turns')))->toHaveCount(1);
+});
+
+test('the follow-up is taken once: a second flush of the same ending finds nothing', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Idle, 'follow_up' => 'once']);
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['accepted' => true], 202)]);
+
+    $first = app(StartTurn::class)->flushFollowUp($conversation);
+    $conversation->forceFill(['status' => ConversationStatus::Idle])->save();
+    $second = app(StartTurn::class)->flushFollowUp($conversation);
+
+    expect($first)->not->toBeNull()->and($second)->toBeNull()
+        ->and($conversation->messages()->where('role', Message::ROLE_USER)->count())->toBe(1);
+});
+
+test('an administrator reading someone\'s conversation does not heal it or start its follow-up', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create([
+        'status' => ConversationStatus::Running, 'follow_up' => 'owner only', 'last_activity_at' => now()->subMinutes(2),
+    ]);
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['state' => 'idle', 'pending_permissions' => []])]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Chat::class, ['conversation' => $conversation])->call('poll');
+
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Running)
+        ->and($conversation->fresh()->follow_up)->toBe('owner only');
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/sessions') || str_contains($request->url(), '/turns'));
 });
 
 test('poll heals a stuck running conversation when the bridge is idle', function () {
@@ -380,13 +490,13 @@ test('"/" lists the conversation\'s skills and commands, read from the bridge on
     ], 'error' => null]);
     $chat->call('skills');
 
-    Http::assertSentCount(1);
+    expect(Http::recorded(fn (Request $request) => str_contains($request->url(), '/skills')))->toHaveCount(1);
 
     // a stopped workspace has none, without asking the bridge
     $workspace->forceFill(['status' => 'stopped'])->save();
     cache()->forget('studio.skills.'.$conversation->id);
     Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation->fresh()])->call('skills')->assertReturned(['skills' => [], 'error' => 'The workspace is not running.']);
-    Http::assertSentCount(1);
+    expect(Http::recorded(fn (Request $request) => str_contains($request->url(), '/skills')))->toHaveCount(1);
 });
 
 test('when the bridge cannot list the skills, "/" says why, and nothing is kept to ask again', function () {

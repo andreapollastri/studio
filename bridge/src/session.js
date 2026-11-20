@@ -225,12 +225,17 @@ export class Session extends EventEmitter {
     return this.snapshot();
   }
 
+  /**
+   * Stop the turn. `interrupted` says whether one was running: when true, its error and result
+   * follow on the callback and Studio starts the next message from there; when false, no event
+   * comes and Studio frees the conversation itself.
+   */
   interrupt() {
     if (!this.#process) {
       // a session left waiting by a process that is gone: free it, so the next turn is taken
       this.state = 'idle';
       this.#pending.clear();
-      return this.snapshot();
+      return { ...this.snapshot(), interrupted: false };
     }
     const wasBusy = this.state !== 'idle';
     this.#stopProcess();
@@ -242,7 +247,7 @@ export class Session extends EventEmitter {
     }
     this.state = 'idle';
     this.#pending.clear();
-    return this.snapshot();
+    return { ...this.snapshot(), interrupted: wasBusy };
   }
 
   async close() {

@@ -114,7 +114,8 @@ test('the model picker prefers the bridge list for the chat agent', function () 
         ->test(Chat::class, ['conversation' => $conversation]);
 
     $models = $component->instance()->availableModelsFor('claude');
-    expect(array_column($models, 'id'))->toBe(['', 'claude-opus-5-5', 'live-only-model'])
+    // the bridge's order first, then config's ids it did not list
+    expect(array_column($models, 'id'))->toBe(['', 'claude-opus-5-5', 'live-only-model', 'claude-fable-5-2', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'opus', 'sonnet', 'haiku'])
         ->and(collect($models)->firstWhere('id', 'claude-opus-5-5')['hint'] ?? null)->toBe('Long-running agentic coding');
 
     $component->set('model', 'live-only-model')->call('saveSettings')->assertHasNoErrors();
@@ -122,6 +123,51 @@ test('the model picker prefers the bridge list for the chat agent', function () 
 
     Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/models'
         && $request['agent'] === 'claude');
+});
+
+test('a Claude subscription gets only the aliases from the bridge, and the full ids stay choosable', function () {
+    [$user, $conversation] = pmWithConversation();
+    $conversation->forceFill(['model' => 'claude-opus-5-5'])->save();
+    Http::fake(['http://bridge.test:4455/models' => Http::response(['models' => [
+        ['id' => '', 'label' => 'Default'], ['id' => 'fable', 'label' => 'fable'], ['id' => 'opus', 'label' => 'opus'],
+    ]])]);
+
+    // only the mode changes: the saved model is still valid
+    Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation])
+        ->assertSet('model', 'claude-opus-5-5')
+        ->set('mode', 'default')
+        ->call('saveSettings')
+        ->assertHasNoErrors();
+
+    expect($conversation->fresh()->model)->toBe('claude-opus-5-5');
+});
+
+test('a model no longer listed anywhere stays valid on the conversation that runs on it, and only there', function () {
+    [$user, $conversation] = pmWithConversation();
+    $conversation->forceFill(['model' => 'claude-fable-5-1'])->save();
+    Http::fake(['http://bridge.test:4455/models' => Http::response(['models' => [['id' => 'opus', 'label' => 'opus']]])]);
+
+    $component = Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation]);
+
+    expect(collect($component->instance()->availableModelsFor('claude'))->firstWhere('id', 'claude-fable-5-1'))->not->toBeNull()
+        ->and(array_column($component->instance()->availableModelsFor('cursor'), 'id'))->not->toContain('claude-fable-5-1');
+
+    $component->set('mode', 'default')->call('saveSettings')->assertHasNoErrors();
+});
+
+test('the model list is asked without the sandbox, and a failure is kept a little instead of asked on every render', function () {
+    [$user, $conversation] = pmWithConversation();
+    $conversation->forceFill(['sandbox' => ['name' => 'c1', 'status' => 'creating']])->save();
+    Http::fake(['http://bridge.test:4455/models' => Http::response(['message' => 'down'], 502)]);
+
+    $component = Livewire::actingAs($user)->test(Chat::class, ['conversation' => $conversation]);
+    $component->call('poll')->call('poll');
+
+    $asked = Http::recorded(fn (Request $request) => $request->url() === 'http://bridge.test:4455/models');
+    expect($asked)->toHaveCount(1)
+        ->and($asked->first()[0]->hasHeader('X-Studio-Sandbox'))->toBeFalse()
+        ->and(array_column($component->instance()->availableModelsFor('claude'), 'id'))->toBe(array_column(config('studio.models'), 'id'));
 });
 
 test('Cursor can pick a model and the bridge receives it on the next turn', function () {

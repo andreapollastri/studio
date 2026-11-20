@@ -478,9 +478,9 @@ test('Cipi shows a live deploy status and prefers deploy history over the audit 
             'app' => 'shop', 'state' => 'running', 'running' => true, 'phase' => 'post-deploy', 'queued' => false, 'locked' => true,
             'current' => ['trigger' => 'webhook', 'elapsed' => 9], 'last' => null, 'tail' => ['healthcheck ok'],
         ]]),
-        'https://api.server.acme.test/api/apps/shop/deploy/history*' => Http::response(['data' => [
+        'https://api.server.acme.test/api/apps/shop/deploy/history*' => Http::response(['data' => ['app' => 'shop', 'count' => 1, 'log' => '/home/shop/logs/deploy.log', 'runs' => [
             ['result' => 'ok', 'kind' => 'deploy', 'release' => 7, 'duration' => 55, 'trigger' => 'panel'],
-        ]]),
+        ]]]),
         'https://api.server.acme.test/api/apps' => Http::response(['data' => [['app' => 'shop', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'env' => 'staging', 'suspended' => false]]]),
         'https://api.server.acme.test/api/status' => Http::response(['data' => ['system' => ['hostname' => 'web1', 'cipi' => '5.9.1', 'api' => '1.39.2'], 'apps' => 1]]),
         'https://api.server.acme.test/api/disk' => Http::response(['data' => ['apps' => []]]),
@@ -504,12 +504,10 @@ test('Cipi lists Node runtimes and backup profiles when the API has them', funct
     ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
 
     Http::fake([
+        // what cipi/api answers: the runtimes of `cipi node list`, each with the names of its apps
         'https://api.server.acme.test/api/node' => Http::response(['data' => [
-            'default' => '22',
-            'runtimes' => [
-                ['major' => '22', 'version' => '22.14.0', 'apps' => 2, 'default' => true],
-                ['major' => '20', 'version' => '20.19.0', 'apps' => 0, 'default' => false],
-            ],
+            ['major' => '22', 'version' => '22.14.0', 'default' => true, 'apps' => ['shop', 'crm']],
+            ['major' => '20', 'version' => '20.19.0', 'default' => false, 'apps' => []],
         ]]),
         'https://api.server.acme.test/api/backups' => Http::response(['data' => [
             'configured' => true,
@@ -521,10 +519,140 @@ test('Cipi lists Node runtimes and backup profiles when the API has them', funct
 
     Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'node'])
         ->assertSee('22.14.0')
-        ->assertSee('20.19.0');
+        ->assertSee('20.19.0')
+        ->assertSee('shop, crm');
 
     Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'backups'])
         ->assertSee('nightly');
+});
+
+test('Cipi sends keep_path, strip_prefix and preserve_host as booleans, false included', function () {
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/apps/shop/redirects' => Http::response(['data' => ['redirect' => null, 'redirects' => []]]),
+        'https://api.server.acme.test/api/apps/shop/redirect' => Http::response(['data' => ['enabled' => true, 'to' => 'https://new.acme.test/?from=old', 'code' => 302, 'keep_path' => false]]),
+        'https://api.server.acme.test/api/apps/shop/proxies' => Http::response(['data' => ['proxies' => []]]),
+        'https://api.server.acme.test/api/apps' => Http::response(['data' => [['app' => 'shop', 'domain' => 'shop.acme.test', 'type' => 'laravel']]]),
+    ]);
+
+    $page = Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'apps'])
+        ->call('start', 'redirects', 'shop')
+        ->assertSet('tab', 'redirects')
+        // the API keeps the path when keep_path is missing: unticked must say false
+        ->call('start', 'create')
+        ->set('form.from', '/old')
+        ->set('form.to', 'https://new.acme.test/?from=old')
+        ->set('form.keep_path', false)
+        ->call('submit')
+        ->assertHasNoErrors()
+        ->call('start', 'app-redirect', '*')
+        ->set('form.to', 'https://new.acme.test/?from=old')
+        ->set('form.code', '302')
+        ->set('form.keep_path', false)
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/apps/shop/redirects') && $r['keep_path'] === false && $r['code'] === 301);
+    Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/apps/shop/redirect') && $r['keep_path'] === false && $r['code'] === 302);
+
+    $page->call('back')
+        ->call('start', 'proxies', 'shop')
+        ->call('start', 'create')
+        ->set('form.prefix', '/api')
+        ->set('form.upstream', 'http://127.0.0.1:8080')
+        ->set('form.strip_prefix', false)
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/apps/shop/proxies') && $r['strip_prefix'] === false && $r['preserve_host'] === false);
+});
+
+test('the whole-app redirect offers Enable or Disable only when one is set, as the server has it', function () {
+    $cipi = Connectors::make('cipi');
+    $section = $cipi->section('redirects');
+    $row = fn () => ($section->list)($cipi->client(['url' => 'api.server.acme.test', 'token' => 'cipi-token']), ['app' => 'shop'])[0];
+
+    Http::fake(['https://api.server.acme.test/api/apps/shop/redirects' => Http::sequence()
+        ->push(['data' => ['redirect' => null, 'redirects' => []]])
+        ->push(['data' => ['redirect' => ['enabled' => true, 'to' => 'https://new.acme.test', 'code' => 301, 'keep_path' => true], 'redirects' => []]])
+        ->push(['data' => ['redirect' => ['enabled' => false, 'to' => 'https://new.acme.test', 'code' => 301, 'keep_path' => true], 'redirects' => []]]),
+    ]);
+
+    $offered = fn (array $row) => array_values(array_map(fn ($a) => $a->key, array_filter($section->actions, fn ($a) => $a->appliesTo($row))));
+
+    // none set; one on; one saved but off
+    expect($offered($row()))->toBe(['app-redirect'])
+        ->and($offered($row()))->toBe(['app-redirect', 'disable', 'clear-app'])
+        ->and($offered($row()))->toBe(['app-redirect', 'enable', 'clear-app']);
+});
+
+test('Cipi marks restore and the server-wide Node and backup changes destructive, so the safe hand-over leaves them out', function () {
+    $cipi = Connectors::make('cipi');
+    $danger = fn (string $section) => array_keys(array_filter(ProjectResource::actionsFor($cipi, $cipi->section($section)), fn ($a) => $a['danger']));
+
+    expect($danger('databases'))->toContain('restore')
+        ->and($danger('node'))->toContain('upgrade', 'default', 'delete')
+        ->and($danger('backups'))->toContain('disable')
+        ->and($cipi->section('databases')->action('restore')->confirm)->toContain('Overwrite')
+        // confirmed like Suspend, not destructive: they can be turned off again
+        ->and($cipi->section('redirects')->action('enable')->confirm)->not->toBeNull()
+        ->and($cipi->section('redirects')->action('app-redirect')->confirm)->not->toBeNull()
+        ->and($cipi->section('proxies')->toolbarAction('create')->confirm)->not->toBeNull()
+        ->and($danger('apps'))->not->toContain('redirects.enable', 'redirects.app-redirect', 'proxies.@create');
+});
+
+test('a new Cipi app leaves PHP to the server unless one is chosen', function () {
+    Sleep::fake();
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/jobs/job-1' => Http::response(['data' => ['id' => 'job-1', 'type' => 'app-create', 'status' => 'completed', 'result' => [], 'output' => '']]),
+        'https://api.server.acme.test/api/apps' => fn (Request $r) => $r->method() === 'POST'
+            ? Http::response(['job_id' => 'job-1', 'status' => 'pending'], 202)
+            : Http::response(['data' => []]),
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'apps'])
+        ->call('start', 'create')
+        ->assertSet('form.php', '')
+        ->set('form.user', 'shop')
+        ->set('form.domain', 'shop.acme.test')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/api/apps') && ! array_key_exists('php', $r->data()));
+});
+
+test('Cipi says why a list is not there: an older server, a token without the ability, a command that failed', function (int $status, string $error, string $note) {
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake(['https://api.server.acme.test/api/backups' => Http::response(['error' => $error], $status)]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'backups'])
+        ->assertSee($note);
+})->with([
+    'core too old' => [503, 'Backup management from the panel needs Cipi 5.9.0+ — this server runs Cipi 5.8.4. Run: cipi self-update', 'it needs Cipi 5.9 and cipi/api 1.39 or later'],
+    'route missing' => [404, 'The route api/backups could not be found.', 'it needs Cipi 5.9 and cipi/api 1.39 or later'],
+    'no ability' => [403, 'Token lacks the required ability', 'lacks the backups-view ability'],
+    'command failed' => [503, 'cipi backup status answered no configured flag', 'cipi backup status answered no configured flag'],
+]);
+
+test('the Cipi databases show their size from size_mb, or the size older servers give', function () {
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake(['https://api.server.acme.test/api/dbs' => Http::response(['data' => [
+        ['name' => 'shop', 'engine' => 'mariadb', 'size_mb' => 12.5, 'app' => 'shop'],
+        ['name' => 'legacy', 'engine' => 'mariadb', 'size' => '3.1M'],
+    ]])]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'databases'])
+        ->assertSee('12.5 MB')
+        ->assertSee('3.1M');
 });
 
 test('the Cipi PHP tab lists the installed versions', function () {

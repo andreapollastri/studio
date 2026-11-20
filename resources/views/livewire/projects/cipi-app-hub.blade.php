@@ -1,6 +1,8 @@
 @php($deployStatus = $this->deployStatus)
-@php($deployLive = is_array($deployStatus) && in_array($deployStatus['state'] ?? '', ['running', 'queued', 'interrupted'], true))
-<div class="space-y-5" @if (($job && in_array($job['status'], ['pending', 'running'], true)) || $deployLive) wire:poll.3s="pollJob" @endif>
+@php($deployShown = is_array($deployStatus) && in_array($deployStatus['state'] ?? '', ['running', 'queued', 'interrupted'], true))
+@php($jobLive = $job && in_array($job['status'], ['pending', 'running'], true))
+{{-- a job of Studio's is followed every 3 s; a deploy started elsewhere (running or queued, not a stuck one) every 6 s --}}
+<div class="space-y-5" @if ($jobLive) wire:poll.3s="pollJob" @elseif ($this->deployLive()) wire:poll.6s="pollDeploy" @endif>
     @php($details = $this->details)
     @php($summary = $this->summary)
 
@@ -43,7 +45,7 @@
     @endif
 
     {{-- A deploy in flight on the server (Git push, CLI, panel, rollback) — cipi/api 1.37+ --}}
-    @if ($deployLive)
+    @if ($deployShown)
         @php($current = $deployStatus['current'] ?? [])
         <div @class([
             'rounded-xl border p-3',
@@ -68,6 +70,9 @@
                 <pre class="mt-2 max-h-48 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-zinc-100">{{ implode("\n", $deployStatus['tail']) }}</pre>
             @endif
         </div>
+    @elseif (isset($deployStatus['error']) && $tab === 'deploys')
+        {{-- the token lacks deploy-manage, or cipi deploy --status failed: said, not hidden --}}
+        <flux:text class="text-xs text-zinc-500">{{ __('Live deploy status: :reason', ['reason' => $deployStatus['error']]) }}</flux:text>
     @endif
 
     {{-- A job of the server being watched --}}

@@ -155,7 +155,11 @@ class Chat extends Component
      */
     public function poll(): void
     {
-        $this->healIfStuck();
+        // healing may start the owner's queued message: only the owner's own page does it
+        if (auth()->user()->can('update', $this->conversation)) {
+            $this->healIfStuck();
+        }
+
         $this->reload();
     }
 
@@ -232,27 +236,33 @@ class Chat extends Component
     }
 
     /**
-     * Stop the current turn and send the draft (or the queued follow-up) as soon as the agent is free.
+     * Stop the current turn and send the queued follow-up, with the draft after it, as soon as the
+     * agent is free: the draft joins the queue, it does not replace it.
      */
     public function sendNow(StartTurn $start): void
     {
         $this->authorize('update', $this->conversation);
 
-        $text = trim($this->draft) !== '' ? trim($this->draft) : trim((string) $this->conversation->follow_up);
+        $draft = trim($this->draft);
+        $waiting = trim((string) $this->conversation->follow_up);
 
-        if ($text === '') {
+        if ($draft === '' && $waiting === '') {
             $this->addError('draft', __('The message is empty.'));
 
             return;
         }
 
-        if (strlen($text) > 20000) {
+        if (strlen($waiting) + strlen($draft) > 20000) {
             $this->addError('draft', __('The message is too long.'));
 
             return;
         }
 
-        $this->conversation->forceFill(['follow_up' => $text])->save();
+        if ($draft !== '' && ! $start->queue($this->conversation, $draft)) {
+            $this->conversation->refresh();
+            $start->queue($this->conversation, $draft, force: true);
+        }
+
         $this->draft = '';
 
         if ($this->conversation->isBusy()) {
@@ -260,7 +270,9 @@ class Chat extends Component
                 $snapshot = (new BridgeClient($this->conversation->workspace))->interrupt($this->conversation);
                 Flux::toast(text: __('Asked :agent to stop; your message sends next.', ['agent' => $this->conversation->agentLabel()]));
 
-                if (($snapshot['state'] ?? null) === 'idle' && ! $this->conversation->pendingPermission()) {
+                // A turn was stopped: its result comes on the callback and starts the follow-up
+                // from there. Nothing was running: no event will come, so free it here.
+                if (($snapshot['state'] ?? null) === 'idle' && ($snapshot['interrupted'] ?? false) !== true && ! $this->conversation->pendingPermission()) {
                     $this->conversation->setStatus(ConversationStatus::Idle);
                     ConversationUpdated::dispatch($this->conversation->uuid, 'status', ['status' => ConversationStatus::Idle->value]);
                 }
@@ -504,7 +516,7 @@ class Chat extends Component
 
             // Nothing was running on the bridge: no event will come to free the conversation, so do it here
             // (a turn Claude started on its own and Studio never saw end, for one).
-            if (($snapshot['state'] ?? null) === 'idle' && $this->conversation->isBusy() && ! $this->conversation->pendingPermission()) {
+            if (($snapshot['state'] ?? null) === 'idle' && ($snapshot['interrupted'] ?? false) !== true && $this->conversation->isBusy() && ! $this->conversation->pendingPermission()) {
                 $this->conversation->setStatus(ConversationStatus::Idle);
                 ConversationUpdated::dispatch($this->conversation->uuid, 'status', ['status' => ConversationStatus::Idle->value]);
                 app(StartTurn::class)->flushFollowUp($this->conversation);
@@ -676,43 +688,49 @@ class Chat extends Component
         $fallback = array_values((array) config($agent === 'cursor' ? 'studio.cursor_models' : 'studio.models', []));
 
         if (! $this->conversation->workspace->isRunning()) {
-            return $fallback;
+            return $this->withSavedModel($fallback, $agent);
         }
+
+        $key = 'studio.models.'.$this->conversation->id.'.'.$agent;
 
         try {
+            // The list does not depend on the folder: no sandbox header, so a sandbox still being
+            // made (or gone) does not answer 404 on every render.
             /** @var list<array{id: string, label: string, hint?: string}> $listed */
-            $listed = Cache::remember('studio.models.'.$this->conversation->id.'.'.$agent, 120, function () use ($agent, $fallback) {
-                $models = (new BridgeClient(
-                    $this->conversation->workspace,
-                    $this->conversation->isSandboxed() ? $this->conversation->sandboxName() : null,
-                ))->models($this->conversation, $agent);
+            $listed = Cache::remember($key, 120, function () use ($agent, $fallback) {
+                $models = (new BridgeClient($this->conversation->workspace))->models($this->conversation, $agent);
 
-                return $models !== [] ? $this->enrichModelLabels($models, $fallback) : $fallback;
+                return $models !== [] ? $this->mergeModels($models, $fallback, $agent) : $fallback;
             });
         } catch (Throwable $e) {
+            // kept a little too, so a bridge that is down (or a CLI that hangs) is not asked on every render
+            Cache::put($key, $fallback, 45);
             report($e);
 
-            return $fallback;
+            return $this->withSavedModel($fallback, $agent);
         }
 
-        return $listed;
+        return $this->withSavedModel($listed, $agent);
     }
 
     /**
-     * Prefer Studio's curated label/hint when the same id is in config.
+     * The bridge's list, with Studio's curated label and hint where config has the same id. For
+     * Claude, config's full ids follow the ones the bridge did not list: a subscription only
+     * gets the aliases back, and a pinned version must stay choosable. Cursor's list is the
+     * account's own, so config adds nothing the account may not use.
      *
      * @param  list<array{id: string, label: string, hint?: string}>  $models
      * @param  list<array{id: string, label: string, hint?: string}>  $fallback
      * @return list<array{id: string, label: string, hint?: string}>
      */
-    private function enrichModelLabels(array $models, array $fallback): array
+    private function mergeModels(array $models, array $fallback, string $agent): array
     {
         $byId = [];
         foreach ($fallback as $row) {
             $byId[$row['id']] = $row;
         }
 
-        return array_map(function (array $model) use ($byId): array {
+        $merged = array_map(function (array $model) use ($byId): array {
             $known = $byId[$model['id']] ?? null;
             if ($known === null) {
                 return $model;
@@ -726,5 +744,38 @@ class Chat extends Component
                 ...($hint !== null ? ['hint' => $hint] : []),
             ];
         }, $models);
+
+        if ($agent === 'claude') {
+            $listed = array_column($merged, 'id');
+
+            foreach ($fallback as $row) {
+                if (! in_array($row['id'], $listed, true)) {
+                    $merged[] = $row;
+                }
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * The model the conversation already runs on stays in the list (and valid) even when the
+     * agent no longer lists it: changing only the mode must not fail on the model.
+     *
+     * @param  list<array{id: string, label: string, hint?: string}>  $models
+     * @return list<array{id: string, label: string, hint?: string}>
+     */
+    private function withSavedModel(array $models, string $agent): array
+    {
+        $saved = (string) $this->conversation->model;
+        $savedAgent = $this->conversation->agent === 'cursor' ? 'cursor' : 'claude';
+
+        if ($saved === '' || $savedAgent !== $agent || in_array($saved, array_column($models, 'id'), true)) {
+            return $models;
+        }
+
+        $models[] = ['id' => $saved, 'label' => $saved, 'hint' => __('no longer listed')];
+
+        return $models;
     }
 }

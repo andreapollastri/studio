@@ -2,6 +2,9 @@
 
 use App\Bridge\BridgeClient;
 use App\Infrastructure\Cipi\Anonymization;
+use App\Infrastructure\Cipi\CipiApp;
+use App\Infrastructure\ConnectorException;
+use App\Infrastructure\Summary;
 use App\Livewire\Projects\CipiAppHub;
 use App\Livewire\Projects\Infrastructure as ProjectInfrastructure;
 use App\Livewire\Projects\ResourceCard;
@@ -41,10 +44,11 @@ function cipiServer(array $env = []): ConnectorAccount
             'last' => ['result' => 'ok', 'kind' => 'deploy', 'release' => 12, 'duration' => 41, 'trigger' => 'webhook', 'finished_at' => '2026-10-12T10:00:41Z'],
             'tail' => [],
         ]]),
-        'api.cipi.test/api/apps/shop/deploy/history*' => Http::response(['data' => [
+        // cipi/api 1.39: {app, count, runs, log}
+        'api.cipi.test/api/apps/shop/deploy/history*' => Http::response(['data' => ['app' => 'shop', 'count' => 2, 'log' => '/home/shop/logs/deploy.log', 'runs' => [
             ['result' => 'ok', 'kind' => 'deploy', 'release' => 12, 'duration' => 41, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => '2026-10-12T10:00:41Z'],
             ['result' => 'ok', 'kind' => 'deploy', 'release' => 11, 'duration' => 38, 'trigger' => 'api', 'branch' => 'main', 'finished_at' => '2026-10-10T10:00:38Z'],
-        ]]),
+        ]]]),
         'api.cipi.test/api/apps/shop/deploy/audit*' => Http::response(['data' => ['app' => 'shop', 'records' => [
             ['ts' => '2026-10-10T10:00:00Z', 'event' => 'published', 'release' => 11, 'commit' => 'aaaaaaa1111', 'trigger' => 'webhook'],
             ['ts' => '2026-10-12T10:00:00Z', 'event' => 'published', 'release' => 12, 'commit' => 'bbbbbbb2222', 'trigger' => 'api'],
@@ -148,6 +152,93 @@ test('the hub shows a deploy started outside Studio, with its log tail', functio
         ->assertSee('webhook')
         ->assertSee('12s')
         ->assertSee('Deploying release 14');
+});
+
+test('the hub follows a deploy started elsewhere on its own, not a stuck one, and reads the rest again when it ends', function () {
+    $running = ['app' => 'shop', 'state' => 'running', 'running' => true, 'phase' => 'deploy', 'queued' => false, 'locked' => true, 'current' => ['trigger' => 'webhook', 'elapsed' => 5], 'last' => null, 'tail' => []];
+    $now = $running;
+    Http::fake([
+        'api.cipi.test/api/apps/shop/deploy/status*' => function () use (&$now) {
+            return Http::response(['data' => $now]);
+        },
+    ]);
+    $account = cipiServer();
+    $resource = attachShop(Project::factory()->create(), $account);
+    $history = fn () => Http::recorded(fn (Request $r) => str_contains($r->url(), '/deploy/history'))->count();
+
+    $page = Livewire::actingAs(User::factory()->admin()->create())->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->assertSeeHtml('wire:poll.6s="pollDeploy"')
+        ->assertDontSeeHtml('wire:poll.3s');
+    $read = $history();
+
+    // still running: the card moves on, the history is not read again
+    $now = [...$running, 'current' => ['trigger' => 'webhook', 'elapsed' => 11]];
+    $this->travel(5)->seconds();
+    $page->call('pollDeploy')->assertSee('11s')->assertSeeHtml('wire:poll.6s="pollDeploy"');
+    expect($history())->toBe($read);
+
+    // over: the polling stops and the history is read again (the hub's and the card's)
+    $now = [...$running, 'state' => 'idle', 'running' => false, 'locked' => false, 'current' => null];
+    $this->travel(5)->seconds();
+    $page->call('pollDeploy')->assertDontSee('Deploy on the server')->assertDontSeeHtml('wire:poll');
+    expect($history())->toBeGreaterThan($read);
+});
+
+test('the hub shows a stuck deploy with Unlock, without polling it', function () {
+    Http::fake([
+        'api.cipi.test/api/apps/shop/deploy/status*' => Http::response(['data' => [
+            'app' => 'shop', 'state' => 'interrupted', 'running' => false, 'phase' => null, 'queued' => false, 'locked' => true, 'current' => null, 'last' => null,
+        ]]),
+    ]);
+    $account = cipiServer();
+    $resource = attachShop(Project::factory()->create(), $account);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->assertSee('interrupted')
+        ->assertSee('Unlock')
+        ->assertDontSeeHtml('wire:poll');
+});
+
+test('the hub says why there is no live deploy status instead of hiding it', function () {
+    Http::fake([
+        'api.cipi.test/api/apps/shop/deploy/status*' => Http::response(['error' => 'Token lacks the required ability'], 403),
+    ]);
+    $account = cipiServer();
+    $resource = attachShop(Project::factory()->create(), $account);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->assertSee('lacks the deploy-manage ability');
+});
+
+test('the deploy history reads the runs cipi/api answers, a bare list too, and the audit ledger on an older server', function () {
+    $runs = [['result' => 'failed', 'kind' => 'deploy', 'release' => 12, 'duration' => 41, 'finished_at' => '2026-10-12T10:00:41Z']];
+
+    Http::fake(['api.cipi.test/api/apps/shop/deploy/history*' => Http::sequence()
+        ->push(['data' => ['app' => 'shop', 'count' => 1, 'runs' => $runs, 'log' => '/home/shop/logs/deploy.log']])
+        ->push(['data' => $runs])
+        ->push(['error' => 'Deploy history needs Cipi 5.9.0+ — this server runs Cipi 5.8.4. Run: cipi self-update'], 503)
+        ->push(['error' => 'cipi deploy --history failed'], 503),
+    ]);
+    $app = CipiApp::fromAccount(cipiServer(), 'shop');
+
+    expect($app->deployHistory())->toBe($runs)
+        ->and($app->deployHistory())->toBe($runs)
+        ->and($app->deployHistory())->toBeNull()
+        ->and(fn () => $app->deployHistory())->toThrow(ConnectorException::class, 'cipi deploy --history failed');
+});
+
+test('a Cipi app\'s card says how its last deploy ended, from the deploy history', function () {
+    Http::fake([
+        'api.cipi.test/api/apps/shop/deploy/history*' => Http::response(['data' => ['app' => 'shop', 'count' => 1, 'log' => '', 'runs' => [
+            ['result' => 'failed', 'kind' => 'deploy', 'release' => 12, 'duration' => 41, 'branch' => 'main', 'finished_at' => '2026-10-12T10:00:41Z'],
+        ]]]),
+    ]);
+    $account = cipiServer();
+    $resource = attachShop(Project::factory()->create(), $account);
+
+    expect(Summary::of($resource))
+        ->facts->toHaveKey('Last deploy', 'failed · release 12 · main')
+        ->alerts->toContain('The last deploy failed.');
 });
 
 test('the hub shows the releases from the agent and deploys and rolls back for the roles allowed', function () {

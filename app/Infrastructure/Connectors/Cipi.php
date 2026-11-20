@@ -254,6 +254,19 @@ final class Cipi extends Connector
         }
     }
 
+    /**
+     * A list the server may be too old for (CipiApp::newer): its answer, or a note that says what
+     * it needs; a token without $ability gets a note that names it.
+     *
+     * @param  callable(): array<mixed>  $read
+     * @return array<mixed>
+     */
+    private function newer(callable $read, string $ability, string $needs): array
+    {
+        return CipiApp::newer($read, $ability)
+            ?? throw new ConnectorException(__('This server does not have it yet: it needs :needs or later (cipi self-update).', ['needs' => $needs]), 404);
+    }
+
     private function status(): Section
     {
         return Section::info('status', __('Server'), function (ApiClient $api) {
@@ -363,7 +376,8 @@ final class Cipi extends Connector
                     ->help(__('Label of this app\'s environment (`production`, `staging`…). From Cipi 5.8 / cipi/api 1.36: the release may carry `cipi-<env>.yml` instead of `cipi.yml`. Leave empty for production.')),
                 Field::text('repository', __('Git repository (SSH)'))->placeholder('git@github.com:acme/myapp.git'),
                 Field::text('branch', __('Branch'))->default('main'),
-                Field::select('php', __('PHP'), self::PHP)->default('8.6'),
+                Field::select('php', __('PHP'), ['' => __('Server default')] + self::PHP)->default('')
+                    ->help(__('Server default: the PHP the server runs. PHP 8.6 needs Cipi 5.9.1.')),
                 Field::select('engine', __('Database'), ['' => __('Server default'), 'mariadb' => 'MariaDB', 'pgsql' => 'PostgreSQL']),
                 Field::checkbox('custom', __('Not Laravel (custom PHP or static)')),
                 Field::text('docroot', __('Document root (custom apps)'))->placeholder('public'),
@@ -562,7 +576,7 @@ final class Cipi extends Connector
             ->childOf('apps', 'app')
             ->id('from')
             ->list(function (ApiClient $api, array $scope) {
-                $data = (array) ($api->get('/apps/'.$scope['app'].'/redirects')['data'] ?? []);
+                $data = (array) ($this->newer(fn () => $api->get('/apps/'.$scope['app'].'/redirects'), 'redirects-view', 'Cipi 5.4.1 and cipi/api 1.31')['data'] ?? []);
                 $rows = [];
                 $app = $data['redirect'] ?? $data['app'] ?? null;
 
@@ -571,12 +585,13 @@ final class Cipi extends Connector
                         'from' => '*',
                         'to' => $app['to'],
                         'code' => $app['code'] ?? 301,
-                        'enabled' => $app['enabled'] ?? true,
+                        'keep_path' => (bool) ($app['keep_path'] ?? true),
+                        'enabled' => (bool) ($app['enabled'] ?? true),
                         'kind' => 'app',
                     ];
                 } else {
-                    // A placeholder so whole-app actions stay reachable with an empty path list.
-                    $rows[] = ['from' => '*', 'to' => '', 'code' => '', 'kind' => 'app'];
+                    // A placeholder so the whole-app redirect can be set with an empty path list.
+                    $rows[] = ['from' => '*', 'to' => '', 'code' => '', 'kind' => 'app', 'enabled' => false];
                 }
 
                 foreach ((array) ($data['redirects'] ?? $data['paths'] ?? []) as $row) {
@@ -596,26 +611,31 @@ final class Cipi extends Connector
                 Field::text('from', __('Path'))->required()->placeholder('/old')->help(__('A path ending in / is a prefix.')),
                 Field::text('to', __('Target'))->required()->placeholder('https://example.com/new'),
                 Field::select('code', __('Status'), ['301' => '301', '302' => '302', '307' => '307', '308' => '308'])->default('301'),
-                Field::checkbox('keep_path', __('Keep the rest of the path')),
-            ], fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect saved.'), fn () => $api->post('/apps/'.$scope['app'].'/redirects', array_filter([
+                Field::checkbox('keep_path', __('Keep the rest of the path'))->default(true)
+                    ->help(__('Off for a target with ?query or #fragment.')),
+            ], fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect saved.'), fn () => $api->post('/apps/'.$scope['app'].'/redirects', [
                 'from' => $data['from'],
                 'to' => $data['to'],
-                'code' => (int) $data['code'],
-                'keep_path' => $data['keep_path'] ?: null,
-            ]))))
+                'code' => (int) ($data['code'] ?: 301),
+                // sent either way: the API keeps the path when it is missing
+                'keep_path' => (bool) $data['keep_path'],
+            ])))
             ->actions([
+                // Confirmed like Suspend: every request to the app goes elsewhere until it is turned off.
                 Action::make('app-redirect', __('Whole-app redirect'))->icon('globe-alt')->when(fn ($row) => ($row['kind'] ?? '') === 'app')->fields([
                     Field::text('to', __('Target URL'))->required()->placeholder('https://example.com')->default(fn ($row) => $row['to'] ?? null),
-                    Field::select('code', __('Status'), ['301' => '301', '302' => '302', '307' => '307', '308' => '308'])->default(fn ($row) => (string) ($row['code'] ?? '301')),
-                    Field::checkbox('keep_path', __('Keep the path')),
-                ])->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Whole-app redirect set.'), fn () => $api->put('/apps/'.$scope['app'].'/redirect', array_filter([
-                    'to' => $data['to'],
-                    'code' => (int) $data['code'],
-                    'keep_path' => $data['keep_path'] ?: null,
-                ])))),
-                Action::make('enable', __('Enable whole-app redirect'))->icon('play')->when(fn ($row) => ($row['kind'] ?? '') === 'app')
+                    Field::select('code', __('Status'), ['301' => '301', '302' => '302', '307' => '307', '308' => '308'])->default(fn ($row) => (string) (($row['code'] ?? '') ?: '301')),
+                    Field::checkbox('keep_path', __('Keep the path'))->default(fn ($row) => (bool) ($row['keep_path'] ?? true)),
+                ])->confirm(__('Send every request to this app to the target, on all its domains?'))
+                    ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Whole-app redirect set.'), fn () => $api->put('/apps/'.$scope['app'].'/redirect', [
+                        'to' => $data['to'],
+                        'code' => (int) ($data['code'] ?: 301),
+                        'keep_path' => (bool) $data['keep_path'],
+                    ]))),
+                Action::make('enable', __('Enable whole-app redirect'))->icon('play')->when(fn ($row) => ($row['kind'] ?? '') === 'app' && filled($row['to'] ?? null) && empty($row['enabled']))
+                    ->confirm(__('Send every request to this app to the target, on all its domains?'))
                     ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect enabled.'), fn () => $api->post('/apps/'.$scope['app'].'/redirect/enable'))),
-                Action::make('disable', __('Disable whole-app redirect'))->icon('pause')->when(fn ($row) => ($row['kind'] ?? '') === 'app')
+                Action::make('disable', __('Disable whole-app redirect'))->icon('pause')->when(fn ($row) => ($row['kind'] ?? '') === 'app' && filled($row['to'] ?? null) && ! empty($row['enabled']))
                     ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect disabled.'), fn () => $api->post('/apps/'.$scope['app'].'/redirect/disable'))),
                 Action::make('clear-app', __('Remove whole-app redirect'))->icon('x-mark')->when(fn ($row) => ($row['kind'] ?? '') === 'app' && filled($row['to'] ?? null))->confirm(__('Remove the whole-app redirect?'))
                     ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect removed.'), fn () => $api->delete('/apps/'.$scope['app'].'/redirect'))),
@@ -630,7 +650,7 @@ final class Cipi extends Connector
             ->childOf('apps', 'app')
             ->id('prefix')
             ->list(function (ApiClient $api, array $scope) {
-                $data = (array) ($api->get('/apps/'.$scope['app'].'/proxies')['data'] ?? []);
+                $data = (array) ($this->newer(fn () => $api->get('/apps/'.$scope['app'].'/proxies'), 'proxies-view', 'Cipi 5.4.1 and cipi/api 1.31')['data'] ?? []);
 
                 return array_values(array_filter(
                     (array) ($data['proxies'] ?? $data),
@@ -642,17 +662,21 @@ final class Cipi extends Connector
                 Column::make('upstream', __('Upstream'))->mono(),
                 Column::make('strip_prefix', __('Strip prefix'))->bool(),
             ])
-            ->create(__('Add a proxy'), [
-                Field::text('prefix', __('Prefix'))->required()->placeholder('/api'),
-                Field::text('upstream', __('Upstream'))->required()->placeholder('http://127.0.0.1:8080')->help(__('Loopback ports Cipi already uses are refused.')),
-                Field::checkbox('strip_prefix', __('Strip the prefix'))->default(true),
-                Field::checkbox('preserve_host', __('Preserve Host')),
-            ], fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Proxy saved.'), fn () => $api->post('/apps/'.$scope['app'].'/proxies', array_filter([
-                'prefix' => $data['prefix'],
-                'upstream' => $data['upstream'],
-                'strip_prefix' => $data['strip_prefix'] ?: null,
-                'preserve_host' => $data['preserve_host'] ?: null,
-            ]))))
+            // The usual create, confirmed: the requests under the prefix go to another server.
+            ->toolbar([
+                Action::make('create', __('Add a proxy'))->icon('plus')->primary()->fields([
+                    Field::text('prefix', __('Prefix'))->required()->placeholder('/api'),
+                    Field::text('upstream', __('Upstream'))->required()->placeholder('http://127.0.0.1:8080')->help(__('Loopback ports Cipi already uses are refused.')),
+                    Field::checkbox('strip_prefix', __('Strip the prefix'))->default(true),
+                    Field::checkbox('preserve_host', __('Preserve Host')),
+                ])->confirm(__('Send every request under this prefix, cookies included, to the upstream?'))
+                    ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Proxy saved.'), fn () => $api->post('/apps/'.$scope['app'].'/proxies', [
+                        'prefix' => $data['prefix'],
+                        'upstream' => $data['upstream'],
+                        'strip_prefix' => (bool) $data['strip_prefix'],
+                        'preserve_host' => (bool) $data['preserve_host'],
+                    ]))),
+            ])
             ->actions([
                 Action::make('delete', __('Remove'))->icon('trash')->danger(__('Remove this proxy?'))
                     ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Proxy removed.'), fn () => $api->delete('/apps/'.$scope['app'].'/proxies', ['prefix' => $row['prefix']]))),
@@ -664,13 +688,17 @@ final class Cipi extends Connector
         return Section::make('databases', __('Databases'))
             ->icon('circle-stack')
             ->id(fn ($row) => ($row['engine'] ?? '').':'.($row['name'] ?? ''))
-            ->list(fn (ApiClient $api) => array_values((array) ($api->get('/dbs')['data'] ?? [])))
+            ->list(fn (ApiClient $api) => array_map(
+                // size_mb from Cipi 5.9 / cipi/api 1.39, the size the table printed before
+                fn ($row) => is_array($row) ? [...$row, 'size' => is_numeric($row['size_mb'] ?? null) ? $row['size_mb'].' MB' : ($row['size'] ?? null)] : $row,
+                array_values((array) ($api->get('/dbs')['data'] ?? [])),
+            ))
             ->columns([
                 Column::make('name', __('Database'))->mono(),
                 Column::make('engine', __('Engine'))->badge(['mariadb' => 'blue', 'pgsql' => 'purple']),
                 Column::make('app', __('App'))->mono(),
                 Column::make('user', __('User'))->mono(),
-                Column::make('size_mb', __('Size (MB)')),
+                Column::make('size', __('Size')),
             ])
             ->create(__('New database'), [
                 Field::text('name', __('Name'))->required()->rules(['regex:/^[a-z][a-z0-9_]{2,31}$/']),
@@ -680,10 +708,11 @@ final class Cipi extends Connector
             ->actions([
                 Action::make('backup', __('Back up'))->icon('archive-box')
                     ->run(fn (ApiClient $api, array $row) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/backup', ['engine' => $row['engine'] ?? null])),
+                // Destructive, so the safe-actions hand-over leaves it out.
                 Action::make('restore', __('Restore from file'))->icon('arrow-up-tray')->fields([
-                    Field::text('file', __('Path on the server'))->required()->placeholder('/home/cipi/backups/shop.sql.gz')
-                        ->help(__('A .sql or .sql.gz already on the server. Chunked upload from Studio is not wired yet.')),
-                ])->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/restore', array_filter(['file' => $data['file'], 'engine' => $row['engine'] ?? null]))),
+                    Field::text('file', __('Path on the server'))->required()->placeholder('/home/cipi/backups/shop.sql.gz')->rules(['regex:/\.sql\.gz$/'])
+                        ->help(__('A .sql.gz dump already on the server. Uploading one from Studio is not wired yet.')),
+                ])->danger(__('Overwrite this database with the file? Everything in it now is replaced.'))->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/restore', array_filter(['file' => $data['file'], 'engine' => $row['engine'] ?? null]))),
                 Action::make('link', __('Link to an app'))->icon('link')->fields([
                     Field::text('app', __('App'))->required()->placeholder('myapp')->help(__('Cipi 5.9 / cipi/api 1.39.')),
                 ])->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/link', array_filter(['app' => $data['app'], 'engine' => $row['engine'] ?? null]))),
@@ -702,15 +731,7 @@ final class Cipi extends Connector
             ->icon('archive-box')
             ->id('name')
             ->list(function (ApiClient $api) {
-                try {
-                    $data = (array) ($api->get('/backups')['data'] ?? []);
-                } catch (ConnectorException $e) {
-                    if (in_array($e->getCode(), [403, 404, 503], true)) {
-                        return [];
-                    }
-
-                    throw $e;
-                }
+                $data = (array) ($this->newer(fn () => $api->get('/backups'), 'backups-view', 'Cipi 5.9 and cipi/api 1.39')['data'] ?? []);
 
                 if (array_key_exists('configured', $data) && $data['configured'] === false) {
                     return [];
@@ -739,6 +760,7 @@ final class Cipi extends Connector
                 Action::make('enable', __('Enable'))->icon('check')->when(fn ($row) => empty($row['enabled']))
                     ->run(fn (ApiClient $api, array $row) => tap(__('Profile enabled.'), fn () => $api->post('/backups/profiles/'.$row['name'].'/enable'))),
                 Action::make('disable', __('Disable'))->icon('pause')->when(fn ($row) => ! empty($row['enabled']))
+                    ->danger(__('Stop this backup profile on the server? Nothing it covers is backed up until it is enabled again.'))
                     ->run(fn (ApiClient $api, array $row) => tap(__('Profile disabled.'), fn () => $api->post('/backups/profiles/'.$row['name'].'/disable'))),
             ]);
     }
@@ -750,15 +772,7 @@ final class Cipi extends Connector
             ->icon('cube')
             ->id('major')
             ->list(function (ApiClient $api) {
-                try {
-                    $data = (array) ($api->get('/node')['data'] ?? []);
-                } catch (ConnectorException $e) {
-                    if (in_array($e->getCode(), [403, 404, 503], true)) {
-                        return [];
-                    }
-
-                    throw $e;
-                }
+                $data = (array) ($this->newer(fn () => $api->get('/node'), 'node-view', 'Cipi 5.4.1 and cipi/api 1.31')['data'] ?? []);
 
                 $default = $data['default'] ?? null;
 
@@ -778,7 +792,8 @@ final class Cipi extends Connector
                     $rows[] = [
                         'major' => $major,
                         'version' => $row['version'] ?? $row['full'] ?? $major,
-                        'apps' => $row['apps'] ?? count((array) ($row['app_list'] ?? [])),
+                        // the names of the apps on it (cipi/api): the column joins them
+                        'apps' => $row['apps'] ?? $row['app_list'] ?? [],
                         'default' => $row['default'] ?? ($default !== null && (string) $default === $major),
                     ];
                 }
@@ -795,11 +810,15 @@ final class Cipi extends Connector
                 Field::text('major', __('Major'))->required()->placeholder('22')->rules(['regex:/^\d+$/'])->help(__('Cipi 5.9 / cipi/api 1.39: `cipi node install`.')),
             ], fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/node/install', ['major' => $data['major']]))
             ->actions([
-                Action::make('upgrade', __('Upgrade'))->icon('arrow-up')
-                    ->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/node/upgrade', array_filter(['major' => $row['major'], 'restart' => true]))),
+                // Server-wide, so destructive: the safe-actions hand-over leaves them out.
+                Action::make('upgrade', __('Upgrade'))->icon('arrow-up')->when(fn ($row) => ($row['major'] ?? '') !== 'system')
+                    ->danger(__('Upgrade this Node major on the server and restart every app that runs on it?'))
+                    ->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/node/upgrade', ['major' => $row['major'], 'restart' => true])),
                 Action::make('default', __('Make default'))->icon('star')->when(fn ($row) => empty($row['default']))
+                    ->danger(__('Make this the server\'s default Node? Every app on the default runtime moves to it.'))
                     ->run(fn (ApiClient $api, array $row) => $this->job($api, 'PUT', '/node/default', ['major' => $row['major']])),
-                Action::make('delete', __('Remove'))->icon('trash')->danger(__('Remove this Node major from the server?'))
+                Action::make('delete', __('Remove'))->icon('trash')->when(fn ($row) => ($row['major'] ?? '') !== 'system')
+                    ->danger(__('Remove this Node major from the server? Apps that run on it stop working.'))
                     ->run(fn (ApiClient $api, array $row) => $this->job($api, 'DELETE', '/node/'.$row['major'])),
             ]);
     }

@@ -23,7 +23,7 @@ final class Field
 
     public ?string $placeholder = null;
 
-    /** @var array<string, string>|Closure|null */
+    /** @var array<array-key, string>|Closure|null */
     public array|Closure|null $options = null;
 
     /** @var list<string> */
@@ -61,7 +61,7 @@ final class Field
     }
 
     /**
-     * @param  array<string, string>|Closure  $options
+     * @param  array<array-key, string>|Closure  $options
      */
     public static function select(string $name, string $label, array|Closure $options): self
     {
@@ -69,7 +69,7 @@ final class Field
     }
 
     /**
-     * @param  array<string, string>|Closure  $options
+     * @param  array<array-key, string>|Closure  $options
      */
     public static function multiselect(string $name, string $label, array|Closure $options): self
     {
@@ -112,7 +112,7 @@ final class Field
     }
 
     /**
-     * @param  array<string, string>|Closure  $options
+     * @param  array<array-key, string>|Closure  $options
      */
     public function options(array|Closure $options): self
     {

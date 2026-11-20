@@ -10,13 +10,22 @@
 /** Reverb's socket is up: the conversation's news comes through it. */
 const live = () => window.Echo?.connector?.pusher?.connection?.state === 'connected';
 
+/**
+ * With the socket up, a turn that went quiet this long while Studio says it works gets one
+ * refresh anyway: a result the socket never brought (a bridge restart) would otherwise keep
+ * "working…" for good, since only a refresh lets the server see the bridge is idle.
+ */
+const QUIET_MS = 45000;
+
 function chatStream(uuid) {
     let channel = null;
     let timer = null;
     let refreshing = false;
     let again = false;
+    let heard = Date.now();
 
     const handler = function (event) {
+        heard = Date.now();
         const kind = event?.kind ?? '';
         if (kind === 'text_delta') {
             this.text += event.data?.text ?? '';
@@ -37,10 +46,18 @@ function chatStream(uuid) {
         live: live(),
 
         init() {
-            // no websocket (or it dropped): ask every few seconds while something is under way
+            // no websocket (or it dropped): ask every few seconds while something is under way;
+            // with it, ask once in a while when the turn has gone quiet
             timer = setInterval(() => {
                 this.live = live();
-                if (this.$root.dataset.polling === '1' && !this.live) this.refresh();
+                if (this.$root.dataset.polling !== '1') {
+                    heard = Date.now();
+                    return;
+                }
+                if (!this.live || Date.now() - heard > QUIET_MS) {
+                    heard = Date.now();
+                    this.refresh();
+                }
             }, 4000);
             if (!window.Echo) return;
             this.listener = handler.bind(this);

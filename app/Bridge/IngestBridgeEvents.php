@@ -427,7 +427,9 @@ final class IngestBridgeEvents
 
         $conversation->setStatus(ConversationStatus::Failed);
 
-        app(StartTurn::class)->flushFollowUp($conversation);
+        // No follow-up from here: the bridge sends an interrupted or crashed turn's error with its
+        // result right after, in the same batch. Started now, the next turn would be marked idle
+        // (or failed) by that result while it runs; result() starts it instead.
     }
 
     /**

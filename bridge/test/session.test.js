@@ -447,10 +447,29 @@ test('a session whose process is gone is free again: no stale wait blocks the ne
   await session.close();
   assert.equal(session.state, 'idle');
   assert.throws(() => session.answerPermission('req_1', 'allow'), /write it as a message/);
-  assert.equal(session.interrupt().state, 'idle');
+  assert.deepEqual([session.interrupt().state, session.interrupt().interrupted], ['idle', false]);
 
   // warming starts a fresh process, and the next message is taken
   session.warm({ permission_mode: 'default', callback: callback(studio) });
   session.sendTurn({ text: 'ciao', permission_mode: 'default', callback: callback(studio) });
   await waitFor(() => studio.events().some((e) => e.type === 'result' && e.result === 'Ho letto: ciao'));
+});
+
+test('interrupt says whether a turn was stopped, so Studio knows if its result is on the way', async (t) => {
+  const studio = await startCollector();
+  const session = new Session('18', testConfig(), { spawn: spawnFake });
+  t.after(async () => {
+    await session.close();
+    await studio.close();
+  });
+
+  session.sendTurn({ text: 'tool please', permission_mode: 'default', callback: callback(studio) });
+  await waitFor(() => studio.events().some((e) => e.type === 'permission_request'));
+
+  const stopped = session.interrupt();
+  assert.deepEqual([stopped.state, stopped.interrupted], ['idle', true]);
+  await waitFor(() => studio.events().some((e) => e.type === 'result' && e.subtype === 'interrupted'));
+
+  // nothing runs any more: a second interrupt stops nothing and no event follows
+  assert.equal(session.interrupt().interrupted, false);
 });

@@ -39,9 +39,13 @@ use Throwable;
  * @property-read Collection<int, SshKey> $systemKeys
  * @property-read array<string, mixed> $details
  * @property-read array<string, string> $env
+ * @property-read array<string, mixed>|null $deployStatus
  */
 class CipiAppHub extends Component
 {
+    /** Seconds a live deploy status is kept: a little less than the page reads it again. */
+    private const DEPLOY_STATUS_FRESH = 4;
+
     public const TABS = ['deploys', 'logs', 'env', 'yml', 'database', 'agent', 'actions'];
 
     #[Locked]
@@ -208,12 +212,15 @@ class CipiAppHub extends Component
             return null;
         }
 
-        return $this->read(fn () => $this->app()->releases(15), ['error' => __('The agent did not answer.')]);
+        // kept like the details: a page following a deploy renders every few seconds
+        return $this->read(fn () => Cache::remember($this->item()->account->cacheKey('cipi-releases', $this->item()->resource_id), 30, fn () => $this->app()->releases(15)), ['error' => __('The agent did not answer.')]);
     }
 
     /**
      * Live deploy status (cipi/api 1.37+): running / queued / interrupted / idle, whoever started
-     * it. Null when the role cannot see deploys or the server is older than Cipi 5.8.4.
+     * it. Kept a few seconds, so the renders of a page (and the pages open on the same app) share
+     * one call; null when the role cannot see deploys or the server is older than Cipi 5.8.4, and
+     * an error when the token or the command refused it.
      *
      * @return array<string, mixed>|null
      */
@@ -224,9 +231,32 @@ class CipiAppHub extends Component
             return null;
         }
 
-        $status = $this->read(fn () => $this->app()->deployStatus(60), null);
+        $status = $this->read(fn () => Cache::remember(
+            $this->item()->account->cacheKey('cipi-deploy-status', $this->item()->resource_id),
+            self::DEPLOY_STATUS_FRESH,
+            fn () => ['status' => $this->app()->deployStatus(60)],
+        )['status']);
 
-        return is_array($status) && isset($status['state']) ? $status : null;
+        return is_array($status) && (isset($status['state']) || isset($status['error'])) ? $status : null;
+    }
+
+    /** Whether a deploy is running or waiting on the server: the page then follows it. A stuck (interrupted) one is not followed. */
+    public function deployLive(): bool
+    {
+        return in_array($this->deployStatus['state'] ?? '', ['running', 'queued'], true);
+    }
+
+    /**
+     * A deploy started outside Studio (a Git push…), followed on its own: only its status is
+     * read again; the releases, the history and the server's figures once it has ended.
+     */
+    public function pollDeploy(): void
+    {
+        unset($this->deployStatus);
+
+        if ($this->deployStatus !== null && ! $this->deployLive()) {
+            $this->forget();
+        }
     }
 
     /**
@@ -241,15 +271,11 @@ class CipiAppHub extends Component
             return [];
         }
 
-        return $this->read(function () {
+        return $this->read(fn () => Cache::remember($this->item()->account->cacheKey('cipi-history', $this->item()->resource_id), 30, function () {
             $history = $this->app()->deployHistory(30);
 
-            if ($history !== null) {
-                return $history;
-            }
-
-            return array_slice($this->app()->audit(90), 0, 30);
-        });
+            return $history ?? array_slice($this->app()->audit(90), 0, 30);
+        }));
     }
 
     public function deploy(): void
@@ -303,8 +329,8 @@ class CipiAppHub extends Component
 
     public function pollJob(): void
     {
-        // Also used while a deploy started outside Studio (Git push…) is live: refresh that card.
-        unset($this->deployStatus, $this->releases, $this->audit);
+        // the deploy card follows the job too; the releases and the history wait for its end
+        unset($this->deployStatus);
 
         if ($this->job === null) {
             return;

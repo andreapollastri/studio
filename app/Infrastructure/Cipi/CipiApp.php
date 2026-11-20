@@ -156,23 +156,16 @@ final class CipiApp
     /**
      * Whether a deploy is running right now, whoever started it (webhook, CLI, panel, rollback): state,
      * phase, current run, last finished run, optional log tail. Cipi 5.8.4 and cipi/api 1.37, ability
-     * deploy-manage. Null when the server is older (503) or the token cannot read it (403).
+     * deploy-manage. Null when the server is older (see unsupported()); a token without
+     * deploy-manage, or a failure of the command, is a ConnectorException that says so.
      *
      * @return array{app?: string, state: string, running: bool, phase: ?string, queued: bool, locked: bool, current: ?array<string, mixed>, last: ?array<string, mixed>, log?: string, tail?: list<string>}|null
      */
     public function deployStatus(int $tail = 50): ?array
     {
-        try {
-            $data = (array) ($this->api->get($this->path('/deploy/status'), ['tail' => max(0, min(500, $tail))])['data'] ?? []);
-        } catch (ConnectorException $e) {
-            if (in_array($e->getCode(), [403, 404, 503], true)) {
-                return null;
-            }
+        $data = self::newer(fn () => (array) ($this->api->get($this->path('/deploy/status'), ['tail' => max(0, min(500, $tail))])['data'] ?? []), 'deploy-manage');
 
-            throw $e;
-        }
-
-        if (! isset($data['state'])) {
+        if (! is_array($data) || ! isset($data['state'])) {
             return null;
         }
 
@@ -200,23 +193,22 @@ final class CipiApp
 
     /**
      * Past deploys and rollbacks from the deploy log (and its rotated files), newest first: result,
-     * duration, trigger, branch. Cipi 5.9.0 and cipi/api 1.39. Null when the server is older.
+     * duration, trigger, branch. Cipi 5.9.0 and cipi/api 1.39: `data` is {app, count, runs, log};
+     * a bare list of runs is read as well. Null when the server is older (see unsupported()).
      *
      * @return list<array<string, mixed>>|null
      */
     public function deployHistory(int $limit = 30): ?array
     {
-        try {
-            $rows = (array) ($this->api->get($this->path('/deploy/history'), ['limit' => max(1, min(500, $limit))])['data'] ?? []);
-        } catch (ConnectorException $e) {
-            if (in_array($e->getCode(), [403, 404, 503], true)) {
-                return null;
-            }
+        $data = self::newer(fn () => (array) ($this->api->get($this->path('/deploy/history'), ['limit' => max(1, min(500, $limit))])['data'] ?? []), 'apps-view or deploy-manage');
 
-            throw $e;
+        if (! is_array($data)) {
+            return null;
         }
 
-        return array_values(array_filter($rows, 'is_array'));
+        $runs = array_key_exists('runs', $data) ? (array) $data['runs'] : (array_is_list($data) ? $data : []);
+
+        return array_values(array_filter($runs, 'is_array'));
     }
 
     /** Deploy, roll back to the previous release, unlock a stuck deploy, back up the database: a job id to poll. */
@@ -328,6 +320,54 @@ final class CipiApp
             'blockers' => self::texts($result['blockers'] ?? []),
             'errors' => self::texts($result['errors'] ?? []),
         ];
+    }
+
+    /**
+     * A feature this server may be too old for: what $read returns, or null when the server says it
+     * does not have it yet. A token without $ability (403) becomes a ConnectorException that names
+     * the ability; any other failure, a 503 of a command that failed included, goes through as it is.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $read
+     * @return T|null
+     */
+    public static function newer(callable $read, string $ability): mixed
+    {
+        try {
+            return $read();
+        } catch (ConnectorException $e) {
+            if (self::unsupported($e)) {
+                return null;
+            }
+
+            if ($e->getCode() === 403) {
+                throw new ConnectorException(self::missingAbility($e, $ability), 403, $e);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Whether a failure means the server does not have the feature yet: a 404 of a route its
+     * cipi/api does not know (not the 404 of an unknown app), or the 503 cipi/api answers when the
+     * core is too old ("Deploy status needs Cipi 5.8.4+ — this server runs Cipi 5.8.3…",
+     * CipiVersionService::require). Any other 503 is a command that failed, and an error.
+     */
+    public static function unsupported(ConnectorException $e): bool
+    {
+        if ($e->getCode() === 404) {
+            return preg_match("/App '[^']*' not found/i", $e->getMessage()) !== 1;
+        }
+
+        return $e->getCode() === 503 && preg_match('/needs Cipi \d[\d.]*\+/i', $e->getMessage()) === 1;
+    }
+
+    /** The note for a 403: the token lacks $ability. */
+    public static function missingAbility(ConnectorException $e, string $ability): string
+    {
+        return __('The Cipi API token lacks the :ability ability: create one with it (cipi api token create, or --full-access from Cipi 5.9). Cipi said: :reason', ['ability' => $ability, 'reason' => $e->getMessage()]);
     }
 
     /**

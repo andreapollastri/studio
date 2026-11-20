@@ -105,12 +105,12 @@ return [
         'last' => ['result' => 'ok', 'kind' => 'deploy', 'release' => 44, 'duration' => 47, 'trigger' => 'webhook', 'finished_at' => $ago('2 hours')],
         'tail' => [],
     ]]),
-    'api.web1.agency.test/api/apps/shopacme/deploy/history*' => Http::response(['data' => [
+    'api.web1.agency.test/api/apps/shopacme/deploy/history*' => Http::response(['data' => ['app' => 'shopacme', 'count' => 4, 'log' => '/home/shopacme/logs/deploy.log', 'runs' => [
         ['result' => 'ok', 'kind' => 'deploy', 'release' => 44, 'duration' => 47, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => $ago('2 hours')],
         ['result' => 'ok', 'kind' => 'deploy', 'release' => 43, 'duration' => 52, 'trigger' => 'panel', 'branch' => 'main', 'finished_at' => $ago('4 days')],
         ['result' => 'failed', 'kind' => 'deploy', 'release' => 42, 'duration' => 18, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => $ago('4 days')],
         ['result' => 'ok', 'kind' => 'deploy', 'release' => 41, 'duration' => 39, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => $ago('9 days')],
-    ]]),
+    ]]]),
     'api.web1.agency.test/api/apps/shopacme/deploy/audit*' => Http::response(['data' => ['app' => 'shopacme', 'records' => [
         ['ts' => $ago('9 days'), 'event' => 'published', 'release' => 41, 'commit' => 'a1b2c3d4e5f6', 'trigger' => 'webhook', 'claimed' => ['actor' => 'lucabianchi']],
         ['ts' => $ago('4 days'), 'event' => 'failed', 'release' => 42, 'commit' => '0f9e8d7c6b5a', 'trigger' => 'webhook', 'claimed' => ['actor' => 'mariarossi']],
