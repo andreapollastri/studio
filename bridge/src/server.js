@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import { SessionManager } from './sessions.js';
 import { BridgeError } from './session.js';
 import { listSkills } from './skills.js';
+import { listModels } from './models.js';
 import {
   GitError,
   gitBranches,
@@ -114,6 +115,25 @@ export function createServer(config, options = {}) {
         const home = process.env.HOME || homedir();
         const claudeDir = /^\.claude(-[a-z0-9]{1,40})?$/.test(asked) ? join(home, asked) : (process.env.CLAUDE_CONFIG_DIR || join(home, '.claude'));
         return json(res, 200, { skills: await listSkills(dir, { claudeDir }) });
+      }
+
+      // Models for the chat picker: Cursor lists what the account can use; Claude uses the
+      // Anthropic Models API (API key), a gateway cache, or the built-in aliases.
+      if (req.method === 'POST' && path === '/models') {
+        const body = await readJson(req, config.maxBodyBytes);
+        return json(res, 200, {
+          models: await listModels({
+            agent: body.agent,
+            cursorDir: body.cursor_dir ?? null,
+            apiKey: body.api_key ?? null,
+            claudeDir: body.claude_dir ?? null,
+          }, {
+            cursorBin: config.cursorBin,
+            home: config.home || process.env.HOME || homedir(),
+            spawn: options.spawn,
+            fetch: options.fetch,
+          }),
+        });
       }
 
       if (path === '/git' || path.startsWith('/git/')) {

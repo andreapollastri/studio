@@ -92,7 +92,7 @@ class Chat extends Component
     /** The model list changes with the agent: drop a choice the other side does not offer. */
     public function updatedAgent(string $value): void
     {
-        $ids = array_column((array) config($value === 'cursor' ? 'studio.cursor_models' : 'studio.models', []), 'id');
+        $ids = array_column($this->availableModelsFor($value === 'cursor' ? 'cursor' : 'claude'), 'id');
 
         if (! in_array($this->model, $ids, true)) {
             $this->model = '';
@@ -113,7 +113,7 @@ class Chat extends Component
         $this->authorize('update', $this->conversation);
 
         $agent = $this->agent === 'cursor' ? 'cursor' : 'claude';
-        $models = array_column((array) config($agent === 'cursor' ? 'studio.cursor_models' : 'studio.models', []), 'id');
+        $models = array_column($this->availableModelsFor($agent), 'id');
         $modes = $this->allowedModes();
 
         $this->validate([
@@ -651,7 +651,7 @@ class Chat extends Component
 
         return view('livewire.studio.chat', [
             'canChat' => auth()->user()->can('chat', $this->conversation->workspace->project) && $this->conversation->user_id === auth()->id(),
-            'models' => (array) config($this->agent === 'cursor' ? 'studio.cursor_models' : 'studio.models', []),
+            'models' => $this->availableModelsFor($this->agent === 'cursor' ? 'cursor' : 'claude'),
             'efforts' => (array) config('studio.efforts', []),
             'modes' => array_intersect_key((array) config('studio.modes', []), array_flip($this->allowedModes())),
             'mcpNames' => array_keys((new BridgeClient($this->conversation->workspace))->mcpServers($this->conversation) ?? []),
@@ -661,5 +661,70 @@ class Chat extends Component
             'roleRules' => AllowRules::forRole($owner, $project),
             'ownRules' => PermissionRule::query()->where('user_id', $owner->id)->where('project_id', $project->id)->orderBy('id')->get(),
         ]);
+    }
+
+    /**
+     * Models for the settings picker: what the bridge reports for this agent (Cursor
+     * account / Claude API or aliases), with config/studio.php as a quiet fallback.
+     *
+     * @return list<array{id: string, label: string, hint?: string}>
+     */
+    public function availableModelsFor(string $agent): array
+    {
+        $agent = $agent === 'cursor' ? 'cursor' : 'claude';
+        $fallback = array_values((array) config($agent === 'cursor' ? 'studio.cursor_models' : 'studio.models', []));
+
+        if (! $this->conversation->workspace->isRunning()) {
+            return $fallback;
+        }
+
+        try {
+            $listed = Cache::remember('studio.models.'.$this->conversation->id.'.'.$agent, 120, function () use ($agent, $fallback) {
+                $models = (new BridgeClient(
+                    $this->conversation->workspace,
+                    $this->conversation->isSandboxed() ? $this->conversation->sandboxName() : null,
+                ))->models($this->conversation, $agent);
+
+                return $models !== [] ? $this->enrichModelLabels($models, $fallback) : $fallback;
+            });
+        } catch (Throwable $e) {
+            report($e);
+
+            return $fallback;
+        }
+
+        return is_array($listed) ? $listed : $fallback;
+    }
+
+    /**
+     * Prefer Studio's curated label/hint when the same id is in config.
+     *
+     * @param  list<array{id: string, label: string, hint?: string}>  $models
+     * @param  list<array{id: string, label: string, hint?: string}>  $fallback
+     * @return list<array{id: string, label: string, hint?: string}>
+     */
+    private function enrichModelLabels(array $models, array $fallback): array
+    {
+        $byId = [];
+        foreach ($fallback as $row) {
+            if (is_array($row) && is_string($row['id'] ?? null)) {
+                $byId[$row['id']] = $row;
+            }
+        }
+
+        return array_map(function (array $model) use ($byId) {
+            $known = $byId[$model['id']] ?? null;
+            if ($known === null) {
+                return $model;
+            }
+
+            return [
+                'id' => $model['id'],
+                'label' => (string) ($known['label'] ?? $model['label']),
+                ...((isset($known['hint']) || isset($model['hint']))
+                    ? ['hint' => (string) ($known['hint'] ?? $model['hint'])]
+                    : []),
+            ];
+        }, $models);
     }
 }

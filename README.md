@@ -102,7 +102,7 @@ a new major of a database stays a decision for a person.
 Inside a conversation the chat is the full Claude Code CLI: subagents, plan mode, skills and slash commands,
 MCP servers from the repository, hooks. Studio adds a browser signed in to the preview (screenshots show in the
 chat), subagent cards with `code-reviewer` and `browser-qa`, and conversations in a sandbox of their own
-(worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* picks the model, the effort and the permission mode
+(worktree, branch, database and preview) that run side by side and merge back into the workspace. *Model & mode* loads models from the chat agent (Cursor’s `agent models`, or Claude’s API / aliases), and picks the effort and the permission mode
 (ask, ask with edits, autopilot, plan only); the *Terminal* tab is a shell in the workspace, on a real terminal; the *Files* tab is a file manager (uploads, moves, zips) with the editor of VS Code; the *Git* tab shows the working tree, the commit graph and the branches; *Doc* shows the README as a page; *Db* opens the workspace's database, the project site's or the project's connections in the database client. Project settings switch the scheduler, queue workers and Reverb per project, narrow who can open its hosts (every address of a project is behind the Studio login and the project assignment, in any role, and the site's public address on a client's domain, per project, either public or behind the browser's sign-in with a Studio account; address lists per site, previews and branch), and add remote MCP servers to the project's chats.
 
 **A project is a hub.** Its page has tabs: *Workspace* (the chat, the preview, the changes, the terminal, the files),
@@ -205,7 +205,7 @@ shows the result on her own branch.
 </tr>
 <tr>
 <td width="50%"><img src="docs/img/chat-tools-open.png" alt="The chat with Details on: every command and its result expanded"><br><sub><strong>Details.</strong> Each tool call is a row; Details expands them all with their results and the agent's reasoning.</sub></td>
-<td width="50%"><img src="docs/img/chat-settings.png" alt="The Model and mode dialog: model, effort, four permission modes, what runs without asking"><br><sub><strong>Model &amp; mode.</strong> Model, effort and the permission mode of this conversation; below, what runs without asking and the MCP servers it gets from the project.</sub></td>
+<td width="50%"><img src="docs/img/chat-settings.png" alt="The Model and mode dialog: model, effort, four permission modes, what runs without asking"><br><sub><strong>Model &amp; mode.</strong> Models from the chat agent (Cursor or Claude), effort and the permission mode of this conversation; below, what runs without asking and the MCP servers it gets from the project.</sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/img/chat-skills.png" alt="The chat input with /lara typed and the menu of the Larapilot skills above it"><br><sub><strong>"/" lists the skills.</strong> The repository's skills and commands and your own, filtered as you type; Enter starts one, Tab writes it so a request can follow.</sub></td>
@@ -439,4 +439,4 @@ browser ──wss /ssh/ws──▶ ssh-gateway ──SSH──▶ any host
 
 ## Configuration
 
-See `config/studio.php` (drivers, permission presets, models) and `.env.example`.
+See `config/studio.php` (drivers, permission presets, model fallbacks) and `.env.example`.

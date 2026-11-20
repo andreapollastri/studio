@@ -26,6 +26,8 @@ test('health is open, everything else wants the bearer token', async () => {
   assert.equal((await fetch(`${base}/skills`, { headers: { authorization: 'Bearer bridge-secret-but-longer' } })).status, 401);
   assert.equal((await fetch(`${base}/skills`, { headers: { authorization: 'Bearer wrong' } })).status, 401);
   assert.equal((await fetch(`${base}/skills`, { headers })).status, 200);
+  assert.equal((await fetch(`${base}/models`, { method: 'POST' })).status, 401);
+  assert.equal((await fetch(`${base}/models`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: '{}' })).status, 200);
   assert.equal((await fetch(`${base}/nothing`, { headers })).status, 404);
 
   await server.shutdown();

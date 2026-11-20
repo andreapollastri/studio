@@ -100,6 +100,30 @@ test('an unknown model is refused', function () {
         ->assertHasErrors(['model']);
 });
 
+test('the model picker prefers the bridge list for the chat agent', function () {
+    [$user, $conversation] = pmWithConversation();
+    Http::fake([
+        'http://bridge.test:4455/models' => Http::response(['models' => [
+            ['id' => '', 'label' => 'Default'],
+            ['id' => 'claude-opus-5-5', 'label' => 'Opus 5.5', 'hint' => 'From account'],
+            ['id' => 'live-only-model', 'label' => 'Live Only'],
+        ]]),
+    ]);
+
+    $component = Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation]);
+
+    $models = $component->instance()->availableModelsFor('claude');
+    expect(array_column($models, 'id'))->toBe(['', 'claude-opus-5-5', 'live-only-model'])
+        ->and(collect($models)->firstWhere('id', 'claude-opus-5-5')['hint'] ?? null)->toBe('Long-running agentic coding');
+
+    $component->set('model', 'live-only-model')->call('saveSettings')->assertHasNoErrors();
+    expect($conversation->fresh()->model)->toBe('live-only-model');
+
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://bridge.test:4455/models'
+        && $request['agent'] === 'claude');
+});
+
 test('Cursor can pick a model and the bridge receives it on the next turn', function () {
     [$user, $conversation] = pmWithConversation();
     CursorAccount::factory()->for($user)->create(['name' => 'Work', 'dir' => '.cursor-work', 'signed_in' => true]);

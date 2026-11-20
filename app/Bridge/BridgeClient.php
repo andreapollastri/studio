@@ -133,6 +133,56 @@ final class BridgeClient implements FileStore
     }
 
     /**
+     * Models the chat picker can offer for this conversation's agent: Cursor lists what the
+     * signed-in account may use; Claude uses the Anthropic Models API (API key), a gateway
+     * cache, or Claude Code's aliases. Empty when the bridge returns nothing usable.
+     *
+     * @param  'claude'|'cursor'|null  $agent  Override when the UI agent is not saved yet.
+     * @return list<array{id: string, label: string, hint?: string}>
+     */
+    public function models(Conversation $conversation, ?string $agent = null): array
+    {
+        $agent = ($agent ?? $conversation->agent) === 'cursor' ? 'cursor' : 'claude';
+        $payload = ['agent' => $agent];
+
+        if ($agent === 'cursor') {
+            $payload['cursor_dir'] = Accounts::cursor($conversation->user)?->dir;
+        } else {
+            $account = $this->claudeAccount($conversation);
+            $payload['api_key'] = $account['api_key'] ?? null;
+            $payload['claude_dir'] = $account['claude_dir'] ?? null;
+        }
+
+        $data = $this->request(fn (PendingRequest $http) => $http->timeout(25)->post('/models', array_filter(
+            $payload,
+            fn ($value) => $value !== null && $value !== '',
+        )));
+
+        $models = [];
+
+        foreach ((array) ($data['models'] ?? []) as $model) {
+            if (! is_array($model) || ! array_key_exists('id', $model) || ! is_string($model['id'])) {
+                continue;
+            }
+
+            $entry = [
+                'id' => $model['id'],
+                'label' => is_string($model['label'] ?? null) && $model['label'] !== ''
+                    ? $model['label']
+                    : ($model['id'] === '' ? ($agent === 'cursor' ? 'Auto' : 'Default') : $model['id']),
+            ];
+
+            if (is_string($model['hint'] ?? null) && $model['hint'] !== '') {
+                $entry['hint'] = $model['hint'];
+            }
+
+            $models[] = $entry;
+        }
+
+        return $models;
+    }
+
+    /**
      * How the turn signs in to Claude: auth, the account (a change restarts the CLI on the same
      * session), the API key or the folder of the subscription's sign-in in the person's home.
      *

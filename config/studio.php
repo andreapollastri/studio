@@ -250,8 +250,10 @@ return [
     |--------------------------------------------------------------------------
     | Models and effort
     |--------------------------------------------------------------------------
-    | What the chat offers for Claude Code. An empty model leaves Claude Code's
-    | own default. IDs match Anthropic's current aliases (code.claude.com).
+    | Fallback / label hints when the workspace bridge cannot list models live.
+    | The chat prefers Cursor's `agent models` and Claude's Models API (or
+    | Claude Code aliases) for the conversation's agent. An empty id leaves
+    | the CLI's own default.
     */
     'models' => [
         ['id' => '', 'label' => 'Default'],
@@ -265,8 +267,8 @@ return [
     ],
 
     /*
-    | Cursor's CLI --model values. An empty id is Auto. Availability still
-    | depends on the person's Cursor plan; the CLI refuses what the account cannot use.
+    | Fallback Cursor --model values when `agent models` is unavailable. An empty
+    | id is Auto. Live availability still follows the person's Cursor plan.
     */
     'cursor_models' => [
         ['id' => '', 'label' => 'Auto'],
