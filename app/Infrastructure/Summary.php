@@ -108,6 +108,7 @@ final class Summary
         $app = CipiApp::fromResource($resource);
         $card['facts'] = array_filter([
             __('Domain') => (string) ($row['domain'] ?? ''),
+            __('Env') => (string) ($row['env'] ?? ''),
             __('PHP') => (string) ($row['php'] ?? ''),
             __('Branch') => (string) ($row['branch'] ?? ''),
         ]);
@@ -115,13 +116,28 @@ final class Summary
             ? ['label' => __('suspended'), 'color' => 'amber']
             : ['label' => __('online'), 'color' => 'green'];
 
-        $last = Arr::first(self::quietly(fn () => $app->audit(30)) ?? []);
+        $live = self::quietly(fn () => $app->deployStatus(0));
+
+        if (is_array($live) && in_array($live['state'] ?? '', ['running', 'queued', 'interrupted'], true)) {
+            $card['status'] = match ($live['state']) {
+                'queued' => ['label' => __('deploy queued'), 'color' => 'amber'],
+                'interrupted' => ['label' => __('deploy stuck'), 'color' => 'red'],
+                default => ['label' => __('deploying'), 'color' => 'sky'],
+            };
+            $trigger = data_get($live, 'current.trigger');
+            $elapsed = data_get($live, 'current.elapsed');
+            $card['facts'][__('Deploy')] = trim(($live['phase'] ?? $live['state']).($trigger ? ' · '.$trigger : '').(is_numeric($elapsed) ? ' · '.$elapsed.'s' : ''));
+        }
+
+        $history = self::quietly(fn () => $app->deployHistory(1));
+        $last = is_array($history) ? Arr::first($history) : Arr::first(self::quietly(fn () => $app->audit(30)) ?? []);
 
         if (is_array($last)) {
-            $card['facts'][__('Last deploy')] = trim(($last['event'] ?? '').' · '.__('release :release', ['release' => $last['release'] ?? '?']).' · '.substr((string) ($last['commit'] ?? ''), 0, 7));
-            $card['facts'][__('When')] = self::ago($last['ts'] ?? null);
+            $event = (string) ($last['event'] ?? $last['result'] ?? $last['kind'] ?? '');
+            $card['facts'][__('Last deploy')] = trim($event.' · '.__('release :release', ['release' => $last['release'] ?? '?']).' · '.substr((string) ($last['commit'] ?? $last['branch'] ?? ''), 0, 12));
+            $card['facts'][__('When')] = self::ago($last['ts'] ?? $last['finished_at'] ?? $last['started_at'] ?? null);
 
-            if (($last['event'] ?? '') === 'failed') {
+            if (in_array($event, ['failed', 'fail'], true) || ($last['result'] ?? '') === 'failed') {
                 $card['alerts'][] = __('The last deploy failed.');
             }
         }

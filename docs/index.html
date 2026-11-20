@@ -1930,6 +1930,10 @@
             a Claude Code gateway cache, or the <code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code>
             aliases. Effort gains <em>Extra high</em>. Cursor runs with MCP servers approved and the CLI sandbox off.
             Studio adds a <code>test-runner</code> subagent. See <a href="#work-settings">Model, effort, autopilot</a>.</dd></dl>
+          <dl><dt>Cipi API 1.36–1.39 (2.4.17)</dt><dd>Environment label per app, live deploy status (a Git push included),
+            deploy history with duration, redirects and proxies, databases linked to an app, backup profiles, Node runtimes,
+            and the API version on the server page. Needs Cipi 5.8+ / 5.9+ for each feature; older servers leave them out.
+            See <a href="#infra-cipi">Cipi</a>.</dd></dl>
           <dl><dt>Vite+ 1.3.0 (2.4.12)</dt><dd>The asset build moves to Vite+ 1.3.0, with Vitest 5.0.5, the release with
             the fix for Vitest 5's dev servers serving <code>.env</code> and keys. No server was exposed: earlier releases built
             with Vitest 4, and Studio runs no Vitest server.</dd></dl>
@@ -4742,11 +4746,14 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <p>Servers run with <a href="https://cipi.sh/" target="_blank" rel="noopener">Cipi</a>: one Studio account per
             server, through the Cipi API, the same the Cipi GUI uses to manage a fleet.</p>
         </div>
-        <p>The server's status, services, PHP and disk by app; apps (create Laravel, custom or Octane apps; deploy, roll back,
-          unlock, deploy history, aliases, SSL over HTTP or Cloudflare DNS-01 with wildcards, force HTTPS, www redirect,
-          Artisan, whitelisted commands, logs, <code>.env</code> read and set, edit domain, PHP, repository and branch,
-          password protection, health check, limits, cipi.yml plan, apply and auto-apply, fix permissions, suspend, delete), databases (create, backup, new
-          password), services (restart), the cipi user's SSH keys, PHP versions (install).</p>
+        <p>The server's status (Cipi and, from cipi/api 1.39.1, the API package), services, PHP, Node runtimes, disk by app
+          and backup profiles; apps (create Laravel, custom, Octane or Node apps; environment label; deploy, roll back,
+          unlock, live deploy status, deploy history, aliases, path and whole-app redirects, prefix proxies, SSL over HTTP or
+          Cloudflare DNS-01 with wildcards, force HTTPS, www redirect, Artisan, whitelisted commands, logs,
+          <code>.env</code> read and set, edit domain, environment, PHP, repository and branch, password protection, health
+          check, limits, cipi.yml plan, apply and auto-apply, Node status and restart, fix permissions, suspend, delete),
+          databases (create, link to an app, backup, restore from a file on the server, new password), services (restart),
+          the cipi user's SSH keys, PHP versions (install).</p>
 
         <h3>The credentials</h3>
         <ol>
@@ -4754,12 +4761,15 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <li>On the server, as root: <code>cipi api api.server1.example.com</code>, then <code>cipi api ssl</code> for its
             certificate.</li>
           <li><code>cipi api token create</code>, choosing the abilities when asked (<code>php artisan cipi:token-abilities</code>
-            lists them). For everything Studio does: apps-view, apps-create, apps-edit, apps-delete, apps-suspend,
-            apps-basicauth, apps-env, apps-artisan, apps-run, deploy-manage, aliases-view, aliases-create, aliases-delete,
-            ssl-manage, www-manage, dbs-view, dbs-create, dbs-manage, services-view, services-manage, ssh-view, ssh-manage,
-            php-view, php-manage, health-view, status-view, disk-view, yml-view, yml-manage. With fewer, the matching tabs and
-            actions answer 403; without yml-view or yml-manage (tokens created before Cipi 5.6.4 lack them) the
-            <em>cipi.yml</em> tab says so.</li>
+            lists them). From Cipi 5.9 / cipi/api 1.39, <code>cipi api token create --full-access</code> covers everything,
+            including abilities later versions add. Otherwise pick at least: apps-view, apps-create, apps-edit, apps-delete,
+            apps-suspend, apps-basicauth, apps-env, apps-artisan, apps-run, deploy-manage, aliases-view, aliases-create,
+            aliases-delete, redirects-view, redirects-manage, proxies-view, proxies-manage, ssl-manage, www-manage, dbs-view,
+            dbs-create, dbs-manage, backups-view, backups-manage, node-view, node-manage, node-runtimes-manage, services-view,
+            services-manage, ssh-view, ssh-manage, php-view, php-manage, health-view, status-view, disk-view, yml-view,
+            yml-manage. With fewer, the matching tabs and actions answer 403; without yml-view or yml-manage (tokens created
+            before Cipi 5.6.4 lack them) the <em>cipi.yml</em> tab says so; without the 1.39 abilities, Backups and Node stay
+            empty on an older token.</li>
           <li>If the API's IP allowlist is in use, add Studio's server: <code>cipi api ip-whitelist add &lt;Studio's IP&gt;</code>.</li>
           <li>In Studio: the <strong>API address</strong> (<code>https://api.server1.example.com</code>) and the
             <strong>API token</strong>. Name the account after the server. Revoke an old token with
@@ -4768,16 +4778,22 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
 
         <h3>Typical tasks</h3>
         <ul>
-          <li><strong>A new Laravel app</strong>: <em>Apps → New app</em> with user, domain, repository (SSH address), branch,
-            PHP and database. The result window holds the app's SSH and database passwords, the deploy key and the webhook:
-            save them, add the deploy key to the repository, the webhook to the git host. Then <em>Deploy</em>, then
-            <em>Install SSL</em>.</li>
+          <li><strong>A new Laravel app</strong>: <em>Apps → New app</em> with user, domain, optional environment label
+            (<code>production</code>, <code>staging</code>… — from Cipi 5.8 / cipi/api 1.36 the release may carry
+            <code>cipi-{env}.yml</code>), repository (SSH address), branch, PHP and database. The result window holds the
+            app's SSH and database passwords, the deploy key and the webhook: save them, add the deploy key to the
+            repository, the webhook to the git host. Then <em>Deploy</em>, then <em>Install SSL</em>.</li>
           <li><strong>One more domain</strong>: the app's <em>Aliases → Add an alias</em>, then <em>Install SSL</em> again so
-            the certificate covers it; <em>www redirect</em> chooses between www and the bare domain.</li>
+            the certificate covers it; <em>www redirect</em> chooses between www and the bare domain;
+            <em>Redirects</em> and <em>Proxies</em> add path redirects and prefix reverse proxies.</li>
           <li><strong>Something broke after a deploy</strong>: <em>Logs</em> (Laravel, nginx, PHP-FPM, workers, deploy), then
-            <em>Roll back</em>; <em>Unlock the deploy</em> only when a deploy is stuck.</li>
+            <em>Roll back</em>; <em>Deploy status</em> shows a deploy in flight (a Git push included); <em>Unlock the
+            deploy</em> only when it is stuck (<code>interrupted</code>).</li>
           <li><strong>A setting</strong>: <em>Set .env keys</em> (<code>KEY=value</code> per line), then deploy or run
             <em>Artisan</em> <code>config:cache</code>.</li>
+          <li><strong>Backups and Node</strong> (Cipi 5.9 / cipi/api 1.39): <em>Backups</em> lists profiles, runs and verifies
+            them; destinations stay on the server (<code>cipi backup configure</code>). <em>Node</em> lists majors, installs,
+            upgrades, sets the default and removes one.</li>
         </ul>
         <p>Most changes run as jobs on the server: Studio waits a few seconds and shows the result; for longer ones (a first
           deploy, an SSL certificate) the window offers <em>Check again</em>.</p>
@@ -4791,20 +4807,23 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         </figure>
         <div class="walkthrough-grid">
           <dl><dt>Releases</dt><dd>The releases on disk with their commits and which one is live (read from the Cipi agent),
-            the deploy history (published, failed, rolled back, by whom), <em>Deploy</em> and <em>Roll back</em> (Cipi goes
-            back one release at a time), the job's output as it runs, the server's CPU, memory and disk, the app's share of
-            the disk and its limit, stopped services.</dd></dl>
+            a live deploy card when one is running or queued whoever started it (Git push, CLI, panel, rollback — Cipi 5.8.4
+            / cipi/api 1.37), the deploy history with duration when the server has it (Cipi 5.9 / cipi/api 1.39) or the audit
+            ledger otherwise, the app's environment label, <em>Deploy</em> and <em>Roll back</em> (Cipi goes back one release
+            at a time), the job's output as it runs, the server's CPU, memory and disk, the app's share of the disk and its
+            limit, stopped services.</dd></dl>
           <dl><dt>Logs and .env</dt><dd>Laravel, nginx, PHP-FPM, workers and deploy logs, page by page, filtered, refreshed
             every ten seconds if you like. The <code>.env</code> with secrets hidden until shown, and a form that sets and
             removes keys.</dd></dl>
           <dl><dt>cipi.yml</dt><dd>The <code>cipi.yml</code> of the live release (aliases, PHP and its settings, limits,
             workers, scheduled commands, databases, backups, deploy steps) and its plan: no file, not valid with the
-            parser's lines, blocked with what to solve first, or the changes one per line, with warnings and notes.
-            <em>Apply cipi.yml</em> runs as a job and ends with what it did (applied, nothing to change, partly applied,
-            blocked, not valid, no file). <em>Turn auto-apply on</em> applies the file after every successful deploy, CLI,
-            panel and Git webhook alike, and asks first: anyone who can commit to the repository then changes the app's
-            server configuration. Needs Cipi 5.6.4 and cipi/api 1.35, and a token with <code>yml-view</code> and
-            <code>yml-manage</code>; an older server or token gets a note, not an error.</dd></dl>
+            parser's lines, blocked with what to solve first, or the changes one per line, with warnings and notes. From
+            Cipi 5.8 / cipi/api 1.36 the plan shows the app's environment and may point at
+            <code>cipi-{env}.yml</code> instead. <em>Apply cipi.yml</em> runs as a job and ends with what it did (applied,
+            nothing to change, partly applied, blocked, not valid, no file). <em>Turn auto-apply on</em> applies the file
+            after every successful deploy, CLI, panel and Git webhook alike, and asks first: anyone who can commit to the
+            repository then changes the app's server configuration. Needs Cipi 5.6.4 and cipi/api 1.35, and a token with
+            <code>yml-view</code> and <code>yml-manage</code>; an older server or token gets a note, not an error.</dd></dl>
           <dl><dt>An anonymized database</dt><dd>With the <a href="https://cipi.sh/docs/agent#agent-anonymizer" target="_blank" rel="noopener">Cipi
             agent's anonymizer</a> on, a developer asks for a copy of the production database with names, emails, phones
             and passwords replaced: the app dumps it, transforms it and mails a download link, valid a few minutes. Real

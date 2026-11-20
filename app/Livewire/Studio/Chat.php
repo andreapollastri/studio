@@ -672,6 +672,7 @@ class Chat extends Component
     public function availableModelsFor(string $agent): array
     {
         $agent = $agent === 'cursor' ? 'cursor' : 'claude';
+        /** @var list<array{id: string, label: string, hint?: string}> $fallback */
         $fallback = array_values((array) config($agent === 'cursor' ? 'studio.cursor_models' : 'studio.models', []));
 
         if (! $this->conversation->workspace->isRunning()) {
@@ -679,6 +680,7 @@ class Chat extends Component
         }
 
         try {
+            /** @var list<array{id: string, label: string, hint?: string}> $listed */
             $listed = Cache::remember('studio.models.'.$this->conversation->id.'.'.$agent, 120, function () use ($agent, $fallback) {
                 $models = (new BridgeClient(
                     $this->conversation->workspace,
@@ -693,7 +695,7 @@ class Chat extends Component
             return $fallback;
         }
 
-        return is_array($listed) ? $listed : $fallback;
+        return $listed;
     }
 
     /**
@@ -707,23 +709,21 @@ class Chat extends Component
     {
         $byId = [];
         foreach ($fallback as $row) {
-            if (is_array($row) && is_string($row['id'] ?? null)) {
-                $byId[$row['id']] = $row;
-            }
+            $byId[$row['id']] = $row;
         }
 
-        return array_map(function (array $model) use ($byId) {
+        return array_map(function (array $model) use ($byId): array {
             $known = $byId[$model['id']] ?? null;
             if ($known === null) {
                 return $model;
             }
 
+            $hint = $known['hint'] ?? $model['hint'] ?? null;
+
             return [
                 'id' => $model['id'],
-                'label' => (string) ($known['label'] ?? $model['label']),
-                ...((isset($known['hint']) || isset($model['hint']))
-                    ? ['hint' => (string) ($known['hint'] ?? $model['hint'])]
-                    : []),
+                'label' => $known['label'],
+                ...($hint !== null ? ['hint' => $hint] : []),
             ];
         }, $models);
     }

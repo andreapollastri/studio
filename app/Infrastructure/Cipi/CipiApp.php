@@ -153,6 +153,72 @@ final class CipiApp
         return array_values(array_reverse(array_filter($records, 'is_array')));
     }
 
+    /**
+     * Whether a deploy is running right now, whoever started it (webhook, CLI, panel, rollback): state,
+     * phase, current run, last finished run, optional log tail. Cipi 5.8.4 and cipi/api 1.37, ability
+     * deploy-manage. Null when the server is older (503) or the token cannot read it (403).
+     *
+     * @return array{app?: string, state: string, running: bool, phase: ?string, queued: bool, locked: bool, current: ?array<string, mixed>, last: ?array<string, mixed>, log?: string, tail?: list<string>}|null
+     */
+    public function deployStatus(int $tail = 50): ?array
+    {
+        try {
+            $data = (array) ($this->api->get($this->path('/deploy/status'), ['tail' => max(0, min(500, $tail))])['data'] ?? []);
+        } catch (ConnectorException $e) {
+            if (in_array($e->getCode(), [403, 404, 503], true)) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        if (! isset($data['state'])) {
+            return null;
+        }
+
+        $tailLines = [];
+
+        foreach ((array) ($data['tail'] ?? []) as $line) {
+            if (is_scalar($line)) {
+                $tailLines[] = (string) $line;
+            }
+        }
+
+        return [
+            'app' => is_string($data['app'] ?? null) ? $data['app'] : $this->app,
+            'state' => (string) $data['state'],
+            'running' => (bool) ($data['running'] ?? in_array($data['state'], ['running', 'queued'], true)),
+            'phase' => is_string($data['phase'] ?? null) ? $data['phase'] : null,
+            'queued' => (bool) ($data['queued'] ?? $data['state'] === 'queued'),
+            'locked' => (bool) ($data['locked'] ?? false),
+            'current' => is_array($data['current'] ?? null) ? $data['current'] : null,
+            'last' => is_array($data['last'] ?? null) ? $data['last'] : null,
+            'log' => is_string($data['log'] ?? null) ? $data['log'] : null,
+            'tail' => $tailLines,
+        ];
+    }
+
+    /**
+     * Past deploys and rollbacks from the deploy log (and its rotated files), newest first: result,
+     * duration, trigger, branch. Cipi 5.9.0 and cipi/api 1.39. Null when the server is older.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function deployHistory(int $limit = 30): ?array
+    {
+        try {
+            $rows = (array) ($this->api->get($this->path('/deploy/history'), ['limit' => max(1, min(500, $limit))])['data'] ?? []);
+        } catch (ConnectorException $e) {
+            if (in_array($e->getCode(), [403, 404, 503], true)) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        return array_values(array_filter($rows, 'is_array'));
+    }
+
     /** Deploy, roll back to the previous release, unlock a stuck deploy, back up the database: a job id to poll. */
     public function deploy(): string
     {
@@ -184,9 +250,11 @@ final class CipiApp
     /**
      * The cipi.yml of the live release and what applying it would change (cipi yml plan): no file
      * (file null), invalid (errors), blocked (blockers: apply refuses until they are resolved), or
-     * the changes; in sync when nothing would change. Cipi 5.6.4 and cipi/api 1.35, ability yml-view.
+     * the changes; in sync when nothing would change. From cipi/api 1.36 the plan's `env` is the
+     * app's environment label (`cipi-<env>.yml` when the release carries one). Cipi 5.6.4 and
+     * cipi/api 1.35, ability yml-view.
      *
-     * @return array{file: string|null, auto: bool, valid: bool|null, in_sync: bool|null, errors: list<string>, warnings: list<string>, changes: list<array{kind: string, summary: string}>, blockers: list<string>, notes: list<string>}
+     * @return array{file: string|null, auto: bool, env: string, valid: bool|null, in_sync: bool|null, errors: list<string>, warnings: list<string>, changes: list<array{kind: string, summary: string}>, blockers: list<string>, notes: list<string>}
      */
     public function yml(): array
     {
@@ -201,9 +269,12 @@ final class CipiApp
             }
         }
 
+        $env = is_string($data['env'] ?? null) && $data['env'] !== '' ? $data['env'] : 'production';
+
         return [
             'file' => is_string($data['file'] ?? null) && $data['file'] !== '' ? $data['file'] : null,
             'auto' => (bool) ($data['auto'] ?? false),
+            'env' => $env,
             'valid' => isset($data['valid']) ? (bool) $data['valid'] : null,
             'in_sync' => isset($data['in_sync']) ? (bool) $data['in_sync'] : null,
             'errors' => self::texts($data['errors'] ?? []),

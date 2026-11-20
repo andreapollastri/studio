@@ -99,6 +99,18 @@ return [
         'MAIL_MAILER' => 'smtp', 'MAIL_FROM_ADDRESS' => 'shop@acme.test', 'QUEUE_CONNECTION' => 'redis', 'CACHE_STORE' => 'redis',
         'CIPI_APP_USER' => 'shopacme', 'CIPI_WEBHOOK_TOKEN' => 'demo', 'CIPI_MCP' => 'true', 'CIPI_MCP_TOKEN' => 'demo-mcp', 'CIPI_ANONYMIZER' => 'true', 'CIPI_ANONYMIZER_TOKEN' => 'demo-anon',
     ]]]),
+    'api.web1.agency.test/api/apps/shopacme/deploy/status*' => Http::response(['data' => [
+        'app' => 'shopacme', 'state' => 'idle', 'running' => false, 'phase' => null, 'queued' => false, 'locked' => false,
+        'current' => null,
+        'last' => ['result' => 'ok', 'kind' => 'deploy', 'release' => 44, 'duration' => 47, 'trigger' => 'webhook', 'finished_at' => $ago('2 hours')],
+        'tail' => [],
+    ]]),
+    'api.web1.agency.test/api/apps/shopacme/deploy/history*' => Http::response(['data' => [
+        ['result' => 'ok', 'kind' => 'deploy', 'release' => 44, 'duration' => 47, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => $ago('2 hours')],
+        ['result' => 'ok', 'kind' => 'deploy', 'release' => 43, 'duration' => 52, 'trigger' => 'panel', 'branch' => 'main', 'finished_at' => $ago('4 days')],
+        ['result' => 'failed', 'kind' => 'deploy', 'release' => 42, 'duration' => 18, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => $ago('4 days')],
+        ['result' => 'ok', 'kind' => 'deploy', 'release' => 41, 'duration' => 39, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => $ago('9 days')],
+    ]]),
     'api.web1.agency.test/api/apps/shopacme/deploy/audit*' => Http::response(['data' => ['app' => 'shopacme', 'records' => [
         ['ts' => $ago('9 days'), 'event' => 'published', 'release' => 41, 'commit' => 'a1b2c3d4e5f6', 'trigger' => 'webhook', 'claimed' => ['actor' => 'lucabianchi']],
         ['ts' => $ago('4 days'), 'event' => 'failed', 'release' => 42, 'commit' => '0f9e8d7c6b5a', 'trigger' => 'webhook', 'claimed' => ['actor' => 'mariarossi']],
@@ -115,12 +127,12 @@ return [
             '[2026-10-13 10:05:44] production.INFO: Order #10483 paid {"amount":"42.50","gateway":"paypal"}',
         ]],
     ]]]),
-    'api.web1.agency.test/api/apps/shopacme' => Http::response(['data' => ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'branch' => 'main', 'repository' => 'git@github.com:agency/shop-acme.git', 'suspended' => false, 'force_https' => true]]),
+    'api.web1.agency.test/api/apps/shopacme' => Http::response(['data' => ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'branch' => 'main', 'env' => 'production', 'repository' => 'git@github.com:agency/shop-acme.git', 'suspended' => false, 'force_https' => true]]),
     'api.web1.agency.test/api/apps' => Http::response(['data' => [
-        ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'branch' => 'main', 'suspended' => false, 'force_https' => true],
-        ['app' => 'portal', 'domain' => 'suppliers.acme.test', 'type' => 'laravel', 'php' => '8.4', 'branch' => 'main', 'suspended' => false, 'force_https' => true],
+        ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'branch' => 'main', 'env' => 'production', 'suspended' => false, 'force_https' => true],
+        ['app' => 'portal', 'domain' => 'suppliers.acme.test', 'type' => 'laravel', 'php' => '8.4', 'branch' => 'main', 'env' => 'staging', 'suspended' => false, 'force_https' => true],
     ]]),
-    'api.web1.agency.test/api/status' => Http::response(['data' => ['system' => ['ip' => '203.0.113.9', 'hostname' => 'web1', 'os' => 'Ubuntu 24.04', 'cipi' => '5.6.1', 'uptime' => '41 days'], 'apps' => 2,
+    'api.web1.agency.test/api/status' => Http::response(['data' => ['system' => ['ip' => '203.0.113.9', 'hostname' => 'web1', 'os' => 'Ubuntu 24.04', 'cipi' => '5.9.1', 'api' => '1.39.2', 'uptime' => '41 days'], 'apps' => 2,
         'resources' => ['cpu' => ['usage_percent' => 23], 'memory' => ['used_mb' => 5120, 'total_mb' => 8192, 'usage_percent' => 62], 'disk' => ['usage_percent' => 71, 'display' => '113G / 160G']],
         'services' => ['nginx' => 'running', 'mariadb' => 'running', 'redis' => 'running', 'supervisor' => 'running']]]),
     'api.web1.agency.test/api/disk' => Http::response(['data' => ['disk' => ['size_gb' => 160, 'used_gb' => 113, 'used_percent' => 71], 'apps' => [

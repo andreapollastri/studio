@@ -469,6 +469,64 @@ test('the Cipi server tab shows each app\'s disk', function () {
         ->assertSee('over 1 GB');
 });
 
+test('Cipi shows a live deploy status and prefers deploy history over the audit ledger', function () {
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/apps/shop/deploy/status*' => Http::response(['data' => [
+            'app' => 'shop', 'state' => 'running', 'running' => true, 'phase' => 'post-deploy', 'queued' => false, 'locked' => true,
+            'current' => ['trigger' => 'webhook', 'elapsed' => 9], 'last' => null, 'tail' => ['healthcheck ok'],
+        ]]),
+        'https://api.server.acme.test/api/apps/shop/deploy/history*' => Http::response(['data' => [
+            ['result' => 'ok', 'kind' => 'deploy', 'release' => 7, 'duration' => 55, 'trigger' => 'panel'],
+        ]]),
+        'https://api.server.acme.test/api/apps' => Http::response(['data' => [['app' => 'shop', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'env' => 'staging', 'suspended' => false]]]),
+        'https://api.server.acme.test/api/status' => Http::response(['data' => ['system' => ['hostname' => 'web1', 'cipi' => '5.9.1', 'api' => '1.39.2'], 'apps' => 1]]),
+        'https://api.server.acme.test/api/disk' => Http::response(['data' => ['apps' => []]]),
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'apps'])
+        ->assertSee('staging')
+        ->call('start', 'deploy-status', 'shop')
+        ->assertSee('post-deploy')
+        ->assertSee('webhook')
+        ->call('start', 'audit', 'shop')
+        ->assertSee('panel')
+        ->assertSee('55');
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'status'])
+        ->assertSee('1.39.2');
+});
+
+test('Cipi lists Node runtimes and backup profiles when the API has them', function () {
+    enable('cipi');
+    ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();
+
+    Http::fake([
+        'https://api.server.acme.test/api/node' => Http::response(['data' => [
+            'default' => '22',
+            'runtimes' => [
+                ['major' => '22', 'version' => '22.14.0', 'apps' => 2, 'default' => true],
+                ['major' => '20', 'version' => '20.19.0', 'apps' => 0, 'default' => false],
+            ],
+        ]]),
+        'https://api.server.acme.test/api/backups' => Http::response(['data' => [
+            'configured' => true,
+            'profiles' => [
+                ['name' => 'nightly', 'enabled' => true, 'overdue' => false, 'running' => false],
+            ],
+        ]]),
+    ]);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'node'])
+        ->assertSee('22.14.0')
+        ->assertSee('20.19.0');
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(Console::class, ['connector' => 'cipi', 'tab' => 'backups'])
+        ->assertSee('nightly');
+});
+
 test('the Cipi PHP tab lists the installed versions', function () {
     enable('cipi');
     ConnectorAccount::factory()->of('cipi', ['url' => 'api.server.acme.test', 'token' => 'cipi-token'])->create();

@@ -21,7 +21,7 @@ function cipiServer(array $env = []): ConnectorAccount
 {
     ConnectorSetting::query()->updateOrCreate(['connector' => 'cipi'], ['enabled' => true]);
 
-    $app = ['app' => 'shop', 'domain' => 'shop.example.com', 'type' => 'laravel', 'php' => '8.4', 'branch' => 'main', 'suspended' => false, 'force_https' => true];
+    $app = ['app' => 'shop', 'domain' => 'shop.example.com', 'type' => 'laravel', 'php' => '8.4', 'branch' => 'main', 'env' => 'production', 'suspended' => false, 'force_https' => true];
     $env = [
         'APP_URL' => 'https://shop.example.com',
         'CIPI_APP_USER' => 'shop',
@@ -35,6 +35,16 @@ function cipiServer(array $env = []): ConnectorAccount
 
     Http::fake([
         'api.cipi.test/api/apps/shop/env' => Http::response(['data' => ['app' => 'shop', 'vars' => $env]]),
+        'api.cipi.test/api/apps/shop/deploy/status*' => Http::response(['data' => [
+            'app' => 'shop', 'state' => 'idle', 'running' => false, 'phase' => null, 'queued' => false, 'locked' => false,
+            'current' => null,
+            'last' => ['result' => 'ok', 'kind' => 'deploy', 'release' => 12, 'duration' => 41, 'trigger' => 'webhook', 'finished_at' => '2026-10-12T10:00:41Z'],
+            'tail' => [],
+        ]]),
+        'api.cipi.test/api/apps/shop/deploy/history*' => Http::response(['data' => [
+            ['result' => 'ok', 'kind' => 'deploy', 'release' => 12, 'duration' => 41, 'trigger' => 'webhook', 'branch' => 'main', 'finished_at' => '2026-10-12T10:00:41Z'],
+            ['result' => 'ok', 'kind' => 'deploy', 'release' => 11, 'duration' => 38, 'trigger' => 'api', 'branch' => 'main', 'finished_at' => '2026-10-10T10:00:38Z'],
+        ]]),
         'api.cipi.test/api/apps/shop/deploy/audit*' => Http::response(['data' => ['app' => 'shop', 'records' => [
             ['ts' => '2026-10-10T10:00:00Z', 'event' => 'published', 'release' => 11, 'commit' => 'aaaaaaa1111', 'trigger' => 'webhook'],
             ['ts' => '2026-10-12T10:00:00Z', 'event' => 'published', 'release' => 12, 'commit' => 'bbbbbbb2222', 'trigger' => 'api'],
@@ -120,6 +130,26 @@ test('the agent\'s MCP server stays out while it is off in the app', function ()
     expect((new BridgeClient($chat->workspace))->mcpServers($chat))->toBeNull();
 });
 
+test('the hub shows a deploy started outside Studio, with its log tail', function () {
+    Http::fake([
+        'api.cipi.test/api/apps/shop/deploy/status*' => Http::response(['data' => [
+            'app' => 'shop', 'state' => 'running', 'running' => true, 'phase' => 'deploy', 'queued' => false, 'locked' => true,
+            'current' => ['trigger' => 'webhook', 'branch' => 'main', 'elapsed' => 12],
+            'last' => null,
+            'tail' => ['==> Deploying release 14', 'composer install'],
+        ]]),
+    ]);
+    $account = cipiServer();
+    $resource = attachShop(Project::factory()->create(), $account);
+
+    Livewire::actingAs(User::factory()->admin()->create())->test(CipiAppHub::class, ['resource' => $resource->uuid])
+        ->assertSee('Deploy on the server')
+        ->assertSee('running')
+        ->assertSee('webhook')
+        ->assertSee('12s')
+        ->assertSee('Deploying release 14');
+});
+
 test('the hub shows the releases from the agent and deploys and rolls back for the roles allowed', function () {
     $account = cipiServer();
     $project = Project::factory()->create();
@@ -131,7 +161,11 @@ test('the hub shows the releases from the agent and deploys and rolls back for t
         ->assertSee('Releases on the server')
         ->assertSee('#12')->assertSee('live')
         ->assertSee('Roll back here')
+        ->assertSee('Deploy history')
+        ->assertSee('webhook')
+        ->assertSee('41s')
         ->assertSee('Server memory')
+        ->assertSee('production')
         ->call('deploy')
         ->assertSet('job.id', 'job-1')
         ->call('pollJob')
@@ -145,6 +179,7 @@ test('the hub shows the releases from the agent and deploys and rolls back for t
         ->assertSet('tab', 'deploys');
 
     Http::assertSent(fn (Request $r) => $r->url() === 'https://api.cipi.test/api/apps/shop/deploy' && $r->method() === 'POST');
+    Http::assertSent(fn (Request $r) => str_starts_with($r->url(), 'https://api.cipi.test/api/apps/shop/deploy/history'));
 
     // a client sees the app, not its releases, and runs nothing
     Livewire::actingAs($client)->test(CipiAppHub::class, ['resource' => $resource->uuid])
@@ -273,12 +308,13 @@ test('administrators turn the agent\'s servers on and off and type tokens the AP
 /** The Apply cipi.yml button, disabled (an attribute, not the disabled: classes). */
 const APPLY_DISABLED = '/<button(?=[^>]*wire:click="applyYml")(?=[^>]*\\sdisabled[\\s=>])[^>]*>/';
 
-/** The plan GET /api/apps/shop/yml answers (cipi/api 1.35), with what the test changes in it. */
+/** The plan GET /api/apps/shop/yml answers (cipi/api 1.35+; `env` from 1.36), with what the test changes in it. */
 function ymlPlan(array $data = []): array
 {
     return ['data' => [
         'app' => 'shop',
         'file' => '/home/shop/current/cipi.yml',
+        'env' => 'production',
         'auto' => false,
         'valid' => true,
         'in_sync' => false,

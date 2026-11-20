@@ -318,7 +318,7 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/accounts-git.png" alt="Settings, Accounts, Git tab: accounts with host, login and commit identity"><br><sub><strong>Settings → Accounts → Git.</strong> Each account with its host, its login, the name and email its commits carry, the state of its token.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/img/cipi-hub.png" alt="A Cipi app in its project: releases, deploy history, server load and disk"><br><sub><strong>A Cipi app.</strong> Releases on the server with the live one and Roll back here, the deploy history, the server's load.</sub></td>
+<td width="50%"><img src="docs/img/cipi-hub.png" alt="A Cipi app in its project: releases, live deploy status, deploy history, server load and disk"><br><sub><strong>A Cipi app.</strong> Releases on the server with the live one and Roll back here, a deploy in flight whoever started it, the deploy history, the server's load.</sub></td>
 <td width="50%"><img src="docs/img/cipi-anonymizer.png" alt="The Database tab of a Cipi app: an anonymized copy and the anonymization file from the schema"><br><sub><strong>Its database.</strong> An anonymized copy for developers, and the anonymization file from the live schema, edited and written back.</sub></td>
 </tr>
 <tr>

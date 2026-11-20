@@ -27,10 +27,11 @@ use Throwable;
 
 /**
  * A Cipi app attached to a project, as one place: what runs now and the releases before it,
- * deploy and roll back, the logs, the .env, the server's load and the app's disk, the cipi.yml
- * of the repository (its plan, apply it, apply it after every deploy), the database (a backup on
- * the server, an anonymized copy for developers and the anonymizer's config), the Cipi agent's
- * MCP servers the project's chats get, and every other action of the connector.
+ * a live deploy status (whoever started it), deploy and roll back, the logs, the .env, the
+ * server's load and the app's disk, the cipi.yml of the repository (its plan, apply it, apply
+ * it after every deploy), the database (a backup on the server, an anonymized copy for
+ * developers and the anonymizer's config), the Cipi agent's MCP servers the project's chats
+ * get, and every other action of the connector.
  * Each part shows to whom the resource's actions allow it; administrators see everything.
  *
  * @property-read array{enabled: bool, token: string|null, url: string, users_table: string, ttl: int, reason: string|null} $anonymizer
@@ -210,7 +211,29 @@ class CipiAppHub extends Component
         return $this->read(fn () => $this->app()->releases(15), ['error' => __('The agent did not answer.')]);
     }
 
-    /** @return list<array<string, mixed>>|array{error: string} */
+    /**
+     * Live deploy status (cipi/api 1.37+): running / queued / interrupted / idle, whoever started
+     * it. Null when the role cannot see deploys or the server is older than Cipi 5.8.4.
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function deployStatus(): ?array
+    {
+        if (! ($this->can('deploy') || $this->can('deploy-status') || $this->can('audit') || $this->can('releases') || $this->can('rollback'))) {
+            return null;
+        }
+
+        $status = $this->read(fn () => $this->app()->deployStatus(60), null);
+
+        return is_array($status) && isset($status['state']) ? $status : null;
+    }
+
+    /**
+     * Past deploys: prefer deploy/history (cipi/api 1.39, with duration) and fall back to the audit ledger.
+     *
+     * @return list<array<string, mixed>>|array{error: string}
+     */
     #[Computed]
     public function audit(): array
     {
@@ -218,7 +241,15 @@ class CipiAppHub extends Component
             return [];
         }
 
-        return $this->read(fn () => array_slice($this->app()->audit(90), 0, 30));
+        return $this->read(function () {
+            $history = $this->app()->deployHistory(30);
+
+            if ($history !== null) {
+                return $history;
+            }
+
+            return array_slice($this->app()->audit(90), 0, 30);
+        });
     }
 
     public function deploy(): void
@@ -272,6 +303,9 @@ class CipiAppHub extends Component
 
     public function pollJob(): void
     {
+        // Also used while a deploy started outside Studio (Git push…) is live: refresh that card.
+        unset($this->deployStatus, $this->releases, $this->audit);
+
         if ($this->job === null) {
             return;
         }
@@ -299,7 +333,7 @@ class CipiAppHub extends Component
     {
         $this->item()->account->forget();
         NativeServers::forget($this->item());
-        unset($this->details, $this->summary, $this->releases, $this->audit, $this->yml);
+        unset($this->details, $this->summary, $this->releases, $this->deployStatus, $this->audit, $this->yml);
     }
 
     // ------------------------------------------------------------------ logs

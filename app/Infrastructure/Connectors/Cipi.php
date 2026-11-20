@@ -16,14 +16,19 @@ use Illuminate\Support\Sleep;
 /**
  * Cipi servers (https://cipi.sh), one account per server with the Cipi API
  * installed (`cipi api`): the server's status, its apps (create, deploy,
- * rollback, releases, SSL, aliases, .env, Artisan, logs, disk, cipi.yml, the
- * anonymized database copy of the Cipi agent, suspend), databases,
- * services, SSH keys and PHP versions. Most changes run as background jobs
- * on the server: Studio waits a few seconds, then offers to check again.
+ * rollback, live deploy status, deploy history, releases, SSL, aliases,
+ * redirects, proxies, .env, Artisan, logs, disk, cipi.yml, environment
+ * label, the anonymized database copy of the Cipi agent, suspend),
+ * databases (link to an app), backups, Node runtimes, services, SSH keys
+ * and PHP versions. Most changes run as background jobs on the server:
+ * Studio waits a few seconds, then offers to check again.
  */
 final class Cipi extends Connector
 {
     private const PHP = ['8.6' => '8.6', '8.5' => '8.5', '8.4' => '8.4', '8.3' => '8.3', '8.2' => '8.2', '8.1' => '8.1', '8.0' => '8.0', '7.4' => '7.4'];
+
+    /** App environment label: `^[a-z0-9][a-z0-9_-]{0,31}$` (cipi/api 1.36+ / Cipi 5.8.0+). */
+    private const ENV_RULE = 'regex:/^[a-z0-9][a-z0-9_-]{0,31}$/';
 
     public function key(): string
     {
@@ -37,7 +42,7 @@ final class Cipi extends Connector
 
     public function description(): string
     {
-        return __('Cipi servers through the Cipi API: apps, deploys and rollbacks, SSL, aliases, .env, Artisan, logs, databases, services, SSH keys and PHP, one server per account.');
+        return __('Cipi servers through the Cipi API: apps, deploys and rollbacks, live deploy status, SSL, aliases, redirects, proxies, .env, Artisan, logs, databases, backups, Node, services, SSH keys and PHP, one server per account.');
     }
 
     public function icon(): string
@@ -56,7 +61,7 @@ final class Cipi extends Connector
             Field::text('url', __('API address'))->required()->placeholder('https://api.server.example.com')
                 ->help(__('The host the Cipi API answers on: `cipi api <host>` and `cipi api ssl` on the server.')),
             Field::password('token', __('API token'))->required()
-                ->help(__('`cipi api token create` on the server, with the abilities to allow (all of them for full control). Add Studio\'s address to `cipi api ip-whitelist` if it is on.')),
+                ->help(__('`cipi api token create` on the server, with the abilities to allow (`--full-access` from Cipi 5.9 / cipi/api 1.39 for everything, including abilities later versions add). Add Studio\'s address to `cipi api ip-whitelist` if it is on.')),
         ];
     }
 
@@ -75,8 +80,9 @@ final class Cipi extends Connector
     {
         /** @var ApiClient $api */
         $system = data_get($api->get('/status'), 'data.system', []);
+        $apiVersion = data_get($system, 'api');
 
-        return 'ok · '.data_get($system, 'hostname', '').' · Cipi '.data_get($system, 'cipi', '?');
+        return 'ok · '.data_get($system, 'hostname', '').' · Cipi '.data_get($system, 'cipi', '?').($apiVersion ? ' · API '.$apiVersion : '');
     }
 
     public function sections(): array
@@ -85,7 +91,11 @@ final class Cipi extends Connector
             $this->status(),
             $this->apps(),
             $this->aliases(),
+            $this->redirects(),
+            $this->proxies(),
             $this->databases(),
+            $this->backups(),
+            $this->node(),
             $this->services(),
             $this->sshKeys(),
             $this->php(),
@@ -251,14 +261,15 @@ final class Cipi extends Connector
             $disk = $api->get('/disk')['data'] ?? null;
 
             return [
-                __('System') => [
+                __('System') => array_filter([
                     __('Host') => data_get($status, 'system.hostname'),
                     __('IP') => data_get($status, 'system.ip'),
                     __('OS') => data_get($status, 'system.os'),
                     __('Cipi') => data_get($status, 'system.cipi'),
+                    __('API') => data_get($status, 'system.api'),
                     __('Uptime') => data_get($status, 'system.uptime'),
                     __('Apps') => data_get($status, 'apps'),
-                ],
+                ], fn ($value) => $value !== null && $value !== ''),
                 __('Resources') => [
                     __('CPU') => data_get($status, 'resources.cpu.usage_percent').'%',
                     __('Memory') => data_get($status, 'resources.memory.used_mb').' / '.data_get($status, 'resources.memory.total_mb').' MB ('.data_get($status, 'resources.memory.usage_percent').'%)',
@@ -338,6 +349,7 @@ final class Cipi extends Connector
             ->columns([
                 Column::make('app', __('App'))->mono(),
                 Column::make('domain', __('Domain')),
+                Column::make('env', __('Env'))->mono(),
                 Column::make('type', __('Type'))->badge(['laravel' => 'red', 'node' => 'green', 'custom' => 'zinc']),
                 Column::make('php', __('PHP'))->mono(),
                 Column::make('branch', __('Branch'))->mono(),
@@ -347,9 +359,11 @@ final class Cipi extends Connector
             ->create(__('New app'), [
                 Field::text('user', __('App user'))->required()->placeholder('myapp')->rules(['regex:/^[a-z][a-z0-9]{2,31}$/'])->help(__('Lowercase letters and digits: the Linux user, the database and the app name')),
                 Field::text('domain', __('Domain'))->required()->placeholder('myapp.example.com'),
+                Field::text('env', __('Environment'))->placeholder('production')->rules([self::ENV_RULE])
+                    ->help(__('Label of this app\'s environment (`production`, `staging`…). From Cipi 5.8 / cipi/api 1.36: the release may carry `cipi-<env>.yml` instead of `cipi.yml`. Leave empty for production.')),
                 Field::text('repository', __('Git repository (SSH)'))->placeholder('git@github.com:acme/myapp.git'),
                 Field::text('branch', __('Branch'))->default('main'),
-                Field::select('php', __('PHP'), self::PHP)->default('8.4'),
+                Field::select('php', __('PHP'), self::PHP)->default('8.6'),
                 Field::select('engine', __('Database'), ['' => __('Server default'), 'mariadb' => 'MariaDB', 'pgsql' => 'PostgreSQL']),
                 Field::checkbox('custom', __('Not Laravel (custom PHP or static)')),
                 Field::text('docroot', __('Document root (custom apps)'))->placeholder('public'),
@@ -367,14 +381,35 @@ final class Cipi extends Connector
                 $this->appJob('deploy', __('Deploy'), 'rocket-launch', '/deploy'),
                 $this->appJob('rollback', __('Roll back'), 'arrow-uturn-left', '/deploy/rollback')->confirm(__('Go back to the previous release?')),
                 $this->appJob('unlock', __('Unlock the deploy'), 'lock-open', '/deploy/unlock')->confirm(__('Only when a deploy is stuck. Unlock?')),
+                Action::make('deploy-status', __('Deploy status'))->icon('signal')
+                    ->run(function (ApiClient $api, array $row) {
+                        $status = (new CipiApp($api, (string) $row['app'], '', ''))->deployStatus(80);
+
+                        return Outcome::show(
+                            __('Deploy of :app', ['app' => $row['app']]),
+                            $status ?? __('This server cannot report a live deploy status: it needs Cipi 5.8.4 and cipi/api 1.37 or later (cipi self-update).'),
+                        );
+                    }),
                 Action::make('releases', __('Releases'))->icon('rectangle-stack')
                     ->run(function (ApiClient $api, array $row) {
                         $app = new CipiApp($api, (string) $row['app'], '', '');
 
                         return Outcome::show(__('Releases of :app', ['app' => $row['app']]), $app->releases() ?? $app->agent()['reason'] ?? __('The Cipi agent\'s MCP server is off.'));
                     }),
-                Action::make('audit', __('Deploy history'))->icon('clock')->run(fn (ApiClient $api, array $row) => Outcome::show(__('Deploys of :app', ['app' => $row['app']]), $api->get('/apps/'.$row['app'].'/deploy/audit')['data'] ?? [])),
+                Action::make('audit', __('Deploy history'))->icon('clock')
+                    ->run(function (ApiClient $api, array $row) {
+                        $app = new CipiApp($api, (string) $row['app'], '', '');
+                        $history = $app->deployHistory(40);
+
+                        if ($history !== null) {
+                            return Outcome::show(__('Deploys of :app', ['app' => $row['app']]), $history);
+                        }
+
+                        return Outcome::show(__('Deploys of :app', ['app' => $row['app']]), $api->get('/apps/'.$row['app'].'/deploy/audit')['data'] ?? []);
+                    }),
                 Action::make('aliases', __('Aliases'))->icon('link')->opens('aliases', fn ($row) => ['app' => $row['app']]),
+                Action::make('redirects', __('Redirects'))->icon('arrow-uturn-right')->opens('redirects', fn ($row) => ['app' => $row['app']]),
+                Action::make('proxies', __('Proxies'))->icon('arrows-right-left')->opens('proxies', fn ($row) => ['app' => $row['app']]),
                 $this->appJob('ssl', __('Install SSL'), 'lock-closed', '/ssl')->fields([
                     Field::checkbox('wildcard', __('Wildcard (DNS-01 with Cloudflare)')),
                     Field::text('account', __('Cloudflare account on the server'))->placeholder('default')->help(__('Only for DNS-01; the accounts of `cipi ssl dns`')),
@@ -412,10 +447,16 @@ final class Cipi extends Connector
                 }),
                 $this->appJob('edit', __('Edit'), 'pencil', '', 'PUT')->fields([
                     Field::text('domain', __('Primary domain'))->default(fn ($row) => $row['domain'] ?? null),
+                    Field::text('env', __('Environment'))->default(fn ($row) => $row['env'] ?? 'production')->rules([self::ENV_RULE])
+                        ->help(__('From Cipi 5.8 / cipi/api 1.36: which `cipi-<env>.yml` the app reads. Older servers ignore it.')),
                     Field::select('php', __('PHP'), self::PHP)->default(fn ($row) => $row['php'] ?? null),
                     Field::text('repository', __('Git repository'))->default(fn ($row) => $row['repository'] ?? null),
                     Field::text('branch', __('Branch'))->default(fn ($row) => $row['branch'] ?? null),
                 ]),
+                Action::make('node-status', __('Node status'))->icon('cube')->when(fn ($row) => filled($row['node'] ?? $row['node_mode'] ?? null) || ($row['type'] ?? '') === 'node')
+                    ->run(fn (ApiClient $api, array $row) => Outcome::show(__('Node of :app', ['app' => $row['app']]), $api->get('/apps/'.$row['app'].'/node')['data'] ?? [])),
+                $this->appJob('node-restart', __('Restart Node'), 'arrow-path', '/node/restart')->when(fn ($row) => filled($row['node'] ?? $row['node_mode'] ?? null) || ($row['type'] ?? '') === 'node')
+                    ->confirm(__('Blue/green restart of the Node process?')),
                 Action::make('basicauth', __('Password protection'))->icon('key')->fields([
                     Field::checkbox('enabled', __('Ask for a username and password'))->default(fn ($row) => (bool) ($row['basic_auth'] ?? false)),
                     Field::text('user', __('Username'))->default('admin'),
@@ -511,6 +552,113 @@ final class Cipi extends Connector
             ]);
     }
 
+    /**
+     * Whole-app and path redirects (API 1.31+ / Cipi 5.4.1+). The list is the path rules;
+     * whole-app redirect is set with an action that does not need a row.
+     */
+    private function redirects(): Section
+    {
+        return Section::make('redirects', __('Redirects'))
+            ->childOf('apps', 'app')
+            ->id('from')
+            ->list(function (ApiClient $api, array $scope) {
+                $data = (array) ($api->get('/apps/'.$scope['app'].'/redirects')['data'] ?? []);
+                $rows = [];
+                $app = $data['redirect'] ?? $data['app'] ?? null;
+
+                if (is_array($app) && filled($app['to'] ?? null)) {
+                    $rows[] = [
+                        'from' => '*',
+                        'to' => $app['to'],
+                        'code' => $app['code'] ?? 301,
+                        'enabled' => $app['enabled'] ?? true,
+                        'kind' => 'app',
+                    ];
+                } else {
+                    // A placeholder so whole-app actions stay reachable with an empty path list.
+                    $rows[] = ['from' => '*', 'to' => '', 'code' => '', 'kind' => 'app'];
+                }
+
+                foreach ((array) ($data['redirects'] ?? $data['paths'] ?? []) as $row) {
+                    if (is_array($row) && filled($row['from'] ?? null)) {
+                        $rows[] = [...$row, 'kind' => 'path'];
+                    }
+                }
+
+                return $rows;
+            })
+            ->columns([
+                Column::make('from', __('From'))->mono(),
+                Column::make('to', __('To'))->mono(),
+                Column::make('code', __('Code'))->mono(),
+            ])
+            ->create(__('Add a path redirect'), [
+                Field::text('from', __('Path'))->required()->placeholder('/old')->help(__('A path ending in / is a prefix.')),
+                Field::text('to', __('Target'))->required()->placeholder('https://example.com/new'),
+                Field::select('code', __('Status'), ['301' => '301', '302' => '302', '307' => '307', '308' => '308'])->default('301'),
+                Field::checkbox('keep_path', __('Keep the rest of the path')),
+            ], fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect saved.'), fn () => $api->post('/apps/'.$scope['app'].'/redirects', array_filter([
+                'from' => $data['from'],
+                'to' => $data['to'],
+                'code' => (int) $data['code'],
+                'keep_path' => $data['keep_path'] ?: null,
+            ]))))
+            ->actions([
+                Action::make('app-redirect', __('Whole-app redirect'))->icon('globe-alt')->when(fn ($row) => ($row['kind'] ?? '') === 'app')->fields([
+                    Field::text('to', __('Target URL'))->required()->placeholder('https://example.com')->default(fn ($row) => $row['to'] ?? null),
+                    Field::select('code', __('Status'), ['301' => '301', '302' => '302', '307' => '307', '308' => '308'])->default(fn ($row) => (string) ($row['code'] ?? '301')),
+                    Field::checkbox('keep_path', __('Keep the path')),
+                ])->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Whole-app redirect set.'), fn () => $api->put('/apps/'.$scope['app'].'/redirect', array_filter([
+                    'to' => $data['to'],
+                    'code' => (int) $data['code'],
+                    'keep_path' => $data['keep_path'] ?: null,
+                ])))),
+                Action::make('enable', __('Enable whole-app redirect'))->icon('play')->when(fn ($row) => ($row['kind'] ?? '') === 'app')
+                    ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect enabled.'), fn () => $api->post('/apps/'.$scope['app'].'/redirect/enable'))),
+                Action::make('disable', __('Disable whole-app redirect'))->icon('pause')->when(fn ($row) => ($row['kind'] ?? '') === 'app')
+                    ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect disabled.'), fn () => $api->post('/apps/'.$scope['app'].'/redirect/disable'))),
+                Action::make('clear-app', __('Remove whole-app redirect'))->icon('x-mark')->when(fn ($row) => ($row['kind'] ?? '') === 'app' && filled($row['to'] ?? null))->confirm(__('Remove the whole-app redirect?'))
+                    ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Redirect removed.'), fn () => $api->delete('/apps/'.$scope['app'].'/redirect'))),
+                Action::make('delete', __('Remove path'))->icon('trash')->when(fn ($row) => ($row['kind'] ?? 'path') === 'path')->danger(__('Remove this path redirect?'))
+                    ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Path redirect removed.'), fn () => $api->delete('/apps/'.$scope['app'].'/redirects', ['from' => $row['from']]))),
+            ]);
+    }
+
+    private function proxies(): Section
+    {
+        return Section::make('proxies', __('Proxies'))
+            ->childOf('apps', 'app')
+            ->id('prefix')
+            ->list(function (ApiClient $api, array $scope) {
+                $data = (array) ($api->get('/apps/'.$scope['app'].'/proxies')['data'] ?? []);
+
+                return array_values(array_filter(
+                    (array) ($data['proxies'] ?? $data),
+                    fn ($row) => is_array($row) && filled($row['prefix'] ?? null),
+                ));
+            })
+            ->columns([
+                Column::make('prefix', __('Prefix'))->mono(),
+                Column::make('upstream', __('Upstream'))->mono(),
+                Column::make('strip_prefix', __('Strip prefix'))->bool(),
+            ])
+            ->create(__('Add a proxy'), [
+                Field::text('prefix', __('Prefix'))->required()->placeholder('/api'),
+                Field::text('upstream', __('Upstream'))->required()->placeholder('http://127.0.0.1:8080')->help(__('Loopback ports Cipi already uses are refused.')),
+                Field::checkbox('strip_prefix', __('Strip the prefix'))->default(true),
+                Field::checkbox('preserve_host', __('Preserve Host')),
+            ], fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Proxy saved.'), fn () => $api->post('/apps/'.$scope['app'].'/proxies', array_filter([
+                'prefix' => $data['prefix'],
+                'upstream' => $data['upstream'],
+                'strip_prefix' => $data['strip_prefix'] ?: null,
+                'preserve_host' => $data['preserve_host'] ?: null,
+            ]))))
+            ->actions([
+                Action::make('delete', __('Remove'))->icon('trash')->danger(__('Remove this proxy?'))
+                    ->run(fn (ApiClient $api, array $row, array $data, array $scope) => tap(__('Proxy removed.'), fn () => $api->delete('/apps/'.$scope['app'].'/proxies', ['prefix' => $row['prefix']]))),
+            ]);
+    }
+
     private function databases(): Section
     {
         return Section::make('databases', __('Databases'))
@@ -520,18 +668,139 @@ final class Cipi extends Connector
             ->columns([
                 Column::make('name', __('Database'))->mono(),
                 Column::make('engine', __('Engine'))->badge(['mariadb' => 'blue', 'pgsql' => 'purple']),
+                Column::make('app', __('App'))->mono(),
                 Column::make('user', __('User'))->mono(),
-                Column::make('size', __('Size')),
+                Column::make('size_mb', __('Size (MB)')),
             ])
             ->create(__('New database'), [
                 Field::text('name', __('Name'))->required()->rules(['regex:/^[a-z][a-z0-9_]{2,31}$/']),
                 Field::select('engine', __('Engine'), ['' => __('Server default'), 'mariadb' => 'MariaDB', 'pgsql' => 'PostgreSQL']),
+                Field::text('app', __('Link to app'))->placeholder('myapp')->help(__('From Cipi 5.9 / cipi/api 1.39: the app this database belongs to.')),
             ], fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/dbs', array_filter($data)))
             ->actions([
                 Action::make('backup', __('Back up'))->icon('archive-box')
                     ->run(fn (ApiClient $api, array $row) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/backup', ['engine' => $row['engine'] ?? null])),
+                Action::make('restore', __('Restore from file'))->icon('arrow-up-tray')->fields([
+                    Field::text('file', __('Path on the server'))->required()->placeholder('/home/cipi/backups/shop.sql.gz')
+                        ->help(__('A .sql or .sql.gz already on the server. Chunked upload from Studio is not wired yet.')),
+                ])->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/restore', array_filter(['file' => $data['file'], 'engine' => $row['engine'] ?? null]))),
+                Action::make('link', __('Link to an app'))->icon('link')->fields([
+                    Field::text('app', __('App'))->required()->placeholder('myapp')->help(__('Cipi 5.9 / cipi/api 1.39.')),
+                ])->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/link', array_filter(['app' => $data['app'], 'engine' => $row['engine'] ?? null]))),
+                Action::make('unlink', __('Unlink from its app'))->icon('link-slash')->confirm(__('Unlink this database from its app?'))
+                    ->when(fn ($row) => filled($row['app'] ?? $row['link'] ?? null))
+                    ->run(fn (ApiClient $api, array $row) => $this->job($api, 'DELETE', '/dbs/'.$row['name'].'/link', array_filter(['engine' => $row['engine'] ?? null]))),
                 Action::make('password', __('New password'))->icon('key')->confirm(__('Apps using the old password stop connecting until their .env is updated. Go ahead?'))
                     ->run(fn (ApiClient $api, array $row) => $this->job($api, 'POST', '/dbs/'.$row['name'].'/password', ['engine' => $row['engine'] ?? null])),
+            ]);
+    }
+
+    /** Server backup profiles (API 1.39+ / Cipi 5.9.0+). Destinations stay on the server. */
+    private function backups(): Section
+    {
+        return Section::make('backups', __('Backups'))
+            ->icon('archive-box')
+            ->id('name')
+            ->list(function (ApiClient $api) {
+                try {
+                    $data = (array) ($api->get('/backups')['data'] ?? []);
+                } catch (ConnectorException $e) {
+                    if (in_array($e->getCode(), [403, 404, 503], true)) {
+                        return [];
+                    }
+
+                    throw $e;
+                }
+
+                if (array_key_exists('configured', $data) && $data['configured'] === false) {
+                    return [];
+                }
+
+                return array_values(array_filter(
+                    (array) ($data['profiles'] ?? []),
+                    fn ($row) => is_array($row) && filled($row['name'] ?? null),
+                ));
+            })
+            ->columns([
+                Column::make('name', __('Profile'))->mono(),
+                Column::make('enabled', __('On'))->bool(),
+                Column::make('overdue', __('Overdue'))->bool(),
+                Column::make('running', __('Running'))->bool(),
+            ])
+            ->actions([
+                Action::make('status', __('Backup status'))->icon('information-circle')
+                    ->run(fn (ApiClient $api) => Outcome::show(__('Backups'), $api->get('/backups')['data'] ?? __('Not available on this server (Cipi 5.9 / cipi/api 1.39).'))),
+                Action::make('runs', __('Stored runs'))->icon('clock')
+                    ->run(fn (ApiClient $api, array $row) => Outcome::show(__('Runs of :profile', ['profile' => $row['name']]), $api->get('/backups/runs', ['profile' => $row['name']])['data'] ?? [])),
+                Action::make('run', __('Run now'))->icon('play')->confirm(__('Start a backup run on the server now?'))
+                    ->run(fn (ApiClient $api, array $row) => Outcome::show(__('Backup started'), $api->post('/backups/run', array_filter(['profile' => $row['name'] ?? null]))['data'] ?? __('Started.'), __('The run goes on by itself; refresh the status to see when it ends.'))),
+                Action::make('verify', __('Verify'))->icon('shield-check')
+                    ->run(fn (ApiClient $api, array $row) => $this->job($api, 'POST', '/backups/verify', array_filter(['profile' => $row['name'] ?? null]))),
+                Action::make('enable', __('Enable'))->icon('check')->when(fn ($row) => empty($row['enabled']))
+                    ->run(fn (ApiClient $api, array $row) => tap(__('Profile enabled.'), fn () => $api->post('/backups/profiles/'.$row['name'].'/enable'))),
+                Action::make('disable', __('Disable'))->icon('pause')->when(fn ($row) => ! empty($row['enabled']))
+                    ->run(fn (ApiClient $api, array $row) => tap(__('Profile disabled.'), fn () => $api->post('/backups/profiles/'.$row['name'].'/disable'))),
+            ]);
+    }
+
+    /** Node runtimes on the server (list from 1.31; install/upgrade/default/remove from 1.39 / Cipi 5.9). */
+    private function node(): Section
+    {
+        return Section::make('node', __('Node'))
+            ->icon('cube')
+            ->id('major')
+            ->list(function (ApiClient $api) {
+                try {
+                    $data = (array) ($api->get('/node')['data'] ?? []);
+                } catch (ConnectorException $e) {
+                    if (in_array($e->getCode(), [403, 404, 503], true)) {
+                        return [];
+                    }
+
+                    throw $e;
+                }
+
+                $default = $data['default'] ?? null;
+
+                $rows = [];
+
+                foreach ((array) ($data['runtimes'] ?? $data['versions'] ?? $data) as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+
+                    $major = (string) ($row['major'] ?? $row['version'] ?? $row['name'] ?? '');
+
+                    if ($major === '') {
+                        continue;
+                    }
+
+                    $rows[] = [
+                        'major' => $major,
+                        'version' => $row['version'] ?? $row['full'] ?? $major,
+                        'apps' => $row['apps'] ?? count((array) ($row['app_list'] ?? [])),
+                        'default' => $row['default'] ?? ($default !== null && (string) $default === $major),
+                    ];
+                }
+
+                return $rows;
+            })
+            ->columns([
+                Column::make('major', __('Major'))->mono(),
+                Column::make('version', __('Version'))->mono(),
+                Column::make('apps', __('Apps')),
+                Column::make('default', __('Default'))->bool(),
+            ])
+            ->create(__('Install a major'), [
+                Field::text('major', __('Major'))->required()->placeholder('22')->rules(['regex:/^\d+$/'])->help(__('Cipi 5.9 / cipi/api 1.39: `cipi node install`.')),
+            ], fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/node/install', ['major' => $data['major']]))
+            ->actions([
+                Action::make('upgrade', __('Upgrade'))->icon('arrow-up')
+                    ->run(fn (ApiClient $api, array $row, array $data) => $this->job($api, 'POST', '/node/upgrade', array_filter(['major' => $row['major'], 'restart' => true]))),
+                Action::make('default', __('Make default'))->icon('star')->when(fn ($row) => empty($row['default']))
+                    ->run(fn (ApiClient $api, array $row) => $this->job($api, 'PUT', '/node/default', ['major' => $row['major']])),
+                Action::make('delete', __('Remove'))->icon('trash')->danger(__('Remove this Node major from the server?'))
+                    ->run(fn (ApiClient $api, array $row) => $this->job($api, 'DELETE', '/node/'.$row['major'])),
             ]);
     }
 

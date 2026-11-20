@@ -1,4 +1,6 @@
-<div class="space-y-5" @if ($job && in_array($job['status'], ['pending', 'running'], true)) wire:poll.3s="pollJob" @endif>
+@php($deployStatus = $this->deployStatus)
+@php($deployLive = is_array($deployStatus) && in_array($deployStatus['state'] ?? '', ['running', 'queued', 'interrupted'], true))
+<div class="space-y-5" @if (($job && in_array($job['status'], ['pending', 'running'], true)) || $deployLive) wire:poll.3s="pollJob" @endif>
     @php($details = $this->details)
     @php($summary = $this->summary)
 
@@ -11,6 +13,7 @@
                 @if ($summary['status'])
                     <flux:badge size="sm" :color="$summary['status']['color']">{{ $summary['status']['label'] }}</flux:badge>
                 @endif
+                @if (! empty($details['env']))<flux:badge size="sm" color="zinc">{{ $details['env'] }}</flux:badge>@endif
                 @if (! empty($details['type']))<flux:badge size="sm">{{ $details['type'] }}</flux:badge>@endif
             </div>
             <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
@@ -37,6 +40,34 @@
     @endforeach
     @if ($summary['error'])
         <flux:callout variant="danger" icon="exclamation-triangle"><flux:callout.text>{{ $summary['error'] }}</flux:callout.text></flux:callout>
+    @endif
+
+    {{-- A deploy in flight on the server (Git push, CLI, panel, rollback) — cipi/api 1.37+ --}}
+    @if ($deployLive)
+        @php($current = $deployStatus['current'] ?? [])
+        <div @class([
+            'rounded-xl border p-3',
+            'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40' => ($deployStatus['state'] ?? '') === 'queued',
+            'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40' => ($deployStatus['state'] ?? '') === 'interrupted',
+            'border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/40' => ($deployStatus['state'] ?? '') === 'running',
+        ])>
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+                @if (($deployStatus['state'] ?? '') === 'running')<flux:icon.loading class="size-4" />@endif
+                <span class="font-medium">{{ __('Deploy on the server') }}</span>
+                <flux:badge size="sm" :color="match ($deployStatus['state'] ?? '') { 'queued' => 'amber', 'interrupted' => 'red', default => 'sky' }">{{ $deployStatus['state'] }}</flux:badge>
+                @if (! empty($deployStatus['phase']))<span class="text-zinc-500">· {{ $deployStatus['phase'] }}</span>@endif
+                @if (! empty($current['trigger']))<span class="text-zinc-500">· {{ $current['trigger'] }}</span>@endif
+                @if (! empty($current['branch']))<span class="font-mono text-xs text-zinc-500">{{ $current['branch'] }}</span>@endif
+                @if (isset($current['elapsed']) && is_numeric($current['elapsed']))<span class="tabular-nums text-zinc-500">· {{ (int) $current['elapsed'] }}s</span>@endif
+                <flux:spacer />
+                @if (($deployStatus['state'] ?? '') === 'interrupted' && $this->can('unlock'))
+                    <flux:button size="xs" variant="ghost" icon="lock-open" wire:click="unlock" wire:confirm="{{ __('Only when a deploy is stuck. Unlock?') }}">{{ __('Unlock') }}</flux:button>
+                @endif
+            </div>
+            @if (! empty($deployStatus['tail']))
+                <pre class="mt-2 max-h-48 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-zinc-100">{{ implode("\n", $deployStatus['tail']) }}</pre>
+            @endif
+        </div>
     @endif
 
     {{-- A job of the server being watched --}}
@@ -143,12 +174,14 @@
                         @else
                             <ul class="divide-y divide-zinc-200 dark:divide-zinc-700">
                                 @foreach ($audit as $record)
+                                    @php($label = $record['event'] ?? $record['result'] ?? $record['kind'] ?? '?')
+                                    @php($when = $record['finished_at'] ?? $record['started_at'] ?? $record['ts'] ?? null)
                                     <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
-                                        <flux:badge size="sm" :color="match ($record['event'] ?? '') { 'published' => 'green', 'failed' => 'red', 'rollback' => 'amber', default => 'zinc' }">{{ $record['event'] ?? '?' }}</flux:badge>
-                                        <span class="font-mono text-xs">#{{ $record['release'] ?? '?' }} · {{ substr((string) ($record['commit'] ?? ''), 0, 10) }}</span>
-                                        <span class="text-xs text-zinc-500">{{ collect([$record['operator'] ?? null, data_get($record, 'claimed.actor'), $record['trigger'] ?? null])->filter()->implode(' · ') }}</span>
+                                        <flux:badge size="sm" :color="match ((string) $label) { 'published', 'ok', 'deploy' => 'green', 'failed', 'fail' => 'red', 'rollback' => 'amber', default => 'zinc' }">{{ $label }}</flux:badge>
+                                        <span class="font-mono text-xs">#{{ $record['release'] ?? '?' }}@if (! empty($record['commit']) || ! empty($record['branch'])) · {{ substr((string) ($record['commit'] ?? $record['branch']), 0, 10) }}@endif</span>
+                                        <span class="text-xs text-zinc-500">{{ collect([$record['operator'] ?? null, data_get($record, 'claimed.actor'), $record['trigger'] ?? null, isset($record['duration']) ? $record['duration'].'s' : null])->filter()->implode(' · ') }}</span>
                                         <flux:spacer />
-                                        <span class="text-xs text-zinc-500" title="{{ $record['ts'] ?? '' }}">{{ isset($record['ts']) ? \Illuminate\Support\Carbon::parse($record['ts'])->diffForHumans() : '' }}</span>
+                                        <span class="text-xs text-zinc-500" title="{{ $when }}">{{ $when ? \Illuminate\Support\Carbon::parse($when)->diffForHumans() : '' }}</span>
                                     </li>
                                 @endforeach
                             </ul>
@@ -311,11 +344,12 @@
                                     <flux:badge size="sm" color="sky">{{ trans_choice(':count change|:count changes', count($yml['changes'])) }}</flux:badge>
                                 @endif
                                 <flux:badge size="sm" :color="$yml['auto'] ? 'green' : 'zinc'">{{ $yml['auto'] ? __('auto-apply on') : __('auto-apply off') }}</flux:badge>
+                                @if (! empty($yml['env']))<flux:badge size="sm">{{ $yml['env'] }}</flux:badge>@endif
                             </div>
                         </div>
                         <div class="space-y-4 p-4 text-sm">
                             @if ($yml['file'] === null)
-                                <flux:text class="text-sm">{{ __('The live release has no cipi.yml. Commit one at the root of the repository and deploy: it says which aliases, PHP version and settings, limits, workers, scheduled commands, databases, backups and deploy steps the app expects on the server.') }}</flux:text>
+                                <flux:text class="text-sm">{{ __('The live release has no cipi.yml. Commit one at the root of the repository and deploy: it says which aliases, PHP version and settings, limits, workers, scheduled commands, databases, backups and deploy steps the app expects on the server. With an environment other than production, Cipi also looks for cipi-{env}.yml for that label.') }}</flux:text>
                             @else
                                 <div class="font-mono text-xs break-all text-zinc-500">{{ $yml['file'] }}</div>
                             @endif
