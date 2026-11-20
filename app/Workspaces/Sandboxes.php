@@ -235,7 +235,7 @@ final class Sandboxes
         }
 
         if ($conversation->isBusy()) {
-            throw new InvalidArgumentException(__('Claude is still working in the sandbox: wait for it, or interrupt it.'));
+            throw new InvalidArgumentException(__(':agent is still working in the sandbox: wait for it, or interrupt it.', ['agent' => $conversation->agentLabel()]));
         }
     }
 

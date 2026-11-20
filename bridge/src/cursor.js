@@ -11,17 +11,28 @@ export const CURSOR_DIR = /^\.cursor(-[a-z0-9]{1,40})?$/;
  * Plan and the everyday "ask" mode map onto Cursor's modes. The modes that let
  * Claude edit map onto `--force`, which lets Cursor act unless its own rules deny it.
  *
- * @param {{ text: string, sessionId?: string|null, permissionMode?: string }} turn
+ * Studio already isolates the workspace, so the CLI sandbox is off and project
+ * MCP servers are approved without a prompt (`--approve-mcps`).
+ *
+ * @param {{ text: string, sessionId?: string|null, permissionMode?: string, model?: string|null }} turn
  * @returns {string[]}
  */
 export function cursorArgs(turn) {
-  const args = ['-p', '--output-format', 'stream-json', '--stream-partial-output', '--trust'];
+  const args = [
+    '-p',
+    '--output-format', 'stream-json',
+    '--stream-partial-output',
+    '--trust',
+    '--approve-mcps',
+    '--sandbox', 'disabled',
+  ];
   const mode = turn.permissionMode || 'default';
 
   if (mode === 'plan') args.push('--mode', 'plan');
   else if (mode === 'default') args.push('--mode', 'ask');
   else args.push('--force');
 
+  if (turn.model) args.push('--model', turn.model);
   if (turn.sessionId) args.push('--resume', turn.sessionId);
   args.push(turn.text);
 

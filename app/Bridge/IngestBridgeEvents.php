@@ -3,6 +3,7 @@
 namespace App\Bridge;
 
 use App\Accounts\Accounts;
+use App\Actions\Studio\StartTurn;
 use App\Claude\AllowRules;
 use App\Enums\ConversationStatus;
 use App\Enums\PermissionStatus;
@@ -399,17 +400,17 @@ final class IngestBridgeEvents
 
             // A process that dies sends its reason as an error and again as the result: say it once.
             $last = $conversation->messages()->latest('id')->first();
-            if ($last?->kind === Message::KIND_NOTICE && $last->content === Str::limit($content, 2000)) {
-                return;
+            if (! ($last?->kind === Message::KIND_NOTICE && $last->content === Str::limit($content, 2000))) {
+                $conversation->messages()->create([
+                    'role' => Message::ROLE_SYSTEM,
+                    'kind' => Message::KIND_NOTICE,
+                    'content' => $content,
+                    'payload' => ['level' => 'error'],
+                ]);
             }
-
-            $conversation->messages()->create([
-                'role' => Message::ROLE_SYSTEM,
-                'kind' => Message::KIND_NOTICE,
-                'content' => $content,
-                'payload' => ['level' => 'error'],
-            ]);
         }
+
+        app(StartTurn::class)->flushFollowUp($conversation);
     }
 
     /**
@@ -425,6 +426,8 @@ final class IngestBridgeEvents
         ]);
 
         $conversation->setStatus(ConversationStatus::Failed);
+
+        app(StartTurn::class)->flushFollowUp($conversation);
     }
 
     /**

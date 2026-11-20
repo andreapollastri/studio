@@ -54,7 +54,7 @@
                     {!! __('«:title» and all its messages are deleted for good: it cannot be undone.', ['title' => '<strong>'.e($doomed->displayTitle()).'</strong>']) !!}
                 </flux:text>
                 @if ($doomed->isBusy())
-                    <flux:callout variant="warning" icon="exclamation-triangle" :text="__('Claude is still working on it: it will be stopped.')" />
+                    <flux:callout variant="warning" icon="exclamation-triangle" :text="__(':agent is still working on it: it will be stopped.', ['agent' => $doomed->agentLabel()])" />
                 @endif
                 <flux:text class="text-xs">{{ __('The changes it made to the files of the workspace stay where they are.') }}</flux:text>
                 <div class="flex justify-end gap-2">

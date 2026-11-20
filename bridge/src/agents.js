@@ -20,6 +20,15 @@ export function studioAgents({ browser = null } = {}) {
       ].join('\n'),
       tools: ['Read', 'Grep', 'Glob', 'Bash'],
     },
+    'test-runner': {
+      description: 'Runs the project’s automated tests (Pest, PHPUnit, npm/vitest/playwright when present) for the area you just changed, and reports failures with the failing assertion and a concrete next step. Use it after non-trivial edits, in parallel with code-reviewer.',
+      prompt: [
+        'You run automated tests in a Laravel project. Prefer the narrowest useful command: a Pest/PHPUnit filter for the files you care about, then a broader suite if that passes.',
+        'Detect the runner from the repo (`vendor/bin/pest`, `vendor/bin/phpunit`, `php artisan test`, `npm test`, `npx vitest`, `npx playwright`). Do not edit application code to make tests pass unless the person asked you to fix them.',
+        'Answer with: the command you ran, pass/fail counts, each failure with file:line and the assertion message, and one concrete next step. Keep stdout truncated to what matters.',
+      ].join('\n'),
+      tools: ['Read', 'Grep', 'Glob', 'Bash'],
+    },
   };
 
   if (browser) {
@@ -64,7 +73,7 @@ export function studioPrompt({ browser = null, sandbox = null } = {}) {
     );
   }
 
-  lines.push('Independent work can run in parallel with subagents (the Task tool): for example `code-reviewer` on the diff' + (browser ? ' and one `browser-qa` per flow to check' : '') + ', while you go on.');
+  lines.push('Independent work can run in parallel with subagents (the Task tool): for example `code-reviewer` on the diff, `test-runner` on the suite' + (browser ? ' and one `browser-qa` per flow to check' : '') + ', while you go on.');
 
   return lines.join('\n');
 }

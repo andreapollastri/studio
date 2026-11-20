@@ -94,7 +94,7 @@ return [
 
     // PHP versions installed on the server, for the sites and workspaces; the
     // installer and the updater keep this list in step with what is installed.
-    'php_versions' => array_values(array_filter(array_map('trim', explode(',', (string) env('STUDIO_PHP_VERSIONS', '8.5'))))),
+    'php_versions' => array_values(array_filter(array_map('trim', explode(',', (string) env('STUDIO_PHP_VERSIONS', '8.6'))))),
 
     'native' => [
         'helper' => env('STUDIO_HELPER', '/usr/local/sbin/studio-admin'),
@@ -226,12 +226,13 @@ return [
     */
     'allowed_tools' => [
         'admin' => $everyday = [
-            'Bash(php artisan test:*)', 'Bash(vendor/bin/pest:*)', 'Bash(vendor/bin/phpunit:*)',
+            'Bash(php artisan test:*)', 'Bash(php artisan dusk:*)', 'Bash(vendor/bin/pest:*)', 'Bash(vendor/bin/phpunit:*)',
             'Bash(vendor/bin/pint:*)', 'Bash(vendor/bin/phpstan:*)', 'Bash(vendor/bin/rector:*)',
             'Bash(php artisan route:list:*)', 'Bash(php artisan about:*)', 'Bash(php artisan optimize:clear:*)',
-            'Bash(composer install:*)', 'Bash(composer dump-autoload:*)',
+            'Bash(composer install:*)', 'Bash(composer dump-autoload:*)', 'Bash(composer test:*)',
             'Bash(npm ci:*)', 'Bash(npm install:*)', 'Bash(npm run build:*)', 'Bash(npm run lint:*)', 'Bash(npm test:*)',
-            'Bash(git add:*)', 'Bash(git commit:*)',
+            'Bash(npm run test:*)', 'Bash(npx vitest:*)', 'Bash(npx playwright:*)', 'Bash(npx cypress:*)',
+            'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)',
         ],
         'dev' => $everyday,
         'pm' => $everyday,
@@ -249,20 +250,51 @@ return [
     |--------------------------------------------------------------------------
     | Models and effort
     |--------------------------------------------------------------------------
-    | What the chat offers. An empty model leaves Claude Code's own default.
+    | What the chat offers for Claude Code. An empty model leaves Claude Code's
+    | own default. IDs match Anthropic's current aliases (code.claude.com).
     */
     'models' => [
         ['id' => '', 'label' => 'Default'],
-        ['id' => 'claude-fable-5-1', 'label' => 'Fable 5.1'],
-        ['id' => 'claude-opus-5-5', 'label' => 'Opus 5.5'],
-        ['id' => 'claude-sonnet-5-5', 'label' => 'Sonnet 5.5'],
-        ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku 4.5'],
+        ['id' => 'claude-fable-5-2', 'label' => 'Fable 5.2', 'hint' => 'Hardest reasoning and long agentic work'],
+        ['id' => 'claude-opus-5-5', 'label' => 'Opus 5.5', 'hint' => 'Long-running agentic coding'],
+        ['id' => 'claude-sonnet-5-5', 'label' => 'Sonnet 5.5', 'hint' => 'Best balance of speed and intelligence'],
+        ['id' => 'claude-haiku-5-5', 'label' => 'Haiku 5.5', 'hint' => 'Fastest, for light tasks'],
+        ['id' => 'opus', 'label' => 'Opus (latest)', 'hint' => 'Always the newest Opus on your provider'],
+        ['id' => 'sonnet', 'label' => 'Sonnet (latest)', 'hint' => 'Always the newest Sonnet on your provider'],
+        ['id' => 'haiku', 'label' => 'Haiku (latest)', 'hint' => 'Always the newest Haiku on your provider'],
+    ],
+
+    /*
+    | Cursor's CLI --model values. An empty id is Auto. Availability still
+    | depends on the person's Cursor plan; the CLI refuses what the account cannot use.
+    */
+    'cursor_models' => [
+        ['id' => '', 'label' => 'Auto'],
+        ['id' => 'composer-2', 'label' => 'Composer 2'],
+        ['id' => 'grok-4.7', 'label' => 'Grok 4.7'],
+        ['id' => 'claude-fable-5-2', 'label' => 'Claude Fable 5.2'],
+        ['id' => 'claude-opus-5-5', 'label' => 'Claude Opus 5.5'],
+        ['id' => 'claude-sonnet-5-5', 'label' => 'Claude Sonnet 5.5'],
+        ['id' => 'claude-haiku-5-5', 'label' => 'Claude Haiku 5.5'],
+        ['id' => 'gpt-5.6-sol', 'label' => 'GPT-5.6 Sol'],
+        ['id' => 'gemini-3.8-flash', 'label' => 'Gemini 3.8 Flash'],
     ],
 
     // the quick model that writes a commit message from the changes (the wand of the Changes tab)
-    'commit_message_model' => env('STUDIO_COMMIT_MESSAGE_MODEL', 'claude-haiku-4-5'),
+    'commit_message_model' => env('STUDIO_COMMIT_MESSAGE_MODEL', 'claude-haiku-5-5'),
 
-    'efforts' => ['' => 'Default', 'low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'max' => 'Max'],
+    /*
+    | Adaptive reasoning for Claude Code (--effort). xhigh sits between high and
+    | max on Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable; older models fall back.
+    */
+    'efforts' => [
+        '' => 'Default',
+        'low' => 'Low',
+        'medium' => 'Medium',
+        'high' => 'High',
+        'xhigh' => 'Extra high',
+        'max' => 'Max',
+    ],
 
     /*
     |--------------------------------------------------------------------------

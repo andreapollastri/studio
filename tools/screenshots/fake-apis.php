@@ -115,9 +115,9 @@ return [
             '[2026-10-13 10:05:44] production.INFO: Order #10483 paid {"amount":"42.50","gateway":"paypal"}',
         ]],
     ]]]),
-    'api.web1.agency.test/api/apps/shopacme' => Http::response(['data' => ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.5', 'branch' => 'main', 'repository' => 'git@github.com:agency/shop-acme.git', 'suspended' => false, 'force_https' => true]]),
+    'api.web1.agency.test/api/apps/shopacme' => Http::response(['data' => ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'branch' => 'main', 'repository' => 'git@github.com:agency/shop-acme.git', 'suspended' => false, 'force_https' => true]]),
     'api.web1.agency.test/api/apps' => Http::response(['data' => [
-        ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.5', 'branch' => 'main', 'suspended' => false, 'force_https' => true],
+        ['app' => 'shopacme', 'domain' => 'shop.acme.test', 'type' => 'laravel', 'php' => '8.6', 'branch' => 'main', 'suspended' => false, 'force_https' => true],
         ['app' => 'portal', 'domain' => 'suppliers.acme.test', 'type' => 'laravel', 'php' => '8.4', 'branch' => 'main', 'suspended' => false, 'force_https' => true],
     ]]),
     'api.web1.agency.test/api/status' => Http::response(['data' => ['system' => ['ip' => '203.0.113.9', 'hostname' => 'web1', 'os' => 'Ubuntu 24.04', 'cipi' => '5.6.1', 'uptime' => '41 days'], 'apps' => 2,

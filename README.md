@@ -15,7 +15,7 @@ laptop but a browser.
 <img src="docs/img/chat-permission.png" alt="A permission card asking to run php artisan migrate:fresh --seed, with Allow, Always allow and Deny, the preview of the branch on the right" width="100%">
 </p>
 
-**Version 2.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.5 (8.4, 8.3 on request) · MariaDB and PostgreSQL.
+**Version 2.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.6 (8.5, 8.4, 8.3 on request) · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
 (Netlify publishes the `docs/` folder as it is, see `netlify.toml`).
@@ -26,7 +26,7 @@ laptop but a browser.
 wget -qO- https://raw.githubusercontent.com/andreapollastri/studio/refs/heads/main/installer/install.sh | sudo bash
 ```
 
-Ubuntu 24.04 or 26.04 LTS (PHP 8.5 from `packages.sury.org` on both; 8.4 and 8.3 from *Administration → System* when a project needs them). apt's output goes to `/var/log/studio-install.log`; an installation that stopped halfway starts
+Ubuntu 24.04 or 26.04 LTS (PHP 8.6 from `packages.sury.org` on both; 8.5, 8.4 and 8.3 from *Administration → System* when a project needs them). apt's output goes to `/var/log/studio-install.log`; an installation that stopped halfway starts
 again from the questions when the script is run again. The wizard asks for the domain, shows the one DNS record to create
 (`*.<domain>` → the server), checks it, asks for the first administrator (name and email: the password is
 generated and shown, in a yellow box to save, in the summary and at the end), the git provider and the

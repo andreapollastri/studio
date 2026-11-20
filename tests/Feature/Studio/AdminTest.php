@@ -330,18 +330,18 @@ test('creating a repository without a git account is refused', function () {
 test('the project form starts on a PHP the server has', function () {
     $admin = User::factory()->admin()->create();
 
-    // 8.5, the release's own, also where 8.3 and 8.4 were added
+    // 8.6, the release's own, also where older versions were added
+    config(['studio.php_versions' => ['8.3', '8.4', '8.5', '8.6']]);
+    Livewire::actingAs($admin)->test(Projects::class)->assertSet('php_version', '8.6');
+
+    config(['studio.php_versions' => ['8.6']]);
+    Livewire::actingAs($admin)->test(Projects::class)
+        ->assertSet('php_version', '8.6')
+        ->call('create')
+        ->assertSet('php_version', '8.6')
+        ->assertSee('8.6');
+
+    // a server without 8.6 (an older one): the newest PHP it has
     config(['studio.php_versions' => ['8.3', '8.4', '8.5']]);
     Livewire::actingAs($admin)->test(Projects::class)->assertSet('php_version', '8.5');
-
-    config(['studio.php_versions' => ['8.5']]);
-    Livewire::actingAs($admin)->test(Projects::class)
-        ->assertSet('php_version', '8.5')
-        ->call('create')
-        ->assertSet('php_version', '8.5')
-        ->assertSee('8.5');
-
-    // a server without 8.5 (an older one): the newest PHP it has
-    config(['studio.php_versions' => ['8.3', '8.4']]);
-    Livewire::actingAs($admin)->test(Projects::class)->assertSet('php_version', '8.4');
 });

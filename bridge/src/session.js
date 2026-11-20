@@ -103,7 +103,7 @@ export class Session extends EventEmitter {
     if (turn.permission_mode && !['default', 'acceptEdits', 'auto', 'plan', 'bypassPermissions'].includes(turn.permission_mode)) {
       throw new BridgeError(422, 'unknown permission_mode');
     }
-    if (turn.effort && !['low', 'medium', 'high', 'max'].includes(turn.effort)) {
+    if (turn.effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(turn.effort)) {
       throw new BridgeError(422, 'unknown effort');
     }
     if (turn.auth != null && !['subscription', 'api_key'].includes(turn.auth)) {
@@ -330,7 +330,12 @@ export class Session extends EventEmitter {
   /** Cursor's print mode: the prompt is an argument, and the process ends with the turn. */
   #startCursor(text) {
     const bin = this.#config.cursorBin || 'agent';
-    const args = cursorArgs({ text, sessionId: this.sessionId, permissionMode: this.#turn.permission_mode });
+    const args = cursorArgs({
+      text,
+      sessionId: this.sessionId,
+      permissionMode: this.#turn.permission_mode,
+      model: this.#turn.model,
+    });
     this.#log(`spawn ${bin} ${args.slice(0, -1).join(' ')}`);
 
     const child = this.#spawn(bin, args, {

@@ -33,20 +33,34 @@ function chatStream(uuid) {
         shot: null,
         text: '',
         cut: 0,
+        /** Websocket up: false means the chat falls back to polling. */
+        live: live(),
 
         init() {
             // no websocket (or it dropped): ask every few seconds while something is under way
             timer = setInterval(() => {
-                if (this.$root.dataset.polling === '1' && !live()) this.refresh();
+                this.live = live();
+                if (this.$root.dataset.polling === '1' && !this.live) this.refresh();
             }, 4000);
             if (!window.Echo) return;
             this.listener = handler.bind(this);
             channel = window.Echo.private(`conversations.${uuid}`);
             channel.listen('.ConversationUpdated', this.listener);
+
+            const pusher = window.Echo.connector?.pusher?.connection;
+            if (pusher?.bind) {
+                const sync = () => {
+                    this.live = live();
+                };
+                pusher.bind('state_change', sync);
+                this._unsubLive = () => pusher.unbind('state_change', sync);
+                sync();
+            }
         },
 
         destroy() {
             clearInterval(timer);
+            this._unsubLive?.();
             channel?.stopListening('.ConversationUpdated', this.listener);
         },
 

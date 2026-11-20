@@ -82,7 +82,7 @@ install_file() {
 }
 
 load_requirements() { # load_requirements RELEASE_DIR
-    STUDIO_PHP=8.5; PHP_VERSIONS="8.5"; PHP_OPTIONAL=""; PHP_FIXED=""; NODE_MAJOR=22
+    STUDIO_PHP=8.6; PHP_VERSIONS="8.6"; PHP_OPTIONAL=""; PHP_FIXED=""; NODE_MAJOR=22
     # shellcheck disable=SC1091
     [ -f "$1/installer/requirements.env" ] && . "$1/installer/requirements.env"
     resolve_studio_php

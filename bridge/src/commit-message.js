@@ -13,7 +13,7 @@ const MODEL = /^claude-[a-z0-9.-]{1,60}$/;
 export async function suggestCommitMessage(workspaceDir, body, config, { spawn = spawnProcess } = {}) {
   const account = normalizeAccount(body);
   if (body.auth != null && !['subscription', 'api_key'].includes(body.auth)) throw new BridgeError(422, 'unknown auth');
-  const model = MODEL.test(String(body.model ?? '')) ? body.model : 'claude-haiku-4-5';
+  const model = MODEL.test(String(body.model ?? '')) ? body.model : 'claude-haiku-5-5';
 
   const changes = await gitChangesForMessage(workspaceDir, { all: body.all !== false });
   if (changes.diff.trim() === '' && changes.untracked.length === 0) {

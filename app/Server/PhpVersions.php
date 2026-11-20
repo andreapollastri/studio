@@ -6,8 +6,8 @@ use App\Jobs\InstallPhp;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * The PHP versions of the server. Every server gets the release's own (8.5, which runs
- * Studio and which new projects start on); the release's optional ones (8.3, 8.4) are
+ * The PHP versions of the server. Every server gets the release's own (8.6, which runs
+ * Studio and which new projects start on); the release's optional ones (8.3, 8.4, 8.5) are
  * added from Administration → System, one at a time, by studio-admin php-install on the
  * queue. What the release offers is in installer/requirements.env, what is installed
  * in STUDIO_PHP_VERSIONS (the system step and php-install keep it up to date).
@@ -30,7 +30,7 @@ final class PhpVersions
     public function default(): string
     {
         $installed = $this->installed();
-        $own = $this->requirement('STUDIO_PHP') ?: '8.5';
+        $own = $this->requirement('STUDIO_PHP') ?: '8.6';
 
         if ($installed === [] || in_array($own, $installed, true)) {
             return $own;

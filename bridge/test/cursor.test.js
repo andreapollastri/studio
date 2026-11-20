@@ -7,12 +7,16 @@ import { startCollector, testConfig, waitFor } from './helpers.js';
 
 test('cursor print mode asks, plans, or acts, and resumes a session', () => {
   assert.deepEqual(cursorArgs({ text: 'hello', permissionMode: 'default' }).slice(0, -1), [
-    '-p', '--output-format', 'stream-json', '--stream-partial-output', '--trust', '--mode', 'ask',
+    '-p', '--output-format', 'stream-json', '--stream-partial-output', '--trust',
+    '--approve-mcps', '--sandbox', 'disabled', '--mode', 'ask',
   ]);
   assert.equal(cursorArgs({ text: 'hello', permissionMode: 'default' }).at(-1), 'hello');
   assert.ok(cursorArgs({ text: 'think', permissionMode: 'plan' }).includes('plan'));
   assert.ok(cursorArgs({ text: 'do it', permissionMode: 'auto' }).includes('--force'));
   assert.ok(cursorArgs({ text: 'again', permissionMode: 'default', sessionId: 'cur-9' }).includes('cur-9'));
+  const withModel = cursorArgs({ text: 'hi', permissionMode: 'acceptEdits', model: 'claude-opus-5-5' });
+  assert.ok(withModel.includes('--model') && withModel[withModel.indexOf('--model') + 1] === 'claude-opus-5-5');
+  assert.ok(withModel.includes('--force'));
 });
 
 test('the cursor environment is one subscription folder and never a Claude key', () => {

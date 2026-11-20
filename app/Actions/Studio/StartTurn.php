@@ -15,10 +15,17 @@ use InvalidArgumentException;
  * hands it to the bridge right after the response has gone: no queue, so a
  * message never waits behind a workspace being built or a site deploying.
  * The chat shows the message at once.
+ *
+ * While a turn still runs, a further message is kept as the conversation's
+ * follow-up and started automatically when the turn ends (one at a time on
+ * the agent; Studio holds the next one).
  */
 final class StartTurn
 {
-    public function handle(Conversation $conversation, string $text): Message
+    /**
+     * @return Message|null the user message when a turn started; null when the text was queued as a follow-up
+     */
+    public function handle(Conversation $conversation, string $text): ?Message
     {
         $text = trim($text);
 
@@ -36,12 +43,36 @@ final class StartTurn
                 : __('This conversation\'s sandbox is gone: start a new conversation to go on.'));
         }
 
-        // One turn at a time: a second message would queue inside Claude Code and the
-        // conversation's state would drift from the agent's. Interrupt first.
+        // One turn at a time on the agent: keep the next message here and send it when free.
         if ($conversation->isBusy()) {
-            throw new InvalidArgumentException(__('Claude is still working on the last message: wait for it, or interrupt it.'));
+            $conversation->forceFill(['follow_up' => $text])->save();
+
+            return null;
         }
 
+        return $this->begin($conversation, $text);
+    }
+
+    /**
+     * After a turn ends (or a stuck conversation is healed), start the waiting follow-up if any.
+     */
+    public function flushFollowUp(Conversation $conversation): ?Message
+    {
+        $conversation->refresh();
+
+        $text = trim((string) $conversation->follow_up);
+
+        if ($text === '' || $conversation->isBusy() || ! $conversation->acceptsMessages() || ! $conversation->workspace->isRunning()) {
+            return null;
+        }
+
+        $conversation->forceFill(['follow_up' => null])->save();
+
+        return $this->begin($conversation, $text);
+    }
+
+    private function begin(Conversation $conversation, string $text): Message
+    {
         $message = $conversation->messages()->create([
             'role' => Message::ROLE_USER,
             'kind' => Message::KIND_TEXT,

@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string $permission_mode
  * @property string|null $model
  * @property string|null $effort
+ * @property string|null $follow_up the next message, waiting for the current turn to end
  * @property array<string, mixed>|null $last_result
  * @property Carbon|null $last_activity_at
  * @property Carbon|null $seen_at when the person last opened it
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property-read Workspace $workspace
  * @property-read User $user
  */
-#[Fillable(['workspace_id', 'user_id', 'title', 'agent', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'sandbox', 'sandbox_host', 'runtime', 'last_result', 'last_activity_at'])]
+#[Fillable(['workspace_id', 'user_id', 'title', 'agent', 'agent_session_id', 'status', 'permission_mode', 'model', 'effort', 'follow_up', 'sandbox', 'sandbox_host', 'runtime', 'last_result', 'last_activity_at'])]
 class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */
@@ -203,5 +204,16 @@ class Conversation extends Model
     public function displayTitle(): string
     {
         return $this->title ?: __('New conversation');
+    }
+
+    /** Claude or Cursor, as the chat names the agent in status lines and placeholders. */
+    public function agentLabel(): string
+    {
+        return $this->agent === 'cursor' ? 'Cursor' : 'Claude';
+    }
+
+    public function hasFollowUp(): bool
+    {
+        return filled($this->follow_up);
     }
 }

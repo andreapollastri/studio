@@ -23,7 +23,7 @@ use Illuminate\Support\Sleep;
  */
 final class Cipi extends Connector
 {
-    private const PHP = ['8.5' => '8.5', '8.4' => '8.4', '8.3' => '8.3', '8.2' => '8.2', '8.1' => '8.1', '8.0' => '8.0', '7.4' => '7.4'];
+    private const PHP = ['8.6' => '8.6', '8.5' => '8.5', '8.4' => '8.4', '8.3' => '8.3', '8.2' => '8.2', '8.1' => '8.1', '8.0' => '8.0', '7.4' => '7.4'];
 
     public function key(): string
     {

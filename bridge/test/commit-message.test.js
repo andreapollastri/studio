@@ -38,6 +38,7 @@ test('Claude is given the changes and the house style, on a small model, and its
 
   assert.equal(result.message, 'Add a date range filter to orders\n\nThe back office lists orders between two dates.');
   assert.deepEqual(seen[0].args, ['-p', '--output-format', 'text', '--model', 'claude-haiku-4-5', '--permission-mode', 'plan', '--max-turns', '2']);
+  // explicit model still wins; the fallback when omitted is claude-haiku-5-5
   assert.equal(seen[0].env.ANTHROPIC_API_KEY, 'sk-ant-api03-test');
   const prompt = await readFile(join(tmpdir(), 'studio-msg-prompt'), 'utf8');
   assert.match(prompt, /Recent commits:\nAdd the Order model/);
@@ -52,7 +53,7 @@ test('staged only, nothing staged: nothing to describe; an odd model name falls 
   await git(dir, 'add', 'Order.php');
   const seen = [];
   await suggestCommitMessage(dir, { all: false, model: 'gpt; rm -rf /' }, { claudeBin: 'claude' }, { spawn: fakeClaude(seen, 'Add the between scope') });
-  assert.equal(seen[0].args[seen[0].args.indexOf('--model') + 1], 'claude-haiku-4-5');
+  assert.equal(seen[0].args[seen[0].args.indexOf('--model') + 1], 'claude-haiku-5-5');
 });
 
 test('a failing Claude says why; the message is cleaned of quotes and labels', async () => {

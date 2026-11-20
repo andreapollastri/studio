@@ -86,7 +86,7 @@ final class BridgeClient implements FileStore
             'agent' => $agent,
             'session_id' => $conversation->agent_session_id,
             'permission_mode' => $conversation->permission_mode,
-            'model' => $agent === 'claude' ? $conversation->model : null,
+            'model' => $conversation->model,
             'effort' => $agent === 'claude' ? $conversation->effort : null,
             // Claude: the account the person works on this project with, even while it looks disconnected,
             // so the CLI never falls back to another login or key. Cursor: that person's subscription folder.
@@ -250,6 +250,16 @@ final class BridgeClient implements FileStore
             "/conversations/{$request->conversation_id}/permissions/{$request->request_id}",
             ['behavior' => $allow ? 'allow' : 'deny', 'message' => $message, ...($answers ? ['answers' => $answers] : []), ...($rules ? ['rules' => $rules] : [])],
         ));
+    }
+
+    /**
+     * What the bridge knows about this conversation right now (state, session, pending permissions).
+     *
+     * @return array<string, mixed>
+     */
+    public function session(Conversation $conversation): array
+    {
+        return $this->request(fn (PendingRequest $http) => $http->get("/conversations/{$conversation->id}"));
     }
 
     /**

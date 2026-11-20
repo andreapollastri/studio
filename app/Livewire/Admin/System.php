@@ -124,7 +124,7 @@ class System extends Component
         });
     }
 
-    /** One of the release's optional PHP versions (8.3, 8.4) onto the server, on the queue. */
+    /** One of the release's optional PHP versions (8.3, 8.4, 8.5) onto the server, on the queue. */
     public function installPhp(string $version): void
     {
         $updates = app(Updates::class);

@@ -103,7 +103,7 @@ test('sending to a stopped workspace is refused with a readable error', function
     expect($conversation->messages()->count())->toBe(0);
 });
 
-test('a second message while Claude is still working is refused: one turn at a time', function () {
+test('a second message while the agent is still working is queued as a follow-up', function () {
     [$user, $project, $workspace] = memberWithRunningWorkspace();
     $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running]);
 
@@ -113,10 +113,92 @@ test('a second message while Claude is still working is refused: one turn at a t
         ->test(Chat::class, ['conversation' => $conversation])
         ->set('draft', 'and also this')
         ->call('send')
-        ->assertHasErrors(['draft']);
+        ->assertHasNoErrors()
+        ->assertSet('draft', '');
 
     Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/turns'));
-    expect($conversation->messages()->count())->toBe(0);
+    expect($conversation->messages()->count())->toBe(0)
+        ->and($conversation->fresh()->follow_up)->toBe('and also this');
+});
+
+test('when a turn ends the queued follow-up is sent automatically', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create([
+        'status' => ConversationStatus::Running,
+        'follow_up' => 'and then fix the tests',
+    ]);
+
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['accepted' => true], 202)]);
+
+    $this->withToken((string) $workspace->callback_token)->postJson(route('api.bridge.events'), [
+        'conversation' => (string) $conversation->id,
+        'events' => [['type' => 'result', 'subtype' => 'success', 'is_error' => false, 'session_id' => 'sess-1']],
+    ])->assertOk();
+
+    app()->terminate();
+
+    $conversation->refresh();
+
+    expect($conversation->follow_up)->toBeNull()
+        ->and($conversation->status)->toBe(ConversationStatus::Running)
+        ->and($conversation->messages()->where('role', Message::ROLE_USER)->latest('id')->first()?->content)->toBe('and then fix the tests');
+
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/turns')
+        && $request['text'] === 'and then fix the tests');
+});
+
+test('clearFollowUp drops the waiting message without sending it', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create([
+        'status' => ConversationStatus::Running,
+        'follow_up' => 'never mind',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation])
+        ->call('clearFollowUp');
+
+    expect($conversation->fresh()->follow_up)->toBeNull();
+});
+
+test('sendNow interrupts a busy turn and starts the draft as soon as the bridge is free', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create(['status' => ConversationStatus::Running]);
+
+    Http::fake([
+        'http://bridge.test:4455/*/interrupt' => Http::response(['key' => (string) $conversation->id, 'state' => 'idle', 'alive' => false, 'pending_permissions' => []]),
+        'http://bridge.test:4455/*/turns' => Http::response(['accepted' => true], 202),
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation])
+        ->set('draft', 'send this immediately')
+        ->call('sendNow')
+        ->assertHasNoErrors()
+        ->assertSet('draft', '');
+
+    expect($conversation->fresh()->follow_up)->toBeNull()
+        ->and($conversation->fresh()->status)->toBe(ConversationStatus::Running)
+        ->and($conversation->messages()->where('role', Message::ROLE_USER)->latest('id')->first()?->content)->toBe('send this immediately');
+
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/interrupt'));
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/turns') && $request['text'] === 'send this immediately');
+});
+
+test('poll heals a stuck running conversation when the bridge is idle', function () {
+    [$user, $project, $workspace] = memberWithRunningWorkspace();
+    $conversation = Conversation::factory()->forWorkspace($workspace)->create([
+        'status' => ConversationStatus::Running,
+        'last_activity_at' => now()->subMinutes(2),
+    ]);
+
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['key' => (string) $conversation->id, 'state' => 'idle', 'alive' => false, 'pending_permissions' => []])]);
+
+    Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation])
+        ->call('poll');
+
+    expect($conversation->fresh()->status)->toBe(ConversationStatus::Idle);
 });
 
 test('interrupting when the bridge is gone marks the conversation failed so the person can write again', function () {
@@ -353,7 +435,8 @@ test('Claude\'s questions show as a card with their options, not as a permission
         ->assertSee('how deep should Larapilot work?')
         ->assertSee('deep on every flow')
         ->assertSee('Which seams should the plan cover?')
-        ->assertDontSee('Claude wants to run AskUserQuestion');
+        ->assertDontSee('Claude wants to run AskUserQuestion')
+        ->assertDontSee('wants to run AskUserQuestion');
 });
 
 test('answering sends each question with the chosen labels, or the person\'s own words, to the bridge', function () {

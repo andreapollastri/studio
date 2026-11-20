@@ -89,6 +89,20 @@ class Chat extends Component
         $this->readSandbox();
     }
 
+    /** The model list changes with the agent: drop a choice the other side does not offer. */
+    public function updatedAgent(string $value): void
+    {
+        $ids = array_column((array) config($value === 'cursor' ? 'studio.cursor_models' : 'studio.models', []), 'id');
+
+        if (! in_array($this->model, $ids, true)) {
+            $this->model = '';
+        }
+
+        if ($value === 'cursor') {
+            $this->effort = '';
+        }
+    }
+
     /**
      * Model, effort, mode and agent apply from the next message on. Claude
      * resumes its session. Switching between Claude and Cursor starts the
@@ -98,7 +112,8 @@ class Chat extends Component
     {
         $this->authorize('update', $this->conversation);
 
-        $models = array_column((array) config('studio.models', []), 'id');
+        $agent = $this->agent === 'cursor' ? 'cursor' : 'claude';
+        $models = array_column((array) config($agent === 'cursor' ? 'studio.cursor_models' : 'studio.models', []), 'id');
         $modes = $this->allowedModes();
 
         $this->validate([
@@ -110,13 +125,13 @@ class Chat extends Component
             'mode.in' => __('Your role cannot use this mode.'),
         ]);
 
-        $agent = $this->agent === 'cursor' ? 'cursor' : 'claude';
         $switching = $agent !== ($this->conversation->agent === 'cursor' ? 'cursor' : 'claude');
 
         $this->conversation->forceFill([
             'agent' => $agent,
             'model' => $this->model !== '' ? $this->model : null,
-            'effort' => $this->effort !== '' ? $this->effort : null,
+            // Effort is Claude Code only; Cursor encodes it in the model id when it matters.
+            'effort' => $agent === 'claude' && $this->effort !== '' ? $this->effort : null,
             'permission_mode' => $this->mode,
             ...($switching ? ['agent_session_id' => null] : []),
         ])->save();
@@ -140,7 +155,40 @@ class Chat extends Component
      */
     public function poll(): void
     {
+        $this->healIfStuck();
         $this->reload();
+    }
+
+    /**
+     * Studio still says "working" but the bridge has nothing running (a missed result, a
+     * restarted bridge): free the conversation so the person can write, and send any follow-up.
+     */
+    private function healIfStuck(): void
+    {
+        if (! $this->conversation->isBusy() || $this->conversation->pendingPermission()) {
+            return;
+        }
+
+        // Only when quiet for a while: avoid a bridge round-trip on every text-delta refresh.
+        if ($this->conversation->last_activity_at !== null && $this->conversation->last_activity_at->gt(now()->subSeconds(45))) {
+            return;
+        }
+
+        try {
+            $snapshot = (new BridgeClient($this->conversation->workspace))->session($this->conversation);
+            $idle = ($snapshot['state'] ?? null) === 'idle';
+        } catch (BridgeException $e) {
+            // Unknown to the bridge: nothing is running there either.
+            $idle = $e->getCode() === 404;
+        }
+
+        if (! $idle) {
+            return;
+        }
+
+        $this->conversation->setStatus(ConversationStatus::Idle);
+        ConversationUpdated::dispatch($this->conversation->uuid, 'status', ['status' => ConversationStatus::Idle->value]);
+        app(StartTurn::class)->flushFollowUp($this->conversation);
     }
 
     /** Started or stopped from the header: the composer opens or closes with it. */
@@ -156,6 +204,8 @@ class Chat extends Component
 
         $this->validate(['draft' => ['required', 'string', 'max:20000']]);
 
+        $queued = $this->conversation->isBusy();
+
         try {
             $start->handle($this->conversation, $this->draft);
         } catch (InvalidArgumentException $e) {
@@ -165,6 +215,77 @@ class Chat extends Component
         }
 
         $this->draft = '';
+        $this->reload();
+
+        if ($queued) {
+            Flux::toast(text: __('Queued: it will send when this turn ends. Interrupt to stop the turn first.'));
+        }
+    }
+
+    /** Drop the waiting follow-up without sending it. */
+    public function clearFollowUp(): void
+    {
+        $this->authorize('update', $this->conversation);
+
+        $this->conversation->forceFill(['follow_up' => null])->save();
+        $this->reload();
+    }
+
+    /**
+     * Stop the current turn and send the draft (or the queued follow-up) as soon as the agent is free.
+     */
+    public function sendNow(StartTurn $start): void
+    {
+        $this->authorize('update', $this->conversation);
+
+        $text = trim($this->draft) !== '' ? trim($this->draft) : trim((string) $this->conversation->follow_up);
+
+        if ($text === '') {
+            $this->addError('draft', __('The message is empty.'));
+
+            return;
+        }
+
+        if (strlen($text) > 20000) {
+            $this->addError('draft', __('The message is too long.'));
+
+            return;
+        }
+
+        $this->conversation->forceFill(['follow_up' => $text])->save();
+        $this->draft = '';
+
+        if ($this->conversation->isBusy()) {
+            try {
+                $snapshot = (new BridgeClient($this->conversation->workspace))->interrupt($this->conversation);
+                Flux::toast(text: __('Asked :agent to stop; your message sends next.', ['agent' => $this->conversation->agentLabel()]));
+
+                if (($snapshot['state'] ?? null) === 'idle' && ! $this->conversation->pendingPermission()) {
+                    $this->conversation->setStatus(ConversationStatus::Idle);
+                    ConversationUpdated::dispatch($this->conversation->uuid, 'status', ['status' => ConversationStatus::Idle->value]);
+                }
+            } catch (BridgeException $e) {
+                $this->conversation->messages()->create([
+                    'role' => Message::ROLE_SYSTEM,
+                    'kind' => Message::KIND_NOTICE,
+                    'content' => $e->getMessage(),
+                    'payload' => ['level' => 'error'],
+                ]);
+                $this->conversation->setStatus(ConversationStatus::Failed);
+                Flux::toast(variant: 'danger', text: $e->getMessage());
+            }
+        }
+
+        $this->conversation->refresh();
+
+        if (! $this->conversation->isBusy()) {
+            try {
+                $start->flushFollowUp($this->conversation);
+            } catch (InvalidArgumentException $e) {
+                $this->addError('draft', $e->getMessage());
+            }
+        }
+
         $this->reload();
     }
 
@@ -336,7 +457,7 @@ class Chat extends Component
         $this->authorize('update', $this->conversation);
 
         if ($this->conversation->isBusy()) {
-            Flux::toast(variant: 'warning', text: __('Claude is still working in the sandbox: wait for it, or interrupt it.'));
+            Flux::toast(variant: 'warning', text: __(':agent is still working in the sandbox: wait for it, or interrupt it.', ['agent' => $this->conversation->agentLabel()]));
 
             return;
         }
@@ -379,13 +500,14 @@ class Chat extends Component
 
         try {
             $snapshot = (new BridgeClient($this->conversation->workspace))->interrupt($this->conversation);
-            Flux::toast(text: __('Asked Claude to stop.'));
+            Flux::toast(text: __('Asked :agent to stop.', ['agent' => $this->conversation->agentLabel()]));
 
             // Nothing was running on the bridge: no event will come to free the conversation, so do it here
             // (a turn Claude started on its own and Studio never saw end, for one).
             if (($snapshot['state'] ?? null) === 'idle' && $this->conversation->isBusy() && ! $this->conversation->pendingPermission()) {
                 $this->conversation->setStatus(ConversationStatus::Idle);
                 ConversationUpdated::dispatch($this->conversation->uuid, 'status', ['status' => ConversationStatus::Idle->value]);
+                app(StartTurn::class)->flushFollowUp($this->conversation);
             }
         } catch (BridgeException $e) {
             // The bridge is gone, so no turn is running anywhere: let the person write again.
@@ -398,6 +520,7 @@ class Chat extends Component
             $this->conversation->setStatus(ConversationStatus::Failed);
 
             Flux::toast(variant: 'danger', text: $e->getMessage());
+            app(StartTurn::class)->flushFollowUp($this->conversation);
         }
 
         $this->reload();
@@ -528,7 +651,7 @@ class Chat extends Component
 
         return view('livewire.studio.chat', [
             'canChat' => auth()->user()->can('chat', $this->conversation->workspace->project) && $this->conversation->user_id === auth()->id(),
-            'models' => (array) config('studio.models', []),
+            'models' => (array) config($this->agent === 'cursor' ? 'studio.cursor_models' : 'studio.models', []),
             'efforts' => (array) config('studio.efforts', []),
             'modes' => array_intersect_key((array) config('studio.modes', []), array_flip($this->allowedModes())),
             'mcpNames' => array_keys((new BridgeClient($this->conversation->workspace))->mcpServers($this->conversation) ?? []),

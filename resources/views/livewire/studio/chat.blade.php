@@ -101,11 +101,31 @@
     @endif
 
     <div
+        x-show="! live"
+        x-cloak
+        class="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200 max-md:px-3"
+    >{{ __('Live connection paused — refreshing every few seconds') }}</div>
+
+    <div
         id="chat-messages"
-        class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 max-xl:overscroll-contain max-md:px-3"
-        x-data
+        class="relative min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 max-xl:overscroll-contain max-md:px-3"
+        x-data="{
+            stick: true,
+            check() {
+                const el = this.$el;
+                this.stick = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+            },
+            go() {
+                if (this.stick) this.$el.scrollTop = this.$el.scrollHeight;
+            },
+            jump() {
+                this.stick = true;
+                this.$el.scrollTop = this.$el.scrollHeight;
+            },
+        }"
         x-init="$el.scrollTop = $el.scrollHeight"
-        x-on:chat-updated.window="$nextTick(() => $el.scrollTop = $el.scrollHeight)"
+        x-on:scroll.passive="check()"
+        x-on:chat-updated.window="$nextTick(() => go())"
     >
         @forelse ($this->rows as $row)
             @if ($row['agents'])
@@ -127,17 +147,29 @@
             @endif
         @empty
             <div class="py-10 text-center text-sm text-zinc-500">
-                {{ __('Write what you want to achieve. Claude works in your workspace and asks you before sensitive actions.') }}
+                {{ $conversation->agent === 'cursor'
+                    ? __('Write what you want to achieve. Cursor works in your workspace, within its own permission rules.')
+                    : __('Write what you want to achieve. Claude works in your workspace and asks you before sensitive actions.') }}
             </div>
         @endforelse
 
-        {{-- Claude's text as it is typed: grown in the browser from the channel (resources/js/chat-stream.js) --}}
+        {{-- The agent's text as it is typed: grown in the browser from the channel (resources/js/chat-stream.js) --}}
         <div x-show="text !== ''" x-cloak class="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed"><span x-text="text"></span><span class="animate-pulse">▍</span></div>
         @if ($conversation->status === \App\Enums\ConversationStatus::Running)
             <div x-show="text === ''" class="flex items-center gap-2 text-xs text-zinc-500">
-                <flux:icon.loading class="size-3" /> {{ __('Claude is working…') }}
+                <flux:icon.loading class="size-3" /> {{ __(':agent is working…', ['agent' => $conversation->agentLabel()]) }}
             </div>
         @endif
+
+        <button
+            type="button"
+            x-show="! stick"
+            x-cloak
+            x-on:click="jump()"
+            class="sticky bottom-2 z-10 mx-auto flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+            <flux:icon.arrow-down class="size-3.5" /> {{ __('Jump to latest') }}
+        </button>
 
         @if ($this->pending?->isQuestion())
             @php($questions = $this->pending->questions())
@@ -159,7 +191,7 @@
                     <flux:icon.chat-bubble-left-ellipsis class="mt-0.5 size-5 shrink-0 text-sky-600" />
                     <form wire:submit="answer('{{ $this->pending->uuid }}')" class="min-w-0 flex-1 space-y-4">
                         <div class="flex items-center justify-between gap-3">
-                            <div class="text-sm font-semibold">{{ $total > 1 ? __('Claude has :count questions for you', ['count' => $total]) : __('Claude has a question for you') }}</div>
+                            <div class="text-sm font-semibold">{{ $total > 1 ? __(':agent has :count questions for you', ['agent' => $conversation->agentLabel(), 'count' => $total]) : __(':agent has a question for you', ['agent' => $conversation->agentLabel()]) }}</div>
                             @if ($total > 1)
                                 <div class="shrink-0 text-xs tabular-nums text-zinc-500" x-text="`${step + 1} / ${total}`"></div>
                             @endif
@@ -234,7 +266,7 @@
                 <div class="flex items-start gap-3">
                     <flux:icon.hand-raised class="mt-0.5 size-5 shrink-0 text-amber-600" />
                     <div class="min-w-0 flex-1">
-                        <div class="text-sm font-semibold">{{ __('Claude wants to run :tool', ['tool' => $this->pending->tool_name]) }}</div>
+                        <div class="text-sm font-semibold">{{ __(':agent wants to run :tool', ['agent' => $conversation->agentLabel(), 'tool' => $this->pending->tool_name]) }}</div>
                         <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2 font-mono text-xs dark:bg-black/30">{{ $this->pending->summary() }}</pre>
                         @if ($this->pending->description)
                             <div class="mt-2 text-xs text-zinc-600 dark:text-zinc-300">{{ $this->pending->description }}</div>
@@ -268,21 +300,21 @@
                 </div>
                 <flux:radio.group wire:model.live="agent" :label="__('Agent')">
                     <flux:radio value="claude" label="Claude" :description="__('Claude Code, with the model, effort and permission cards below.')" />
-                    <flux:radio value="cursor" label="Cursor" :description="__('Cursor’s CLI, on your Cursor subscription. It does not ask with Studio’s permission cards.')" />
+                    <flux:radio value="cursor" label="Cursor" :description="__('Cursor’s CLI on your subscription: model below, its own modes, project MCP approved automatically.')" />
                 </flux:radio.group>
-                @if ($agent === 'claude')
-                <flux:select wire:model="model" :label="__('Model')">
+                <flux:select wire:model="model" :label="__('Model')" :description="$agent === 'cursor' ? __('What Cursor’s CLI runs; Auto leaves the account default. Your plan must allow the choice.') : __('What Claude Code runs from the next message. “Latest” always follows your provider’s newest of that family.')">
                     @foreach ($models as $option)
-                        <flux:select.option value="{{ $option['id'] }}">{{ $option['label'] }}</flux:select.option>
+                        <flux:select.option value="{{ $option['id'] }}">{{ $option['label'] }}@if (! empty($option['hint'])) — {{ $option['hint'] }}@endif</flux:select.option>
                     @endforeach
                 </flux:select>
-                <flux:select wire:model="effort" :label="__('Effort')" :description="__('How hard the model thinks before answering; higher is slower and costs more.')">
+                @if ($agent === 'claude')
+                <flux:select wire:model="effort" :label="__('Effort')" :description="__('How hard the model thinks. Extra high is for long agentic coding; Max is the deepest. Default follows the model.')">
                     @foreach ($efforts as $value => $label)
                         <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
                     @endforeach
                 </flux:select>
                 @else
-                    <flux:text class="text-xs">{{ __('Plan only is Cursor’s plan mode. Ask before actions is Cursor’s ask mode. The other modes let Cursor act, within its own rules. The project’s .cursor settings apply; Studio does not choose a Cursor model.') }}</flux:text>
+                    <flux:text class="text-xs">{{ __('Cursor has no separate effort control here: some model ids already embed it. Plan only is Cursor’s plan mode; Ask before actions is ask mode; the other modes let Cursor act (`--force`), with the workspace sandbox off and MCP servers approved.') }}</flux:text>
                 @endif
                 <flux:radio.group wire:model="mode" :label="__('Mode')">
                     @foreach ($modes as $value => $definition)
@@ -334,11 +366,12 @@
                             <flux:badge size="sm" icon="cpu-chip" class="font-mono">browser-qa</flux:badge>
                         @endif
                         <flux:badge size="sm" icon="cpu-chip" class="font-mono">code-reviewer</flux:badge>
+                        <flux:badge size="sm" icon="cpu-chip" class="font-mono">test-runner</flux:badge>
                     </div>
                     <div class="mt-1 text-zinc-500">
                         {{ $browser
-                            ? __('Claude opens the preview in a browser signed in as you, takes screenshots and reads the console; looking never asks, clicking asks unless edits are allowed. Subagents run in parallel; the repository\'s .claude/agents apply too.')
-                            : __('The browser is off for this project. Subagents run in parallel; the repository\'s .claude/agents apply too.') }}
+                            ? __('Claude opens the preview in a browser signed in as you, takes screenshots and reads the console; looking never asks, clicking asks unless edits are allowed. Subagents (code-reviewer, test-runner, browser-qa) run in parallel; the repository\'s .claude/agents apply too. Sandboxes and the browser are project settings under Agent.')
+                            : __('The browser is off for this project (turn it on under Project → Agent). Subagents code-reviewer and test-runner still run; the repository\'s .claude/agents apply too.') }}
                     </div>
                 </div>
                 @endif
@@ -350,7 +383,22 @@
         </flux:modal>
 
         <div class="border-t border-zinc-200 p-3 dark:border-zinc-700 max-md:p-2">
-            <form wire:submit="send" class="flex items-end gap-2" x-data="chatComposer">
+            @if ($conversation->hasFollowUp())
+                <div class="mb-2 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs dark:border-sky-900/50 dark:bg-sky-950/30">
+                    <flux:icon.queue-list class="mt-0.5 size-4 shrink-0 text-sky-600" />
+                    <div class="min-w-0 flex-1">
+                        <div class="font-medium text-sky-900 dark:text-sky-200">{{ __('Next message queued') }}</div>
+                        <div class="mt-0.5 truncate text-sky-800/80 dark:text-sky-300/80" title="{{ $conversation->follow_up }}">{{ $conversation->follow_up }}</div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1">
+                        @if ($conversation->isBusy())
+                            <flux:button size="xs" variant="ghost" wire:click="sendNow" :title="__('Stop the turn and send this next')">{{ __('Send now') }}</flux:button>
+                        @endif
+                        <flux:button size="xs" variant="ghost" icon="x-mark" wire:click="clearFollowUp" :aria-label="__('Cancel queued message')" />
+                    </div>
+                </div>
+            @endif
+            <form wire:submit="send" class="flex items-end gap-2" x-data="chatComposer" data-busy="{{ $conversation->isBusy() ? '1' : '0' }}">
                 <div class="relative min-w-0 flex-1">
                     {{-- "/": the skills and commands this conversation can start --}}
                     <div x-show="open" x-cloak x-ref="menu" x-on:click.outside="open = false" class="absolute inset-x-0 bottom-full z-20 mb-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900" role="listbox" aria-label="{{ __('Skills') }}">
@@ -359,7 +407,9 @@
                             <div x-show="! loading && problem !== ''" class="px-3 py-2 text-xs text-red-600" x-text="problem"></div>
                             <div x-show="! loading && problem === '' && shown.length === 0" class="px-3 py-2 text-xs text-zinc-500">
                                 <span x-show="(found ?? []).length > 0" x-text="@js(__('Nothing starts with')) + ' /' + query"></span>
-                                <span x-show="(found ?? []).length === 0">{{ __('No skills or commands found in the workspace (.claude/skills, .larapilot/skills, .claude/commands) or in your Claude folder (~/.claude/skills, ~/.claude/commands).') }}</span>
+                                <span x-show="(found ?? []).length === 0">{{ $conversation->agent === 'cursor'
+                                    ? __('No skills or commands found in the workspace (.cursor/skills, .claude/skills, .larapilot/skills) or in your agent folders.')
+                                    : __('No skills or commands found in the workspace (.claude/skills, .larapilot/skills, .claude/commands) or in your Claude folder (~/.claude/skills, ~/.claude/commands).') }}</span>
                             </div>
                             <template x-for="(skill, i) in shown" :key="skill.name">
                                 <button type="button" data-skill role="option" :aria-selected="i === index"
@@ -384,12 +434,12 @@
                         x-on:keydown="key($event)"
                         rows="2"
                         resize="none"
-                        :placeholder="! $conversation->workspace->isRunning() ? __('Start the workspace to write') : (! $conversation->acceptsMessages() ? ($conversation->sandboxStatus() === \App\Models\Conversation::SANDBOX_CREATING ? __('The sandbox is being prepared…') : __('This conversation is history: its sandbox is gone')) : ($conversation->isBusy() ? __('Claude is working… your next message can wait here (interrupt to send it now)') : ($conversation->isSandboxed() ? __('Write to Claude in the sandbox… (⏎ to send, ⇧⏎ new line, / for skills)') : __('Write to Claude… (⏎ to send, ⇧⏎ new line, / for skills)'))))"
+                        :placeholder="! $conversation->workspace->isRunning() ? __('Start the workspace to write') : (! $conversation->acceptsMessages() ? ($conversation->sandboxStatus() === \App\Models\Conversation::SANDBOX_CREATING ? __('The sandbox is being prepared…') : __('This conversation is history: its sandbox is gone')) : ($conversation->isBusy() ? __(':agent is working… Enter queues your next message · ⌘/Ctrl+Enter sends now', ['agent' => $conversation->agentLabel()]) : ($conversation->isSandboxed() ? __('Write to :agent in the sandbox… (⏎ to send, ⇧⏎ new line, / for skills)', ['agent' => $conversation->agentLabel()]) : __('Write to :agent… (⏎ to send, ⇧⏎ new line, / for skills)', ['agent' => $conversation->agentLabel()]))))"
                         :disabled="! $conversation->workspace->isRunning() || ! $conversation->acceptsMessages()"
                     />
                     <flux:error name="draft" />
                 </div>
-                <flux:button type="submit" variant="primary" icon="paper-airplane" :disabled="! $conversation->workspace->isRunning() || $conversation->isBusy() || ! $conversation->acceptsMessages()" :aria-label="__('Send')"><span class="max-sm:hidden">{{ __('Send') }}</span></flux:button>
+                <flux:button type="submit" variant="primary" icon="paper-airplane" :disabled="! $conversation->workspace->isRunning() || ! $conversation->acceptsMessages()" :aria-label="$conversation->isBusy() ? __('Queue') : __('Send')"><span class="max-sm:hidden">{{ $conversation->isBusy() ? __('Queue') : __('Send') }}</span></flux:button>
             </form>
         </div>
     @endif

@@ -99,3 +99,42 @@ test('an unknown model is refused', function () {
         ->call('saveSettings')
         ->assertHasErrors(['model']);
 });
+
+test('Cursor can pick a model and the bridge receives it on the next turn', function () {
+    [$user, $conversation] = pmWithConversation();
+    CursorAccount::factory()->for($user)->create(['name' => 'Work', 'dir' => '.cursor-work', 'signed_in' => true]);
+    Http::fake(['http://bridge.test:4455/*' => Http::response(['accepted' => true], 202)]);
+
+    Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation])
+        ->set('agent', 'cursor')
+        ->set('model', 'claude-sonnet-5-5')
+        ->set('effort', 'xhigh')
+        ->call('saveSettings')
+        ->assertHasNoErrors()
+        ->set('draft', 'go')
+        ->call('send');
+
+    expect($conversation->fresh()->agent)->toBe('cursor')
+        ->and($conversation->fresh()->model)->toBe('claude-sonnet-5-5')
+        ->and($conversation->fresh()->effort)->toBeNull();
+
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/turns')
+        && $request['agent'] === 'cursor'
+        && $request['model'] === 'claude-sonnet-5-5'
+        && ($request['effort'] ?? null) === null);
+});
+
+test('effort xhigh is accepted for Claude', function () {
+    [$user, $conversation] = pmWithConversation();
+
+    Livewire::actingAs($user)
+        ->test(Chat::class, ['conversation' => $conversation])
+        ->set('model', 'claude-fable-5-2')
+        ->set('effort', 'xhigh')
+        ->call('saveSettings')
+        ->assertHasNoErrors();
+
+    expect($conversation->fresh()->model)->toBe('claude-fable-5-2')
+        ->and($conversation->fresh()->effort)->toBe('xhigh');
+});

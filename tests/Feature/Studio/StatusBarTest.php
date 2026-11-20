@@ -106,9 +106,12 @@ test('the bridge\'s init and rate limit events become what the bar shows', funct
 
 test('model ids read the way people say them', function () {
     expect(ModelName::label('claude-haiku-4-5-20251001'))->toBe('Haiku 4.5')
+        ->and(ModelName::label('claude-haiku-5-5'))->toBe('Haiku 5.5')
+        ->and(ModelName::label('claude-fable-5-2'))->toBe('Fable 5.2')
         ->and(ModelName::label('claude-sonnet-5'))->toBe('Sonnet 5')
         ->and(ModelName::label('claude-opus-5-5'))->toBe('Opus 5.5')
         ->and(ModelName::label('claude-sonnet-4-20250514'))->toBe('Sonnet 4')
+        ->and(ModelName::label('opus'))->toBe('Opus (latest)')
         ->and(ModelName::label(null))->toBeNull()
         ->and(ModelName::label('something-else'))->toBe('something-else');
 });

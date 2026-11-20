@@ -47,9 +47,9 @@ printf 'STUDIO_PHP=8.5\nPHP_VERSIONS="8.4 8.5 8.6"\nNODE_MAJOR=24\n' > "$T/rel/i
 load_requirements "$T/rel"
 [ "$STUDIO_PHP $NODE_MAJOR" = "8.5 24" ] && [ "$PHP_VERSIONS" = "8.4 8.5 8.6" ] || fail "load_requirements: $STUDIO_PHP $NODE_MAJOR / $PHP_VERSIONS"
 [ -z "$PHP_OPTIONAL" ] || fail "a release without PHP_OPTIONAL offers nothing more, got $PHP_OPTIONAL"
-FAKE_PHP_VERSIONS=8.5 load_requirements "$HERE/../.."
-[ "$STUDIO_PHP $PHP_VERSIONS" = "8.5 8.5" ] && [ "$PHP_OPTIONAL" = "8.3 8.4" ] || fail "this release: PHP $STUDIO_PHP / $PHP_VERSIONS, optional $PHP_OPTIONAL"
-ok "a release's requirements.env is what the system step installs: PHP 8.5, with 8.3 and 8.4 on request"
+FAKE_PHP_VERSIONS=8.6 load_requirements "$HERE/../.."
+[ "$STUDIO_PHP $PHP_VERSIONS" = "8.6 8.6" ] && [ "$PHP_OPTIONAL" = "8.3 8.4 8.5" ] || fail "this release: PHP $STUDIO_PHP / $PHP_VERSIONS, optional $PHP_OPTIONAL"
+ok "a release's requirements.env is what the system step installs: PHP 8.6, with 8.3–8.5 on request"
 
 printf 'STUDIO_PHP=9.9\n' > "$T/rel/installer/requirements.env"
 FAKE_PHP_VERSIONS=8.3,8.4 load_requirements "$T/rel"

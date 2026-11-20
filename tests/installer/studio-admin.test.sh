@@ -213,7 +213,7 @@ ok "git-cli installs the forge's CLI through the release's ensure_git_cli and an
 # ---------------------------------------------------------------- php-install
 
 cat > "$T/release/installer/lib/system.sh" <<'LIB'
-load_requirements() { PHP_OPTIONAL="8.3 8.4"; }
+load_requirements() { PHP_OPTIONAL="8.3 8.4 8.5"; }
 add_php() { echo "adding PHP $1"; echo "$1" >> "$INSTALLED"; }
 LIB
 : > "$INSTALLED"; : > "$T/cached"

@@ -43,7 +43,7 @@ class Projects extends Component
 
     public string $default_branch = 'develop';
 
-    public string $php_version = '8.5';
+    public string $php_version = '8.6';
 
     public string $db_engine = 'mariadb';
 
@@ -81,7 +81,7 @@ class Projects extends Component
         $this->php_version = self::defaultPhp();
     }
 
-    /** The release's own PHP (8.5) where the server has it, otherwise the newest PHP it has. */
+    /** The release's own PHP (8.6) where the server has it, otherwise the newest PHP it has. */
     public static function defaultPhp(): string
     {
         return app(PhpVersions::class)->default();

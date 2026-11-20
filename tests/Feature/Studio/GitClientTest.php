@@ -324,7 +324,7 @@ test('the wand fills the message with what Claude writes from the staged changes
         ->assertSet('gitError', null)
         ->assertSet('commitMessage', "Add a date range filter to orders\n\nThe back office lists orders between two dates.");
 
-    Http::assertSent(fn (Request $r) => $r->url() === BRIDGE.'/git/commit-message' && $r['all'] === false && $r['model'] === 'claude-haiku-4-5' && array_key_exists('auth', $r->data()));
+    Http::assertSent(fn (Request $r) => $r->url() === BRIDGE.'/git/commit-message' && $r['all'] === false && $r['model'] === 'claude-haiku-5-5' && array_key_exists('auth', $r->data()));
 });
 
 test('when Claude cannot write it, the wand leaves the message alone and says why', function () {

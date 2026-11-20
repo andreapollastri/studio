@@ -203,7 +203,7 @@
                     @if ($tab === 'agent')
                         <div>
                             <flux:heading size="lg">{{ __('What the agent gets in this project') }}</flux:heading>
-                            <flux:text class="mt-1">{{ __('Every chat is Claude Code with its subagents; Studio adds its own code-reviewer and, with the browser, browser-qa.') }}</flux:text>
+                            <flux:text class="mt-1">{{ __('Every chat is Claude Code with its subagents; Studio adds code-reviewer, test-runner and, with the browser, browser-qa. Sandboxes give each conversation its own worktree, database and preview.') }}</flux:text>
                         </div>
                         <flux:checkbox wire:model="agent_browser" :label="__('Browser for the agent')" :description="__('A headless Chromium (Playwright MCP) signed in to the preview as the person: Claude opens pages, takes screenshots, reads the console and failed requests. The screenshots show in the chat. It sees what the person may see, through the same access rules.')" />
                         <flux:checkbox wire:model.live="agent_sandboxes" :label="__('Conversations in a sandbox')" :description="__('A git worktree of the person\'s workspace on its own branch, with a copy of its database and a preview of its own (<person>-<project>--c<id>). Several work at once without touching each other; the person merges or pushes the one they keep. Queues run inline there, and the scheduler and Reverb are off.')" />

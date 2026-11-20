@@ -117,7 +117,7 @@ class DemoSeeder extends Seeder
             'name' => 'Loyalty',
             'repo_url' => 'https://github.com/agency/loyalty.git',
             'default_branch' => 'main',
-            'php_version' => '8.5',
+            'php_version' => '8.6',
             'db_engine' => 'mariadb',
             'deploy_user_id' => $andrea->id,
         ]);

@@ -114,7 +114,7 @@ test('a turn with a preview gets the browser server, its signed-in state, the su
   assert.ok(!allowed.some((tool) => tool.includes('browser_click')));
 
   const agents = JSON.parse(readFileSync(flag(args, '--agents'), 'utf8'));
-  assert.deepEqual(Object.keys(agents).sort(), ['browser-qa', 'code-reviewer']);
+  assert.deepEqual(Object.keys(agents).sort(), ['browser-qa', 'code-reviewer', 'test-runner']);
   assert.match(flag(args, '--append-system-prompt'), /maria-shop\.studio\.test/);
 
   // the next turn brings a fresh pass, written where the running browser server reads it, without a restart
@@ -148,7 +148,7 @@ test('with edits allowed the whole browser is free; without a browser on the ser
   const files = readdirSync(argsDir).map((f) => JSON.parse(readFileSync(join(argsDir, f), 'utf8')));
   const args = files.find((f) => !f.args.includes('--allowedTools')).args;
   assert.equal(args.includes('--mcp-config'), false);
-  assert.deepEqual(Object.keys(JSON.parse(readFileSync(flag(args, '--agents'), 'utf8'))), ['code-reviewer']);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(flag(args, '--agents'), 'utf8'))).sort(), ['code-reviewer', 'test-runner']);
   await none.close();
 
   delete process.env.FAKE_CLAUDE_ARGS_DIR;

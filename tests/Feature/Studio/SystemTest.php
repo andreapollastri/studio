@@ -177,12 +177,12 @@ test('a server update in progress keeps the page following it', function () {
         ->assertSee('updating…');
 });
 
-test('PHP 8.5 is the default and the optional 8.3 and 8.4 install from the page, one at a time', function () {
-    config(['studio.php_versions' => ['8.5']]);
+test('PHP 8.6 is the default and the optional 8.5, 8.4 and 8.3 install from the page, one at a time', function () {
+    config(['studio.php_versions' => ['8.6']]);
     $admin = User::factory()->admin()->create();
 
     Livewire::actingAs($admin)->test(System::class)
-        ->assertSeeInOrder(['PHP 8.5', 'default', 'installed', 'PHP 8.4', 'Install', 'PHP 8.3', 'Install'])
+        ->assertSeeInOrder(['PHP 8.6', 'default', 'installed', 'PHP 8.5', 'Install', 'PHP 8.4', 'Install', 'PHP 8.3', 'Install'])
         ->call('installPhp', '8.4')
         ->assertSet('error', null);
 
@@ -193,14 +193,14 @@ test('PHP 8.5 is the default and the optional 8.3 and 8.4 install from the page,
     Livewire::actingAs($admin)->test(System::class)
         ->call('installPhp', '7.4')
         ->assertSet('error', 'PHP 7.4 is not one this server can add.')
-        ->call('installPhp', '8.5')
-        ->assertSet('error', 'PHP 8.5 is not one this server can add.');
+        ->call('installPhp', '8.6')
+        ->assertSet('error', 'PHP 8.6 is not one this server can add.');
 
     expect(helperCalls($this->log))->toBe(['php-install 8.4']);
 });
 
 test('an install under way blocks a second one, and a failed one says why', function () {
-    config(['studio.php_versions' => ['8.5']]);
+    config(['studio.php_versions' => ['8.6']]);
     $admin = User::factory()->admin()->create();
     Cache::put('studio:php-install', ['version' => '8.4', 'status' => 'running', 'error' => null, 'at' => now()->toIso8601String()]);
 

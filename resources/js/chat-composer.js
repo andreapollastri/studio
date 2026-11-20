@@ -4,6 +4,9 @@
  * can start, read once from the bridge through Livewire (Chat::skills). In the
  * list, Enter or a click starts the highlighted one at once, Tab writes it out
  * so a request can follow, Esc closes it.
+ *
+ * While a turn runs, Enter queues the next message; ⌘/Ctrl+Enter interrupts
+ * and sends it as soon as the agent is free (Chat::sendNow).
  */
 function chatComposer() {
     let all = null;
@@ -93,6 +96,11 @@ function chatComposer() {
             }
             if (event.key === 'Enter' && !event.shiftKey && !event.altKey) {
                 event.preventDefault();
+                // ⌘/Ctrl+Enter while busy: interrupt and send now
+                if ((event.metaKey || event.ctrlKey) && this.$root.dataset.busy === '1') {
+                    this.sendNow();
+                    return;
+                }
                 this.send();
             }
         },
@@ -112,15 +120,42 @@ function chatComposer() {
             input.setSelectionRange(text.length, text.length);
         },
 
-        send() {
-            // the button says whether a message can go now (the workspace runs, Claude is not busy)
+        async send() {
+            const input = this.$refs.input;
+            const text = input?.value ?? '';
+            if (text.trim() === '') return;
+            // workspace stopped or conversation closed: the submit button says so
             if (this.$root.querySelector('button[type=submit]')?.disabled) return;
-            if (this.$refs.input.value.trim() === '') return;
-            this.$wire.draft = this.$refs.input.value;
+
+            this.$wire.draft = text;
             this.open = false;
-            // the next time the person writes, the CLI is checked again (it may have gone idle meanwhile)
             warmed = false;
-            this.$wire.send();
+
+            // clear at once so a poll cannot restore the old draft over what was just sent
+            input.value = '';
+            try {
+                await this.$wire.send();
+            } catch {
+                input.value = text;
+                this.$wire.draft = text;
+            }
+        },
+
+        async sendNow() {
+            const input = this.$refs.input;
+            const text = input?.value ?? '';
+            if (text.trim() === '') return;
+
+            this.$wire.draft = text;
+            this.open = false;
+            warmed = false;
+            input.value = '';
+            try {
+                await this.$wire.sendNow();
+            } catch {
+                input.value = text;
+                this.$wire.draft = text;
+            }
         },
     };
 }
