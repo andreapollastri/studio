@@ -11,6 +11,12 @@
 const live = () => window.Echo?.connector?.pusher?.connection?.state === 'connected';
 
 /**
+ * The socket Studio has was lost: the only time the chat says so. Without Echo there is nothing
+ * to lose, and a socket still connecting (every page load) is not news.
+ */
+const dropped = () => ['unavailable', 'failed', 'disconnected'].includes(window.Echo?.connector?.pusher?.connection?.state);
+
+/**
  * With the socket up, a turn that went quiet this long while Studio says it works gets one
  * refresh anyway: a result the socket never brought (a bridge restart) would otherwise keep
  * "working…" for good, since only a refresh lets the server see the bridge is idle.
@@ -44,12 +50,15 @@ function chatStream(uuid) {
         cut: 0,
         /** Websocket up: false means the chat falls back to polling. */
         live: live(),
+        /** The websocket went down: the banner says the chat polls meanwhile. */
+        paused: false,
 
         init() {
             // no websocket (or it dropped): ask every few seconds while something is under way;
             // with it, ask once in a while when the turn has gone quiet
             timer = setInterval(() => {
                 this.live = live();
+                this.paused = dropped();
                 if (this.$root.dataset.polling !== '1') {
                     heard = Date.now();
                     return;
@@ -68,6 +77,7 @@ function chatStream(uuid) {
             if (pusher?.bind) {
                 const sync = () => {
                     this.live = live();
+                    this.paused = dropped();
                 };
                 pusher.bind('state_change', sync);
                 this._unsubLive = () => pusher.unbind('state_change', sync);

@@ -1724,6 +1724,51 @@
     @media (max-width: 720px) {
       .hero-shot { padding: 0 1rem 2rem; }
     }
+    /* ---- Showcase: between the hero and the docs ---- */
+    .showcase { position: relative; padding: 4.5rem 1.5rem 3.5rem; border-bottom: 1px solid var(--line); }
+    .showcase-inner { max-width: var(--max); margin: 0 auto; }
+    .showcase-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); background: var(--white); margin-bottom: 3.5rem; }
+    .showcase-stat { padding: 1.1rem 1.25rem; border-left: 1px solid var(--line); }
+    .showcase-stat:first-child { border-left: 0; }
+    .showcase-stat b { display: block; font-family: var(--display); font-size: clamp(1.6rem, 3.2vw, 2.25rem); font-weight: 700; letter-spacing: -0.04em; line-height: 1; color: var(--ink); }
+    .showcase-stat span { display: block; margin-top: 0.4rem; font-size: 0.9rem; color: var(--muted); }
+    .showcase-kicker { font-family: var(--mono); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--signal); }
+    .showcase h2 { font-family: var(--display); font-weight: 700; font-size: clamp(1.7rem, 3.6vw, 2.6rem); letter-spacing: -0.045em; line-height: 1.08; margin: 0.6rem 0 0.8rem; max-width: 24ch; }
+    .showcase-lead { color: var(--ink-soft); font-size: 1.1rem; max-width: 62ch; margin-bottom: 2.25rem; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+    .feature-card { display: flex; flex-direction: column; text-decoration: none; color: inherit; background: var(--white); border: 1px solid var(--line); transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
+    .feature-card:hover, .feature-card:focus-visible { border-color: var(--signal); transform: translateY(-3px); box-shadow: 0 22px 40px -28px rgba(17, 26, 8, 0.55); outline: none; }
+    .feature-card img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .feature-body { padding: 1rem 1.1rem 1.2rem; }
+    .feature-body h3 { font-family: var(--display); font-size: 1.15rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0.35rem 0 0.4rem; }
+    .feature-body p { font-size: 0.95rem; color: var(--muted); }
+    .feature-more { display: inline-block; margin-top: 0.6rem; font-size: 0.9rem; font-weight: 600; color: var(--signal-deep); }
+    .feature-card:hover .feature-more { text-decoration: underline; }
+    .flow { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-top: 3.25rem; border: 1px solid var(--ink); background: var(--terminal); color: rgba(241, 245, 233, 0.78); }
+    .flow li { padding: 1.25rem 1.25rem 1.4rem; border-left: 1px solid rgba(190, 242, 100, 0.18); }
+    .flow li:first-child { border-left: 0; }
+    .flow-num { font-family: var(--mono); font-size: 0.78rem; font-weight: 600; color: var(--phosphor); }
+    .flow strong { display: block; margin: 0.35rem 0 0.3rem; font-family: var(--display); font-size: 1.1rem; letter-spacing: -0.02em; color: var(--white); }
+    .flow p { font-size: 0.93rem; }
+    .flow code { font-size: 0.82em; color: var(--phosphor); background: rgba(190, 242, 100, 0.08); padding: 0.05em 0.3em; overflow-wrap: anywhere; }
+    @media (max-width: 960px) {
+      .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow li:nth-child(3) { border-left: 0; }
+      .flow li:nth-child(n + 3) { border-top: 1px solid rgba(190, 242, 100, 0.18); }
+    }
+    @media (max-width: 640px) {
+      .showcase { padding: 3rem 1rem 2.5rem; }
+      .showcase-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 2.5rem; }
+      .showcase-stat:nth-child(3) { border-left: 0; }
+      .showcase-stat:nth-child(n + 3) { border-top: 1px solid var(--line); }
+      .feature-grid, .flow { grid-template-columns: 1fr; }
+      .flow li { border-left: 0; }
+      .flow li + li { border-top: 1px solid rgba(190, 242, 100, 0.18); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .feature-card, .feature-card:hover { transition: none; transform: none; }
+    }
   </style>
 </head>
 <body>
@@ -1788,10 +1833,90 @@
     </div>
   </header>
 
+  <section class="showcase" aria-labelledby="showcase-title">
+    <div class="showcase-inner">
+      <div class="showcase-stats">
+        <div class="showcase-stat"><b>1 command</b><span>to install on an Ubuntu VPS</span></div>
+        <div class="showcase-stat"><b>3 roles</b><span>per project: PM, developer, client</span></div>
+        <div class="showcase-stat"><b>4 git hosts</b><span>GitHub, GitLab, Bitbucket, Azure DevOps</span></div>
+        <div class="showcase-stat"><b>8 connectors</b><span>clouds, DNS, servers, monitoring, storage</span></div>
+      </div>
+
+      <span class="showcase-kicker">What you get</span>
+      <h2 id="showcase-title">Everything around each person's own Claude Code.</h2>
+      <p class="showcase-lead">The agent does the work in a workspace of its own. Studio gives the team everything around it:
+        the preview, the repository, the servers, the secrets, and the say on what runs.</p>
+
+      <div class="feature-grid">
+        <a class="feature-card" href="#work-chat">
+          <img src="img/chat-plan.png" alt="A plan-only conversation with two subagent cards side by side" loading="lazy" width="2880" height="1800" />
+          <div class="feature-body">
+            <span class="showcase-kicker">The chat</span>
+            <h3>Plain words in, a pull request out</h3>
+            <p>Each person's own Claude Code (or Cursor) writes the story, plans it, implements it on their branch and opens the PR. The next message waits its turn.</p>
+            <span class="feature-more">Read how →</span>
+          </div>
+        </a>
+        <a class="feature-card" href="#work-permissions">
+          <img src="img/chat-changes.png" alt="The Git tab: branch, modified files and the diff of the workspace" loading="lazy" width="2880" height="1800" />
+          <div class="feature-body">
+            <span class="showcase-kicker">Approvals</span>
+            <h3>Humans approve what matters</h3>
+            <p>Tests and builds run on their own; migrations, pushes and deploys ask first. Every change is a diff you can read before it ships.</p>
+            <span class="feature-more">Read how →</span>
+          </div>
+        </a>
+        <a class="feature-card" href="#roles">
+          <img src="img/projects-roles.png" alt="Luca's projects: developer on some, PM on another" loading="lazy" width="2880" height="1800" />
+          <div class="feature-body">
+            <span class="showcase-kicker">Roles</span>
+            <h3>A role per project</h3>
+            <p>PM here, developer there, client elsewhere: the chat, the tabs and every attached resource follow the role a person has on that project.</p>
+            <span class="feature-more">Read how →</span>
+          </div>
+        </a>
+        <a class="feature-card" href="#work-clients">
+          <img src="img/client-view.png" alt="A client's view: the project site in the preview pane, no chat" loading="lazy" width="2880" height="1800" />
+          <div class="feature-body">
+            <span class="showcase-kicker">Previews</span>
+            <h3>Live previews of every branch</h3>
+            <p>Workspaces and sandboxes serve their branch on their own address, on the client's domain if they want. Clients see the site, not the code.</p>
+            <span class="feature-more">Read how →</span>
+          </div>
+        </a>
+        <a class="feature-card" href="#infra-projects">
+          <img src="img/project-overview.png" alt="The Infrastructure tab of a project: cards for the Cipi app, the Boogle project, the Johnny bucket, the Droplet and the zone" loading="lazy" width="2880" height="1800" />
+          <div class="feature-body">
+            <span class="showcase-kicker">Infrastructure</span>
+            <h3>Servers, zones and buckets, attached</h3>
+            <p>AWS, DigitalOcean, Hetzner, Cloudflare, Cipi, Boogle, Hackly and Johnny: any row becomes a card of the project, with only the actions each role may run.</p>
+            <span class="feature-more">Read how →</span>
+          </div>
+        </a>
+        <a class="feature-card" href="#tools-databases">
+          <img src="img/database-data.png" alt="The SQL client: tables on the left, rows with filters, pages and export" loading="lazy" width="2880" height="1800" />
+          <div class="feature-body">
+            <span class="showcase-kicker">Tools</span>
+            <h3>The tools a studio lives in</h3>
+            <p>Git on four hosts, a SQL client, SSH with files, a password manager with sharing, a drive and scheduled backups, behind one login with 2FA and passkeys.</p>
+            <span class="feature-more">Read how →</span>
+          </div>
+        </a>
+      </div>
+
+      <ol class="flow" aria-label="From a server to the first pull request">
+        <li><span class="flow-num">01</span><strong>Install</strong><p>One <code>wget … | sudo bash</code> on a fresh Ubuntu server: Caddy, PHP, the database, Studio and its updater.</p></li>
+        <li><span class="flow-num">02</span><strong>Create a project</strong><p>From a repository on any of the four git hosts, or a new one: its site deploys on every push.</p></li>
+        <li><span class="flow-num">03</span><strong>Put people on it</strong><p>Each with the role they have there; attach the servers, zones and buckets it runs on.</p></li>
+        <li><span class="flow-num">04</span><strong>Ask in plain words</strong><p>Each person signs in to Claude Code with their own account; the agent works, the preview follows, the team approves.</p></li>
+      </ol>
+    </div>
+  </section>
+
   <div class="docs" id="docs">
     <aside class="docs-nav" aria-label="Documentation">
       <div class="docs-nav-label">Start</div>
-      <a href="#whats-new">What's new in 2.0</a>
+      <a href="#whats-new">What's new</a>
       <a href="#quickstart">Quickstart</a>
       <a class="sub" href="#quickstart-installs">What it installs</a>
       <a class="sub" href="#quickstart-layout">Where things land</a>
@@ -3473,8 +3598,8 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <dl><dt>Messages</dt><dd>Yours on the right. The agent's as prose, with Markdown rendered and code inline. System
             notices, in red when something failed, say what to do.</dd></dl>
           <dl><dt>Streaming</dt><dd>Text arrives as it is typed over Reverb and grows in the browser without asking the server.
-            Without a websocket the chat polls every few seconds while the agent works, and a short banner says so; nothing
-            is lost either way.</dd></dl>
+            Without a websocket the chat polls every few seconds while the agent works; when Reverb's socket drops, a short
+            banner says so. Nothing is lost either way.</dd></dl>
           <dl><dt>Follow-ups</dt><dd>While a turn still runs, Enter (or <em>Queue</em>) keeps your next message on the
             conversation and sends it when the turn ends; a further message joins the one waiting, after it. A chip shows
             what is waiting: <em>Send now</em> (or ⌘/Ctrl+Enter) interrupts and sends it, with the draft after it, as soon as
@@ -4927,10 +5052,43 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
           <p><a href="https://johnny.web.ap.it/" target="_blank" rel="noopener">Johnny</a>, S3-compatible storage on your
             own server (Garage behind Caddy): one Studio account per panel, as many panels as you run.</p>
         </div>
-        <p>Buckets (create, details, delete an empty one; the <code>default</code> bucket stays), the keys that reach each
-          bucket with their permissions (give a key read, write or owner, take them away), the keys themselves (create one:
-          its secret shows once; delete), and <em>Bucket with its key</em>: a bucket, a key of its own with every permission
-          on it and the <code>.env</code> lines of a Laravel <code>s3</code> disk, in one step.</p>
+        <p>For Johnny 2.0 panels. <strong>Storage</strong>: buckets (create, details, delete an empty one; the
+          <code>default</code> bucket stays) and their <em>Settings</em>: usage, quotas (largest size, most objects), the
+          CORS rule (the websites a browser may reach the bucket from) and expiry rules (delete objects after N days,
+          optionally under one folder; clean up unfinished uploads). Every change starts from what the bucket has, so a form
+          never clears a limit it did not show; expiry rules delete objects, so they count as destructive. The keys of a
+          bucket each have one <strong>scope</strong>: <em>Read only</em>, <em>Read and write</em>, <em>Write only</em> or
+          <em>Full control</em> (Garage enforces read, write and owner and nothing finer: a key that can write can also
+          overwrite and delete). Give a key a scope, change it, take the key off, or make a key that works there alone.
+          <em>Keys</em> makes keys for no bucket yet, for chosen buckets, or for every bucket including the ones created
+          later (<em>One scope on every bucket</em>; <em>Stop following new buckets</em> keeps what the key reaches now).
+          A secret shows once. <em>Bucket with its key</em> makes a bucket, a key of its own with the scope you choose (full
+          control by default) and the <code>.env</code> lines of a Laravel <code>s3</code> disk, in one step.</p>
+        <p><strong>Moving data</strong>: <em>Connections</em> to other S3 providers (AWS, R2, Spaces, B2, Wasabi, Hetzner,
+          Scaleway, MinIO, another Johnny, any S3 endpoint) or SFTP servers, checked when saved and on request;
+          <em>Transfers</em>, one-off imports into Johnny and exports out of it (a bucket or one folder, copy or mirror, dry
+          run), followed until they end, with their log, cancel and run again; <em>Scheduled syncs</em>, the same on an
+          interval, with pause, resume, run now and their latest runs. A mirror also deletes at the destination what the
+          source no longer has: every way to start one asks first. When the panel's scheduler does not run, the syncs say
+          so instead of a next run.</p>
+        <p>A panel still on 1.x keeps buckets and keys; settings, connections, transfers and syncs say they need Johnny 2.0
+          (<em>Updates</em> on the panel).</p>
+
+        <figure class="shot">
+          <img src="img/infra-johnny-settings.png" alt="The Settings of a Johnny bucket: usage, quotas, the CORS rule and the expiry rules, each with Change" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>A bucket's settings.</strong> Usage, quotas, CORS and expiry rules, one row each; <em>Change</em>
+            starts from what the bucket has.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/infra-johnny-transfers.png" alt="Johnny transfers: an export to an SFTP server at 62%, an import and an export completed, with their progress" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Transfers.</strong> Imports and exports run by rclone on the panel's server, with their
+            progress; <em>Progress and log</em>, <em>Cancel</em> and <em>Run again</em> in each row's menu.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/infra-johnny-syncs.png" alt="Johnny scheduled syncs: a daily export to Cloudflare R2, a mirror to an SFTP server every six hours, a paused import" loading="lazy" width="2880" height="1800" />
+          <figcaption><strong>Scheduled syncs.</strong> Every day to R2, every six hours to the office NAS as a mirror, an
+            import paused after a failed run.</figcaption>
+        </figure>
 
         <h3>The credentials</h3>
         <ol>
@@ -4943,13 +5101,22 @@ MAIL_PASSWORD=re_xxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
         <h3>Typical tasks</h3>
         <ul>
           <li><strong>Storage for a new app</strong>: <em>Buckets → Bucket with its key</em>, a name or none (Johnny makes a
-            <code>b-…</code> one); copy the <code>env</code> lines of the result into the app's <code>.env</code> or a
-            password manager item: the secret does not show again.</li>
-          <li><strong>One more app on a bucket</strong>: <em>Keys → New key</em>, then on the bucket <em>Keys → Give a key
-            access</em> with read and write.</li>
+            <code>b-…</code> one) and the scope; copy the <code>env</code> lines of the result into the app's
+            <code>.env</code> or a password manager item: the secret does not show again.</li>
+          <li><strong>One more app on a bucket</strong>: on the bucket, <em>Keys → New key for this bucket</em> with
+            <em>Read and write</em>.</li>
+          <li><strong>A reporting key on everything</strong>: <em>Keys → New key</em>, <em>Every bucket</em>, <em>Read
+            only</em>.</li>
+          <li><strong>Uploads from the browser</strong>: on the bucket, <em>Settings → CORS → Change</em>, the app's address
+            and <code>GET</code>, <code>PUT</code>.</li>
+          <li><strong>A copy somewhere else every night</strong>: <em>Connections → Add a connection</em>, then
+            <em>Scheduled syncs → Schedule a sync</em>, export, copy, every 1440 minutes.</li>
           <li><strong>A project's bucket</strong>: <em>Attach to a project…</em> in the bucket's menu; its developers see its
-            keys in the project's <a href="#work-project">Infrastructure</a> tab and, if you tick it, may give a key access.</li>
+            keys and settings in the project's <a href="#work-project">Infrastructure</a> tab and, if you tick it, may give a
+            key access.</li>
         </ul>
+        <p>Studio's backups make their Johnny bucket with a <em>Read and write</em> key: it uploads, lists and prunes
+          objects, and cannot delete the bucket or change its settings.</p>
       </section>
 
 <!-- Deep dive -->

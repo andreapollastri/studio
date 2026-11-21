@@ -887,7 +887,9 @@ class Backups extends Component
 
         try {
             $client = $account->client();
-            $made = $client instanceof ApiClient ? $client->post('/buckets/provision', array_filter(['bucket' => $this->johnny_bucket ?: null])) : [];
+            // read and write: the backups upload, list and prune objects, never the bucket's own
+            // settings, so its key cannot delete the bucket (Johnny 2.0; older panels give full control)
+            $made = $client instanceof ApiClient ? $client->post('/buckets/provision', array_filter(['bucket' => $this->johnny_bucket ?: null, 'scope' => 'read-write'])) : [];
         } catch (ConnectorException $e) {
             $this->addError('johnny_bucket', $e->getMessage());
 

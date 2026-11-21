@@ -101,10 +101,10 @@
     @endif
 
     <div
-        x-show="! live"
+        x-show="paused"
         x-cloak
         class="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200 max-md:px-3"
-    >{{ __('Live connection paused — refreshing every few seconds') }}</div>
+    >{{ __('Live updates paused: the chat refreshes every few seconds while the agent works') }}</div>
 
     <div
         id="chat-messages"
@@ -123,7 +123,7 @@
                 this.$el.scrollTop = this.$el.scrollHeight;
             },
         }"
-        x-init="$el.scrollTop = $el.scrollHeight"
+        x-init="$el.scrollTop = $el.scrollHeight; new ResizeObserver(() => go()).observe($el)"
         x-on:scroll.passive="check()"
         x-on:chat-updated.window="$nextTick(() => go())"
     >

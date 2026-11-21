@@ -429,6 +429,25 @@
     "wait": 2000
   },
   {
+    "name": "infra-johnny-settings",
+    "url": "${BASE}/infrastructure/johnny?tab=buckets",
+    "eval": "(() => { setTimeout(() => Livewire.all().find(c => c.name === 'infrastructure.console').$wire.call('start', 'settings', 'shop-acme-media'), 300); return true; })()",
+    "height": 900,
+    "wait": 2500
+  },
+  {
+    "name": "infra-johnny-transfers",
+    "url": "${BASE}/infrastructure/johnny?tab=transfers",
+    "height": 900,
+    "wait": 2000
+  },
+  {
+    "name": "infra-johnny-syncs",
+    "url": "${BASE}/infrastructure/johnny?tab=syncs",
+    "height": 900,
+    "wait": 2000
+  },
+  {
     "name": "admin-domains",
     "url": "${BASE}/admin/domains",
     "wait": 1000

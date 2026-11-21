@@ -136,6 +136,9 @@ test('a Johnny panel makes a bucket with its own key for the backups', function 
     expect($target->name)->toBe('Johnny · shop-backups')
         ->and($target->setting('endpoint'))->toBe('https://s3.johnny.test')
         ->and($target->setting('secret_access_key'))->toBe('sss');
+
+    // the backups' key reads and writes objects; it may not delete the bucket or change its settings
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api/buckets/provision') && $request['bucket'] === 'shop-backups' && $request['scope'] === 'read-write');
 });
 
 test('storage in use cannot be removed', function () {

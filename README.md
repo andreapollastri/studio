@@ -1,13 +1,29 @@
-# Studio
+<h1 align="center">studio<sup>.</sup></h1>
 
-**Your whole studio on one server.** Claude does the work. Your team decides.
+<p align="center"><strong>Your whole studio on one server.</strong><br>Claude does the work. Your team decides.</p>
+
+<p align="center">
+<a href="https://github.com/andreapollastri/studio/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/andreapollastri/studio?color=4d7c0f&label=release"></a>
+<a href="https://github.com/andreapollastri/studio/actions/workflows/tests.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/andreapollastri/studio/tests.yml?branch=main&label=tests"></a>
+<img alt="PHP 8.6" src="https://img.shields.io/badge/PHP-8.6-111a08">
+<img alt="Laravel 13" src="https://img.shields.io/badge/Laravel-13-111a08">
+<img alt="Ubuntu 24.04 and 26.04" src="https://img.shields.io/badge/Ubuntu-24.04%20%7C%2026.04-111a08">
+</p>
+
+<p align="center">
+<a href="https://studio.web.ap.it"><strong>Documentation</strong></a> ·
+<a href="#install-on-a-vps">Install</a> ·
+<a href="#screenshots">Screenshots</a> ·
+<a href="https://studio.web.ap.it/#whats-new">What's new</a> ·
+<a href="#claude-code-and-anthropics-terms">Anthropic's terms</a>
+</p>
 
 One Ubuntu server, one script, one wildcard DNS record. Studio is where an agency or a product team runs its
 Laravel projects. Administrators create them, put each person on them with a role *of that project* (the PM here,
 a developer there, the client elsewhere) and decide what every role sees and does. Each project is a hub: the
-conversation with **the person's own Claude Code**, running in their workspace with the Larapilot skills of the
+conversation with **the person's own Claude Code** (or Cursor), running in their workspace with the Larapilot skills of the
 project, which writes the story, plans it, implements it and opens the pull request; the live preview of that
-branch, on the client's domain if they want; the repository on any git host; the servers, zones and apps attached
+branch, on the client's domain if they want; the repository on any git host; the servers, zones, apps and buckets attached
 to it; its passwords, files, SSH connections and backups. People read, decide and approve. Nothing to install on a
 laptop but a browser.
 
@@ -15,7 +31,29 @@ laptop but a browser.
 <img src="docs/img/chat-permission.png" alt="A permission card asking to run php artisan migrate:fresh --seed, with Allow, Always allow and Deny, the preview of the branch on the right" width="100%">
 </p>
 
-**Version 2.1** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.6 (8.5, 8.4, 8.3 on request) · MariaDB and PostgreSQL.
+## Why Studio
+
+<table>
+<tr>
+<td width="33%" valign="top"><strong>Plain words in, a pull request out.</strong><br><sub>The chat with each person's own Claude Code writes the story, plans it, implements it on a branch of their workspace and opens the PR. A follow-up waits its turn while the agent works.</sub></td>
+<td width="33%" valign="top"><strong>Humans approve what matters.</strong><br><sub>Tests and builds run on their own; a migration, a push or a deploy asks first, once or never again with <em>Always allow</em>. Four modes per conversation, from ask-everything to autopilot and plan only.</sub></td>
+<td width="33%" valign="top"><strong>A role per project.</strong><br><sub>PM on one, developer on another, client on a third: the chat, the presets, the tabs and every attached resource follow the role the person has <em>there</em>.</sub></td>
+</tr>
+<tr>
+<td width="33%" valign="top"><strong>Live previews, on every branch.</strong><br><sub>Each workspace serves its branch; sandboxes give a conversation a worktree, a database and a preview of its own. Clients see the site, not the code.</sub></td>
+<td width="33%" valign="top"><strong>The infrastructure, attached.</strong><br><sub>AWS, DigitalOcean, Hetzner, Cloudflare, Cipi, Boogle, Hackly and Johnny: any row of a connector becomes a card of the project, with only the actions handed to each role.</sub></td>
+<td width="33%" valign="top"><strong>The tools a studio lives in.</strong><br><sub>Git on four hosts, a SQL client, SSH with files, a password manager with sharing, a drive and scheduled backups, all on your server, all behind one login with 2FA and passkeys.</sub></td>
+</tr>
+</table>
+
+## How it works
+
+1. **Install** on a fresh Ubuntu VPS with [one command](#install-on-a-vps): Caddy, PHP, the database, Studio and its updater.
+2. **Create a project** from a repository on GitHub, GitLab, Bitbucket or Azure DevOps (or a new one): Studio deploys its site and keeps it deployed on every push.
+3. **Put people on it**, each with the role they have on that project, and attach the servers, zones and buckets it runs on.
+4. **Ask in plain words.** Each person signs in to Claude Code with their own account, in a terminal of their own; the agent works in their workspace, the preview follows the branch, and the team approves.
+
+**Version 2.4** · Laravel 13 · Livewire 4 · Flux · Fortify (2FA, passkeys) · Reverb · Caddy · PHP 8.6 (8.5, 8.4, 8.3 on request) · MariaDB and PostgreSQL.
 
 **Documentation:** [studio.web.ap.it](https://studio.web.ap.it) — the static site in `docs/`
 (Netlify publishes the `docs/` folder as it is, see `netlify.toml`).
@@ -305,6 +343,10 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/infra-attach.png" alt="The Attach to a project dialog: project, name, who sees it, who acts on it, the actions"><br><sub><strong>Attach to a project.</strong> Which roles see the row, which act on it, and which of its actions they may run.</sub></td>
 </tr>
 <tr>
+<td width="50%"><img src="docs/img/infra-johnny-settings.png" alt="A Johnny bucket's settings: usage, quotas, the CORS rule and expiry rules, each with Change"><br><sub><strong>Johnny, a bucket's settings.</strong> Usage, quotas, CORS and expiry rules of a bucket on your own S3 storage, each changed from what it has; keys with one scope per bucket, or on all of them.</sub></td>
+<td width="50%"><img src="docs/img/infra-johnny-syncs.png" alt="Johnny's scheduled syncs: exports to Cloudflare R2 and an SFTP server, an import, interval, last run and next run"><br><sub><strong>Johnny, moving data.</strong> Imports, exports and scheduled syncs with other S3 providers and SFTP servers, followed until they end; a mirror asks first.</sub></td>
+</tr>
+<tr>
 <td width="50%"><img src="docs/img/admin-system.png" alt="Administration, System: installed and newest release, update buttons, nightly switch, channel, last log, the server's PHP versions"><br><sub><strong>System.</strong> The installed build and the newest one, the nightly switch, the channel, the last run with its log, the git hosts.</sub></td>
 <td width="50%"><img src="docs/img/admin-domains.png" alt="Administration, Domains: a verified domain used by a project, one waiting for its DNS"><br><sub><strong>Domains.</strong> The records to create, what the DNS answered, the projects that use each domain.</sub></td>
 </tr>
@@ -318,7 +360,7 @@ shows the result on her own branch.
 <td width="50%"><img src="docs/img/accounts-git.png" alt="Settings, Accounts, Git tab: accounts with host, login and commit identity"><br><sub><strong>Settings → Accounts → Git.</strong> Each account with its host, its login, the name and email its commits carry, the state of its token.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/img/cipi-hub.png" alt="A Cipi app in its project: releases, live deploy status, deploy history, server load and disk"><br><sub><strong>A Cipi app.</strong> Releases on the server with the live one and Roll back here, a deploy in flight whoever started it, the deploy history, the server's load.</sub></td>
+<td width="50%"><img src="docs/img/cipi-hub.png" alt="A Cipi app in its project: releases, deploy history with duration and trigger, server load and disk"><br><sub><strong>A Cipi app.</strong> Releases on the server with the live one and Roll back here, the deploy history with how each started and how long it took, the server's load; a deploy in flight shows live, whoever started it.</sub></td>
 <td width="50%"><img src="docs/img/cipi-anonymizer.png" alt="The Database tab of a Cipi app: an anonymized copy and the anonymization file from the schema"><br><sub><strong>Its database.</strong> An anonymized copy for developers, and the anonymization file from the live schema, edited and written back.</sub></td>
 </tr>
 <tr>
@@ -327,7 +369,7 @@ shows the result on her own branch.
 </tr>
 </table>
 
-## Status (2.3)
+## Status (2.4)
 
 What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 

@@ -749,7 +749,7 @@ test('Johnny panels: buckets, a bucket with its key in one step, keys and their 
         'storage.acme.test/api/buckets/shop-uploads/keys/GK0011*' => Http::response(null, 204),
         'storage.acme.test/api/buckets/shop-uploads/keys' => Http::response(['bucket' => 'shop-uploads', 'key_id' => 'GK0022', 'read' => true, 'write' => true, 'owner' => false], 201),
         'storage.acme.test/api/buckets/shop-uploads' => Http::response(['data' => ['name' => 'shop-uploads', 'created' => '2026-10-01T10:00:00Z', 'keys' => [
-            ['id' => 'GK0011', 'name' => 'shop-app', 'permissions' => 'RW-'],
+            ['id' => 'GK0011', 'name' => 'shop-app', 'permissions' => 'read, write', 'scope' => 'read-write'],
         ]]]),
         'storage.acme.test/api/buckets' => fn (Request $r) => $r->method() === 'POST'
             ? Http::response(['data' => ['name' => $r['name']]], 201)
@@ -778,16 +778,18 @@ test('Johnny panels: buckets, a bucket with its key in one step, keys and their 
         ->assertSet('resultTitle', 'Bucket b-x7k2 and its key')
         ->assertSee('shown-once');
     Http::assertSent(fn (Request $r) => $r->url() === 'https://storage.acme.test/api/buckets' && $r->method() === 'POST' && $r['name'] === 'shop-media');
+    // the bucket's own key gets full control unless another scope is chosen
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/api/buckets/provision') && $r['scope'] === 'full');
 
-    // the keys of a bucket: give one access, take permissions from another; at least one flag
-    $page->call('start', 'keys', 'shop-uploads')->assertSet('tab', 'bucket-keys')->assertSee(['shop-app', 'RW-'])
-        ->call('start', 'grant')->set('form.key_id', 'GK0022')->set('form.write', true)->call('submit')->assertHasNoErrors()
-        ->call('start', 'revoke', 'GK0011')->set('form.read', false)->call('submit');
-    Http::assertNotSent(fn (Request $r) => $r->method() === 'DELETE');
-    $page->call('start', 'revoke', 'GK0011')->set('form.read', false)->set('form.write', true)->call('submit');
+    // the keys of a bucket, each with its scope: give one a scope, change another's, take one off
+    $page->call('start', 'keys', 'shop-uploads')->assertSet('tab', 'bucket-keys')->assertSee(['shop-app', 'Read and write'])
+        ->call('start', 'grant')->set('form.key_id', 'GK0022')->set('form.scope', 'read')->call('submit')->assertHasNoErrors()
+        ->call('start', 'scope', 'GK0011')->assertSet('form.scope', 'read-write')->set('form.scope', 'full')->call('submit')->assertHasNoErrors()
+        ->call('start', 'revoke', 'GK0011');
 
-    Http::assertSent(fn (Request $r) => $r->url() === 'https://storage.acme.test/api/buckets/shop-uploads/keys' && $r['key_id'] === 'GK0022' && $r['read'] === true && $r['write'] === true && $r['owner'] === false);
-    Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && $r->url() === 'https://storage.acme.test/api/buckets/shop-uploads/keys/GK0011' && $r['write'] === true && $r['read'] === false);
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://storage.acme.test/api/buckets/shop-uploads/keys' && $r['key_id'] === 'GK0022' && $r['scope'] === 'read' && ! isset($r['read']));
+    Http::assertSent(fn (Request $r) => $r->url() === 'https://storage.acme.test/api/buckets/shop-uploads/keys' && $r['key_id'] === 'GK0011' && $r['scope'] === 'full');
+    Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && $r->url() === 'https://storage.acme.test/api/buckets/shop-uploads/keys/GK0011' && $r['read'] === true && $r['write'] === true && $r['owner'] === true);
 
     // the default bucket is not offered for deletion; a new key shows its secret once
     expect(collect(Connectors::make('johnny')->section('buckets')->actions)->firstWhere('key', 'delete')->appliesTo(['name' => 'default']))->toBeFalse();
@@ -800,4 +802,139 @@ test('Johnny panels: buckets, a bucket with its key in one step, keys and their 
     Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'buckets'])
         ->call('attach', 'shop-uploads')->set('attach_project', $project->uuid)->set('attach_actions', ['bucket-keys.@grant'])->call('saveAttachment')->assertHasNoErrors();
     expect(ProjectResource::query()->sole()->resource_id)->toBe('shop-uploads');
+});
+
+test('Johnny 2.0: a bucket\'s quotas, CORS and expiry rules start from what it has; keys reach chosen buckets or every one', function () {
+    enable('johnny');
+    $admin = User::factory()->admin()->create();
+    ConnectorAccount::factory()->create(['connector' => 'johnny', 'name' => 'Storage', 'credentials' => ['url' => 'https://storage.acme.test', 'token' => 't']]);
+
+    Http::fake([
+        'storage.acme.test/api/buckets/media/settings' => Http::response(['data' => [
+            'bucket' => 'media',
+            'usage' => ['size' => 3 * 1024 ** 3, 'objects' => 1200],
+            'quotas' => ['max_size' => 10 * 1024 ** 3, 'max_objects' => 50000],
+            'cors' => ['origins' => ['https://app.acme.test'], 'methods' => ['GET', 'PUT'], 'headers' => ['*'], 'max_age' => 600, 'rules' => 1],
+            'lifecycle' => ['expire_days' => null, 'expire_prefix' => '', 'abort_days' => 7, 'other_rules' => 0],
+        ]]),
+        'storage.acme.test/api/buckets/media/*' => Http::response(['data' => []]),
+        'storage.acme.test/api/buckets' => Http::response(['data' => [['name' => 'media'], ['name' => 'invoices']]]),
+        'storage.acme.test/api/keys/GK0044/all-buckets' => Http::response(['data' => ['id' => 'GK0044', 'all_buckets' => true, 'scope' => 'read', 'buckets' => 2, 'failed_buckets' => []]]),
+        'storage.acme.test/api/keys' => fn (Request $r) => $r->method() === 'POST'
+            ? Http::response(['id' => 'GK0055', 'name' => $r['name'], 'access' => $r['access'], 'scope' => $r['scope'], 'buckets' => $r['buckets'] ?? [], 'failed_buckets' => ['invoices'],
+                'credentials' => ['access_key_id' => 'GK0055', 'secret_access_key' => 'once-only']], 201)
+            : Http::response(['data' => [['id' => 'GK0044', 'name' => 'reports', 'all_buckets' => true, 'scope' => 'read']]]),
+    ]);
+
+    // settings: one row each, with what the bucket has now
+    $page = Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'buckets'])
+        ->call('start', 'settings', 'media')->assertSet('tab', 'bucket-settings')
+        ->assertSee(['3.0 GB · 1,200 objects', 'at most 10 GB', 'at most 50,000 objects', 'https://app.acme.test', 'unfinished uploads removed after 7 days']);
+
+    // changing only the objects keeps the size limit as it was
+    $page->call('start', 'quotas', 'quotas')->assertSet('form.max_size', '10 GB')->set('form.max_objects', '60000')->call('submit')->assertHasNoErrors();
+    Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/buckets/media/quotas') && $r['max_size'] === 10 * 1024 ** 3 && $r['max_objects'] === 60000);
+    // an empty size is no limit; a size Johnny could not read never leaves
+    $page->call('start', 'quotas', 'quotas')->set('form.max_size', 'lots')->call('submit')->assertHasErrors('form.max_size');
+    $page->call('start', 'quotas', 'quotas')->set('form.max_size', '')->call('submit');
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/buckets/media/quotas') && $r['max_size'] === null);
+
+    // CORS: one website per line; none removes the rule
+    $page->call('start', 'cors', 'cors')->assertSet('form.methods', ['GET', 'PUT'])
+        ->set('form.origins', "https://app.acme.test\nhttps://admin.acme.test")->call('submit')->assertHasNoErrors();
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/buckets/media/cors') && $r['origins'] === ['https://app.acme.test', 'https://admin.acme.test'] && $r['methods'] === ['GET', 'PUT'] && $r['max_age'] === 600);
+    $page->call('start', 'cors', 'cors')->set('form.origins', '')->call('submit');
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/buckets/media/cors') && $r['origins'] === [] && ! isset($r['methods']));
+
+    // expiry rules delete objects: destructive, so the safe hand-over leaves them out
+    $lifecycle = collect(Connectors::make('johnny')->section('bucket-settings')->actions)->firstWhere('key', 'lifecycle');
+    expect($lifecycle->danger)->toBeTrue();
+    $page->call('start', 'lifecycle', 'lifecycle')->assertSet('form.abort_days', '7')->set('form.expire_days', '30')->set('form.expire_prefix', 'tmp/')->call('submit');
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/buckets/media/lifecycle') && $r['expire_days'] === 30 && $r['expire_prefix'] === 'tmp/' && $r['abort_days'] === 7);
+
+    // a key for chosen buckets: the ones the grant missed are said
+    Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'keys'])
+        ->assertSee('every bucket · Read only')
+        ->call('start', 'create')->set('form.name', 'reports-2')->set('form.access', 'buckets')->call('submit')->assertSet('resultTitle', null)
+        ->set('form.buckets', ['media', 'invoices'])->set('form.scope', 'read')->call('submit')
+        ->assertSee(['once-only', 'invoices']);
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/api/keys') && $r['access'] === 'buckets' && $r['buckets'] === ['media', 'invoices'] && $r['scope'] === 'read');
+
+    // one scope everywhere, the new buckets too
+    Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'keys'])
+        ->call('start', 'all-buckets', 'GK0044')->assertSet('form.scope', 'read')->call('submit')->assertHasNoErrors();
+    Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/keys/GK0044/all-buckets') && $r['scope'] === 'read');
+});
+
+test('Johnny 2.0: connections, transfers followed until they end, scheduled syncs; a panel before 2.0 says it needs the update', function () {
+    enable('johnny');
+    $admin = User::factory()->admin()->create();
+    ConnectorAccount::factory()->create(['connector' => 'johnny', 'name' => 'Storage', 'credentials' => ['url' => 'https://storage.acme.test', 'token' => 't']]);
+
+    $transfer = ['id' => 7, 'direction' => 'import', 'mode' => 'copy', 'connection_name' => 'R2', 'local_bucket' => 'media', 'remote_bucket' => 'media', 'status' => 'running', 'active' => true,
+        'percent' => 42, 'bytes_done' => 420, 'bytes_total' => 1000, 'files_done' => 4, 'files_total' => 10, 'errors' => 0];
+    Http::fake([
+        'storage.acme.test/api/providers' => Http::response(['data' => [['id' => 'r2', 'label' => 'Cloudflare R2'], ['id' => 'sftp', 'label' => 'SFTP server']]]),
+        'storage.acme.test/api/connections/3/check' => Http::response(['data' => ['id' => 3, 'reachable' => false, 'error' => 'SignatureDoesNotMatch']]),
+        'storage.acme.test/api/connections' => fn (Request $r) => $r->method() === 'POST'
+            ? Http::response(['data' => ['id' => 3, 'name' => $r['name'], 'reachable' => false, 'check_error' => 'InvalidAccessKeyId']], 201)
+            : Http::response(['data' => [['id' => 3, 'name' => 'R2', 'provider' => 'r2', 'provider_label' => 'Cloudflare R2', 'endpoint' => 'https://acc.r2.test', 'reachable' => true]]]),
+        'storage.acme.test/api/transfers/7' => Http::sequence()->push(['data' => $transfer])->push(['data' => ['status' => 'completed', 'active' => false, 'message' => '10 files copied.'] + $transfer]),
+        'storage.acme.test/api/transfers*' => fn (Request $r) => $r->method() === 'POST'
+            ? Http::response(['data' => ['status' => 'pending'] + $transfer], 201)
+            : Http::response(['data' => [$transfer]]),
+        'storage.acme.test/api/syncs/9' => Http::response(['data' => ['id' => 9, 'enabled' => false]]),
+        'storage.acme.test/api/syncs' => fn (Request $r) => $r->method() === 'POST'
+            ? Http::response(['data' => ['id' => 9]], 201)
+            : Http::response(['data' => [['id' => 9, 'direction' => 'export', 'connection_name' => 'R2', 'local_bucket' => 'media', 'remote_bucket' => 'backups/media', 'mode' => 'sync',
+                'interval_minutes' => 15, 'interval_label' => 'Every 15 minutes', 'enabled' => true, 'next_run_at' => now()->addMinutes(10)->toIso8601String()]], 'scheduler_running' => false]),
+    ]);
+
+    // an S3 account: what was left empty stays out, path style is said either way; a refusal is said
+    Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'connections'])
+        ->assertSee(['R2', 'Cloudflare R2'])
+        ->call('start', 'create')->set('form.name', 'R2 archive')->set('form.provider', 'r2')->set('form.endpoint', 'https://acc.r2.test')
+        ->set('form.access_key_id', 'AK')->set('form.secret_access_key', 'SK')->call('submit')->assertHasNoErrors()
+        ->call('start', 'check', '3');
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/api/connections') && $r['provider'] === 'r2' && $r['path_style'] === false
+        && ! isset($r['host']) && ! isset($r['password']) && ! isset($r['port']));
+
+    // a transfer is followed until it ends
+    $page = Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'transfers'])
+        ->assertSee(['42%', '4 of 10 files'])
+        ->call('start', 'create')->set('form.connection_id', '3')->set('form.remote_bucket', 'media')->set('form.local_bucket', 'media')->call('submit')
+        ->assertSet('resultPoll', '7');
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/api/transfers') && $r['connection_id'] === 3 && $r['direction'] === 'import' && $r['mode'] === 'copy' && $r['dry_run'] === false);
+    $page->call('poll')->assertSet('resultPoll', '7')->call('poll')->assertSet('resultPoll', null)->assertSee('10 files copied.');
+
+    // a mirror deletes at the destination: every way to start one asks first
+    foreach (['transfers' => 'create', 'syncs' => 'create'] as $section => $key) {
+        expect(Connectors::make('johnny')->section($section)->toolbarAction($key)?->confirm)->not->toBeNull();
+    }
+
+    // syncs: a scheduler that does not run is said on the row, the list stays
+    Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'syncs'])
+        ->assertSee(['Every 15 minutes', 'mirror', 'the panel\'s scheduler is not running'])
+        ->call('start', 'create')->set('form.direction', 'export')->set('form.connection_id', '3')->set('form.remote_bucket', 'backups/media')->set('form.local_bucket', 'media')
+        ->set('form.mode', 'sync')->set('form.interval_minutes', '15')->call('submit')->assertHasNoErrors()
+        ->call('start', 'pause', '9');
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/api/syncs') && $r['interval_minutes'] === 15 && $r['mode'] === 'sync' && $r['direction'] === 'export');
+    Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/api/syncs/9') && $r['enabled'] === false);
+});
+
+test('a Johnny panel before 2.0 keeps buckets and keys, and says what needs the update', function () {
+    enable('johnny');
+    $admin = User::factory()->admin()->create();
+    ConnectorAccount::factory()->create(['connector' => 'johnny', 'name' => 'Old', 'credentials' => ['url' => 'https://old.acme.test', 'token' => 't']]);
+    Http::fake([
+        'old.acme.test/api/buckets' => Http::response(['data' => [['name' => 'media']]]),
+        'old.acme.test/*' => Http::response(['message' => 'Not Found'], 404),
+    ]);
+
+    foreach (['connections', 'transfers', 'syncs'] as $tab) {
+        Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => $tab])->assertSee('it needs Johnny 2.0');
+    }
+
+    Livewire::actingAs($admin)->test(Console::class, ['connector' => 'johnny', 'tab' => 'buckets'])->assertSee('media')
+        ->call('start', 'settings', 'media')->assertSee('it needs Johnny 2.0');
 });

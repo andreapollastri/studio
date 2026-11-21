@@ -192,7 +192,7 @@ class DemoSeeder extends Seeder
         // Maria's live conversation: a story written, a build about to run.
         $conversation = Conversation::query()->updateOrCreate(
             ['workspace_id' => $mariaShop->id, 'user_id' => $maria->id, 'title' => 'Date range filter on orders'],
-            ['status' => ConversationStatus::WaitingPermission, 'permission_mode' => 'default', 'model' => 'claude-sonnet-5', 'agent_session_id' => 'sess-demo-1', 'last_activity_at' => now()->subMinute(),
+            ['status' => ConversationStatus::WaitingPermission, 'permission_mode' => 'default', 'model' => 'claude-sonnet-5-5', 'agent_session_id' => 'sess-demo-1', 'last_activity_at' => now()->subMinute(),
                 'last_result' => ['total_cost_usd' => 0.18, 'duration_ms' => 61200, 'num_turns' => 6]],
         );
         $conversation->messages()->delete();
@@ -226,7 +226,7 @@ class DemoSeeder extends Seeder
 
         Conversation::query()->updateOrCreate(
             ['workspace_id' => $mariaShop->id, 'user_id' => $maria->id, 'title' => 'Triage of the client feedback on search'],
-            ['status' => ConversationStatus::Idle, 'permission_mode' => 'default', 'model' => 'claude-sonnet-5', 'last_activity_at' => now()->subHours(3), 'created_at' => now()->subHours(4), 'updated_at' => now()->subHours(3),
+            ['status' => ConversationStatus::Idle, 'permission_mode' => 'default', 'model' => 'claude-sonnet-5-5', 'last_activity_at' => now()->subHours(3), 'created_at' => now()->subHours(4), 'updated_at' => now()->subHours(3),
                 'last_result' => ['total_cost_usd' => 0.07, 'duration_ms' => 23000, 'num_turns' => 3]],
         );
         // A read-only check in Plan only mode: Claude hands two questions to subagents.
